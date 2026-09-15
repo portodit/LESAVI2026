@@ -4,6 +4,7 @@ import { db, accountManagersTable, presentationSessionsTable } from "@workspace/
 import { eq, or, inArray } from "drizzle-orm";
 import { comparePassword, requireAuth, logAuthEvent, getClientIp } from "../../shared/auth";
 import { requestOtp, verifyOtp, resendOtp, getPendingUserInfo, requestOtpPresentation, verifyOtpPresentation } from "./otp";
+import { logger } from "../../shared/logger";
 
 // ─── Dashboard Auth Router (uses connect.sid) ──────────────────────────────────
 // All routes here go through the dashboard session middleware.
@@ -362,65 +363,72 @@ presentationAuthRouter.post("/request-otp", async (req: any, res: any): Promise<
 // Sessionless: reads challenge from DB, creates presentation token in DB.
 // Does NOT touch express-session or any cookie — completely isolated.
 presentationAuthRouter.post("/verify-otp", async (req: any, res: any): Promise<void> => {
-  const { challengeId, otp, userId } = req.body;
+  try {
+    const { challengeId, otp, userId } = req.body;
 
-  if (!challengeId || !otp) {
-    res.status(400).json({ error: "challengeId dan OTP wajib diisi" });
-    return;
-  }
+    if (!challengeId || !otp) {
+      res.status(400).json({ error: "challengeId dan OTP wajib diisi" });
+      return;
+    }
 
-  if (!/^\d{5}$/.test(String(otp))) {
-    res.status(400).json({ error: "OTP harus 5 digit angka" });
-    return;
-  }
+    if (!/^\d{5}$/.test(String(otp))) {
+      res.status(400).json({ error: "OTP harus 5 digit angka" });
+      return;
+    }
 
-  // userId is optional — the challengeId in DB already identifies the user
-  const result = await verifyOtpPresentation(String(challengeId), String(otp), userId ? Number(userId) : undefined);
+    // userId is optional — the challengeId in DB already identifies the user
+    const result = await verifyOtpPresentation(String(challengeId), String(otp), userId ? Number(userId) : undefined);
 
-  if (!result.success) {
+    if (!result.success) {
+      await logAuthEvent({
+        userId: Number(userId),
+        eventType: "OTP_FAILED",
+        loginMethod: "NIK_PRESENTATION",
+        challengeId: String(challengeId),
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"],
+        status: "FAILED",
+        failureReason: result.error,
+      });
+      res.status(401).json({ error: result.error, locked: result.locked });
+      return;
+    }
+
     await logAuthEvent({
-      userId: Number(userId),
-      eventType: "OTP_FAILED",
+      userId: result.userId,
+      eventType: "LOGIN_SUCCESS",
       loginMethod: "NIK_PRESENTATION",
       challengeId: String(challengeId),
       ipAddress: getClientIp(req),
       userAgent: req.headers["user-agent"],
-      status: "FAILED",
-      failureReason: result.error,
+      status: "SUCCESS",
     });
-    res.status(401).json({ error: result.error, locked: result.locked });
-    return;
+
+    // Create presentation token in DB — this is what the frontend stores in localStorage
+    const presentationToken = crypto.randomBytes(24).toString("base64url");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    logger.info({ resultUserId: result.userId, resultNama: result.nama, resultRole: result.role, expiresAt }, "verify-otp: about to insert presentation session");
+
+    await db.insert(presentationSessionsTable).values({
+      token: presentationToken,
+      userId: result.userId,
+      userNik: result.nik,
+      userNama: result.nama,
+      userRole: result.role,
+      expiresAt,
+    }).onConflictDoNothing();
+
+    res.json({
+      id: result.userId,
+      nama: result.nama,
+      role: result.role,
+      presentationToken,
+    });
+  } catch (err) {
+    logger.error({ err }, "verify-otp unhandled error");
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  await logAuthEvent({
-    userId: result.userId,
-    eventType: "LOGIN_SUCCESS",
-    loginMethod: "NIK_PRESENTATION",
-    challengeId: String(challengeId),
-    ipAddress: getClientIp(req),
-    userAgent: req.headers["user-agent"],
-    status: "SUCCESS",
-  });
-
-  // Create presentation token in DB — this is what the frontend stores in localStorage
-  const presentationToken = crypto.randomBytes(24).toString("base64url");
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  await db.insert(presentationSessionsTable).values({
-    token: presentationToken,
-    userId: result.userId,
-    userNik: result.nik,
-    userNama: result.nama,
-    userRole: result.role,
-    expiresAt,
-  }).onConflictDoNothing();
-
-  res.json({
-    id: result.userId,
-    nama: result.nama,
-    role: result.role,
-    presentationToken,
-  });
 });
 
 // POST /api/auth/presentation/session — validates localStorage token from DB

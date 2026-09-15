@@ -57,14 +57,15 @@ app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // ── Dynamic Public URL Detection ──────────────────────────────────────────────
-// Detect the public base URL from incoming request headers so Telegram bot
-// messages contain URLs matching the host the user actually uses.
+// Detect the public base URL from x-forwarded-host header (set by reverse proxy).
+// We intentionally IGNORE the raw "host" header because internal requests from
+// the Telegram bot (calling http://localhost:8080/api/internal/...) would
+// otherwise overwrite the correct public URL with "localhost".
 app.use((req, _res, next) => {
   const forwardedHost = (req.headers["x-forwarded-host"] as string)?.split(",")[0]?.trim();
-  const host = forwardedHost || req.headers["host"];
-  if (host) {
-    const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() || "http";
-    setPublicBaseUrl(`${proto}://${host}`);
+  if (forwardedHost) {
+    const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() || "https";
+    setPublicBaseUrl(`${proto}://${forwardedHost}`);
   }
   next();
 });
@@ -75,9 +76,21 @@ const dashboardDistPath = path.resolve(__dirname, "..", "..", "dashboard", "dist
 if (fs.existsSync(dashboardDistPath)) {
   app.use(express.static(dashboardDistPath));
   // SPA fallback: serve index.html for all non-API routes
+  // Cache-bust: inject ?v= hash from built assets so browser always gets fresh files
   app.use((_req, res, next) => {
     if (!_req.url.startsWith("/api")) {
-      res.sendFile(path.join(dashboardDistPath, "index.html"));
+      const indexPath = path.join(dashboardDistPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        let html = fs.readFileSync(indexPath, "utf8");
+        // Extract hash from asset filenames (e.g. index-ABCD1234.js → ?v=ABCD1234)
+        const hashMatch = html.match(/assets\/index-([a-zA-Z0-9]+)\.js/);
+        if (hashMatch) {
+          html = html.replace(/\.js"/g, `.js?v=${hashMatch[1]}"`);
+        }
+        res.type("html").send(html);
+      } else {
+        next();
+      }
     } else {
       next();
     }
@@ -118,6 +131,15 @@ app.use("/api/auth/presentation", presentationAuthRouter);
 
 // ─── Internal routes — no session auth, uses x-telegram-secret header ─────────
 app.use("/api/internal", internalRouter);
+
+// ─── Custom API Error Handler — ensures JSON responses for all errors ─────────────
+app.use((err: any, _req: any, res: any, _next: any) => {
+  const status = err?.status || err?.statusCode || 500;
+  res.status(status).json({
+    error: err?.message || "Internal server error",
+    ...(process.env["NODE_ENV"] !== "production" ? { stack: err?.stack } : {}),
+  });
+});
 
 // ─── Protected Dashboard routes — uses connect.sid ────────────────────────────
 app.use("/api/am", dashboardSessionMw, requireAuth, requireManagerOrOfficer, amRouter);

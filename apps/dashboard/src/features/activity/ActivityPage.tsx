@@ -84,6 +84,25 @@ async function apiFetch<T>(path: string): Promise<T> {
   return r.json();
 }
 
+function formatPeriod(p: string | null | undefined): string {
+  if (!p) return "";
+  // YYYYMMDD
+  if (/^\d{8}$/.test(p)) {
+    const y = p.slice(0, 4);
+    const m = parseInt(p.slice(4, 6));
+    return `${MONTHS_SHORT[m]||m} ${y}`;
+  }
+  // YYYYMM
+  if (/^\d{6}$/.test(p)) {
+    const y = p.slice(0, 4);
+    const m = parseInt(p.slice(4, 6));
+    return `${MONTHS_SHORT[m]||m} ${y}`;
+  }
+  // YYYY-MM
+  const [y, m] = p.split("-");
+  return `${MONTHS_SHORT[parseInt(m)]||m} ${y}`;
+}
+
 function snapLabel(s: ActivitySnapshot): string {
   if (s.snapshotDate) {
     try {
@@ -91,11 +110,11 @@ function snapLabel(s: ActivitySnapshot): string {
       const day = d.getDate();
       const mon = MONTHS_SHORT[d.getMonth() + 1];
       const yr = d.getFullYear();
-      const period = s.period ? ` · ${s.period}` : "";
+      const period = s.period ? ` — ${formatPeriod(s.period)}` : "";
       return `${day} ${mon} ${yr}${period}`;
     } catch { /**/ }
   }
-  if (s.period) return s.period;
+  if (s.period) return formatPeriod(s.period);
   if (s.createdAt) {
     const d = new Date(s.createdAt);
     return `${d.getDate()} ${MONTHS_SHORT[d.getMonth() + 1]} ${d.getFullYear()}`;

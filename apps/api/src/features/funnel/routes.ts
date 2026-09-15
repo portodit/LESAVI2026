@@ -99,7 +99,7 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
   // Load account_managers for name resolution and AM group filtering
   const masterAms = await db.select().from(accountManagersTable);
   const masterAmByNik = new Map(masterAms.map(m => [m.nik, m.nama]));
-  const activeNikSet = new Set(masterAms.filter(m => m.aktif && m.role === "AM" && m.nik).map(m => m.nik));
+  const activeNikSet = new Set(masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik).map(m => m.nik));
 
   let allLops = await db.select().from(salesFunnelTable);
 
@@ -112,7 +112,9 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
     return l;
   });
 
-  if (import_id) allLops = allLops.filter(l => l.importId === Number(import_id));
+  if (import_id) {
+    allLops = allLops.filter(l => l.importId === Number(import_id));
+  }
 
   // Deduplicate by lopid — same LOP may appear in multiple imports (e.g. Drive upload + GSheets sync).
   // Keep the row with the highest importId (= most recent import). Only when no specific import_id requested.
@@ -153,7 +155,7 @@ router.get("/", requireAuth, async (req, res): Promise<void> => {
   // Backward-compat no-op: query params ignored (auto-applied above)
   void is_report; void project_type;
 
-  // Only include LOPs from registered AMs (role=AM, aktif=true) — same rule as activity/performance visualizations
+  // Only include LOPs from registered AMs (role=AM/ACCOUNT_MANAGER, aktif=true)
   allLops = allLops.filter(l => l.nikAm && activeNikSet.has(l.nikAm));
 
   const totalLop = allLops.length;

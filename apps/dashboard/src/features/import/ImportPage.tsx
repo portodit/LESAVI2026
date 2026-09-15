@@ -69,11 +69,12 @@ export function extractDateFromFilename(source: string): { display: string; isoD
   }
 }
 
-/** Normalize period display: handle both YYYYMM (6-digit) and YYYY-MM formats */
+/** Normalize period display: handle YYYYMM (6-digit), YYYYMMDD (8-digit), and YYYY-MM formats */
 function displayPeriod(p: string): string {
   if (!p) return "—";
-  if (p.length === 6) return `${p.slice(0, 4)}-${p.slice(4, 6)}`;
-  return p;
+  if (p.length === 8) return `${p.slice(0, 4)}-${p.slice(4, 6)}`; // YYYYMMDD → YYYY-MM
+  if (p.length === 6) return `${p.slice(0, 4)}-${p.slice(4, 6)}`; // YYYYMM → YYYY-MM
+  return p; // already YYYY-MM or other
 }
 
 function fileToBase64(file: File): Promise<string> {

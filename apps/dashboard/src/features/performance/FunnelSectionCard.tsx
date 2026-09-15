@@ -152,6 +152,7 @@ export function FunnelSectionCard() {
   const [importId, setImportId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<Set<string>>(new Set());
   const [filterAm, setFilterAm] = useState<Set<string>>(new Set());
+  const [filterDurasi, setFilterDurasi] = useState<"all"|"single_year"|"multi_year">("all");
   const [search, setSearch] = useState("");
   const [expandedAm, setExpandedAm] = useState<Record<string, boolean>>({});
   const [expandedPhase, setExpandedPhase] = useState<Record<string, boolean>>({});
@@ -159,7 +160,7 @@ export function FunnelSectionCard() {
 
   const { data: snapshots = [] } = useQuery<any[]>({
     queryKey: ["funnel-snapshots-performa"],
-    queryFn: () => apiFetch("/api/funnel/snapshots"),
+    queryFn: () => apiFetch("/api/public/funnel/snapshots"),
     staleTime: 60_000,
     enabled: sectionExpanded,
   });
@@ -190,13 +191,16 @@ export function FunnelSectionCard() {
   const funnelParams = useMemo(() => {
     const p = new URLSearchParams();
     if (importId) p.set("import_id", String(importId));
-    p.set("tahun", filterYear);
+    p.set("rd_year", filterYear); // rd_year = strict reportDate.year filter (sama dg bot & FunnelPage)
+    if (filterDurasi !== "all") p.set("durasi_filter", filterDurasi);
+    // GTMA & Own Channel — sama kayak bot
+    p.set("kategori_kontrak", "GTMA,Own Channel");
     return p.toString();
-  }, [importId, filterYear]);
+  }, [importId, filterYear, filterDurasi]);
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["funnel-data-performa", funnelParams],
-    queryFn: () => apiFetch(`/api/funnel?${funnelParams}`),
+    queryFn: () => apiFetch(`/api/public/funnel?${funnelParams}`),
     enabled: sectionExpanded && (importId !== null || (Array.isArray(snapshots) && snapshots.length === 0)),
     staleTime: 30_000,
   });
@@ -237,6 +241,10 @@ export function FunnelSectionCard() {
   }, [periodFilteredLops, filterAm, filterStatus, search]);
 
   const groupedByAm = useMemo(() => {
+    const getAnnualized = (l: any) => {
+      const m = l.monthSubs;
+      return (m && m < 12) ? Math.round((l.nilaiProyek || 0) * 12 / m) : (l.nilaiProyek || 0);
+    };
     const amMap = new Map<string, { namaAm: string; nikAm: string; divisi: string; phases: Map<string, any[]> }>();
     for (const l of filteredLops) {
       const key = l.nikAm || l.namaAm || "Unknown";
@@ -248,22 +256,29 @@ export function FunnelSectionCard() {
       e.phases.get(phase)!.push(l);
     }
     return Array.from(amMap.values()).sort((a, b) => {
-      const totA = Array.from(a.phases.values()).flat().reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
-      const totB = Array.from(b.phases.values()).flat().reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+      const totA = Array.from(a.phases.values()).flat().reduce((s: number, l: any) => s + getAnnualized(l), 0);
+      const totB = Array.from(b.phases.values()).flat().reduce((s: number, l: any) => s + getAnnualized(l), 0);
       return totB - totA;
     });
   }, [filteredLops]);
 
-  // Summary stats
+  // Summary stats — annualized nilaiProyek & CR sama kayak bot: F5/(F3+F4+F5)
   const stats = useMemo(() => {
     const lops = periodFilteredLops;
-    const totalNilai = lops.reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+    const getAnnualized = (l: any) => {
+      const m = l.monthSubs;
+      return (m && m < 12) ? Math.round((l.nilaiProyek || 0) * 12 / m) : (l.nilaiProyek || 0);
+    };
     const byPhase = PHASES.map(p => ({
       phase: p,
       count: lops.filter((l: any) => l.statusF === p).length,
-      nilai: lops.filter((l: any) => l.statusF === p).reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0),
+      nilai: lops.filter((l: any) => l.statusF === p).reduce((s: number, l: any) => s + getAnnualized(l), 0),
     }));
-    return { totalLop: lops.length, totalNilai, byPhase };
+    const f3 = byPhase.find(p => p.phase === "F3")?.nilai || 0;
+    const f4 = byPhase.find(p => p.phase === "F4")?.nilai || 0;
+    const f5 = byPhase.find(p => p.phase === "F5")?.nilai || 0;
+    const cr = (f3 + f4 + f5) > 0 ? (f5 / (f3 + f4 + f5)) * 100 : 0;
+    return { totalLop: lops.length, totalNilai: byPhase.reduce((s, p) => s + p.nilai, 0), byPhase, cr };
   }, [periodFilteredLops]);
 
   const lastAutoExpandId = useRef<number | null>(undefined as any);
@@ -332,7 +347,11 @@ export function FunnelSectionCard() {
     return <>{groupedByAm.map((am) => {
       const amKey = am.nikAm || am.namaAm;
       const amExpanded = !!expandedAm[amKey];
-      const amTotal = Array.from(am.phases.values()).flat().reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+      const getAnnualized = (l: any) => {
+        const m = l.monthSubs;
+        return (m && m < 12) ? Math.round((l.nilaiProyek || 0) * 12 / m) : (l.nilaiProyek || 0);
+      };
+      const amTotal = Array.from(am.phases.values()).flat().reduce((s: number, l: any) => s + getAnnualized(l), 0);
       const amLopCount = Array.from(am.phases.values()).flat().length;
       const orderedPhases = [...PHASES.filter(p => am.phases.has(p)), ...Array.from(am.phases.keys()).filter(p => !PHASES.includes(p))];
       const divisi = resolveAmDivisi(am);
@@ -394,7 +413,7 @@ export function FunnelSectionCard() {
             const lops = am.phases.get(phase) || [];
             const phaseKey = `${amKey}|${phase}`;
             const phaseExpanded = !!expandedPhase[phaseKey];
-            const phaseTotal = lops.reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+            const phaseTotal = lops.reduce((s: number, l: any) => s + getAnnualized(l), 0);
             const c = PHASE_COLORS[phase];
             const phaseBg = phaseExpanded ? "rgb(253,242,248)" : "rgba(253,242,248,0.75)";
             const phaseCell: React.CSSProperties = { background: phaseBg };
@@ -430,7 +449,7 @@ export function FunnelSectionCard() {
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">{lop.lopid}</td>
                     <td className="px-3 py-2 text-sm text-foreground font-bold truncate max-w-[200px]" title={lop.pelanggan}>{lop.pelanggan}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-black text-foreground whitespace-nowrap">{formatRupiahFull(lop.nilaiProyek)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-black text-foreground whitespace-nowrap">{formatRupiahFull(getAnnualized(lop))}</td>
                   </tr>
                 ))}
                 {phaseExpanded && (
@@ -523,6 +542,17 @@ export function FunnelSectionCard() {
                 summaryLabel="status"
                 className="flex-1 min-w-[120px]"
               />
+              <SfSelect
+                label="Durasi Kontrak"
+                value={filterDurasi}
+                onChange={v => setFilterDurasi(v as typeof filterDurasi)}
+                options={[
+                  { value: "all", label: "Semua Durasi" },
+                  { value: "single_year", label: "Nilai per Tahun" },
+                  { value: "multi_year", label: "Multi Year (>12 bln)" },
+                ]}
+                className="w-44 shrink-0"
+              />
               {/* Search */}
               <div className="flex flex-col gap-1 flex-1 min-w-[150px]">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Cari</label>
@@ -550,6 +580,7 @@ export function FunnelSectionCard() {
             <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-muted-foreground shrink-0">
                 {lopBadge} LOP · {formatRupiahFull(stats.totalNilai)}
+                {filterDurasi !== "all" && <span className="text-teal-600 font-semibold ml-1">· CR {stats.cr.toFixed(1)}%</span>}
               </span>
               <span className="text-muted-foreground">·</span>
               {stats.byPhase.filter(p => p.count > 0).map(p => {

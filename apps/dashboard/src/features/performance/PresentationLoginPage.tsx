@@ -218,9 +218,12 @@ export default function PresentationLoginPage() {
     setIsResending(true);
     try {
       const apiBase = import.meta.env.VITE_API_URL ?? "";
+      const userId = sessionStorage.getItem("pres_pendingUserId");
       const res = await fetch(`${apiBase}/api/auth/presentation/resend-otp`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ userId }),
       });
       const data = await res.json();
 

@@ -320,9 +320,16 @@ router.post("/import-funnel", async (req, res): Promise<void> => {
   }
   const importPeriod = bodyPeriod || `${tahun}${String(bulan).padStart(2, "0")}`;
 
-  // Cek duplikat
+  // Cek duplikat: jika ada snapshotDate, cek juga snapshotDate (mencegah import file sama di tanggal berbeda)
+  const existingConditions = [
+    eq(dataImportsTable.type, "funnel"),
+    eq(dataImportsTable.period, importPeriod),
+  ];
+  if (snapshotDate) {
+    existingConditions.push(eq(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10)));
+  }
   const [existingFunnel] = await db.select().from(dataImportsTable)
-    .where(and(eq(dataImportsTable.type, "funnel"), eq(dataImportsTable.period, importPeriod)));
+    .where(and(...existingConditions));
 
   if (existingFunnel && !forceOverwrite) {
     res.status(409).json({
@@ -465,6 +472,7 @@ router.post("/import-activity", async (req, res): Promise<void> => {
   }
 
   const cleaned = cleanActivityRows(rows);
+  logger.info({ rawCount: rows.length, cleanedCount: cleaned.length }, "Internal activity import: rows cleaned");
 
   if (cleaned.length === 0) {
     res.status(422).json({
@@ -517,32 +525,30 @@ router.post("/import-activity", async (req, res): Promise<void> => {
     sourceUrl: null,
     autoTelegramSent: false,
   }).returning();
+  logger.info({ importId: imp.id, recordsToInsert: cleaned.length }, "Internal activity import: DB insert starting");
 
-  // Insert activity rows using individual inserts (more reliable than UNNEST)
-  let rowsInserted = 0;
-  for (const row of cleaned) {
-    try {
-      await db.insert(salesActivityTable).values({
-        nik: row.nik,
-        fullname: row.fullname || null,
-        divisi: row.divisi || null,
-        nipnas: row.nipnas || null,
-        caName: row.caName || null,
-        activityType: row.activityType || null,
-        label: row.label || null,
-        lopid: row.lopid || null,
-        activityEndDate: row.activityEndDate || null,
-        activityNotes: row.activityNotes || null,
-        snapshotDate: snapshotDate || null,
-        importId: imp.id,
-      });
-      rowsInserted++;
-    } catch (batchErr: any) {
-      logger.warn({ nik: row.nik, err: batchErr.message }, "Internal activity import: batch insert warning");
-    }
+  // Insert activity rows using batch inserts (same as funnel/performance)
+  const BATCH_SIZE = 200;
+  for (let i = 0; i < cleaned.length; i += BATCH_SIZE) {
+    const batch = cleaned.slice(i, i + BATCH_SIZE).map(row => ({
+      nik: row.nik,
+      fullname: row.fullname || null,
+      divisi: row.divisi || null,
+      nipnas: row.nipnas || null,
+      caName: row.caName || null,
+      activityType: row.activityType || null,
+      label: row.label || null,
+      lopid: row.lopid || null,
+      activityEndDate: row.activityEndDate || null,
+      activityNotes: row.activityNotes || null,
+      snapshotDate: snapshotDate || null,
+      importId: imp.id,
+    }));
+    await db.insert(salesActivityTable).values(batch as any);
   }
+  logger.info({ importId: imp.id }, "Internal activity import: DB insert complete");
 
-  const count = rowsInserted;
+  const count = cleaned.length;
   await db.update(dataImportsTable).set({ rowsImported: count }).where(eq(dataImportsTable.id, imp.id));
 
   const newActAmCount = await autoRegisterNewAms(

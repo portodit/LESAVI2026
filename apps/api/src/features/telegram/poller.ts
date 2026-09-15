@@ -1,6 +1,6 @@
-import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, dataImportsTable } from "@workspace/db";
+import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, dataImportsTable, salesFunnelTable } from "@workspace/db";
 import { eq, and, gt, inArray, desc } from "drizzle-orm";
-import { sendToTelegram, answerCallbackQuery, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods } from "./service";
+import { sendToTelegram, answerCallbackQuery, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl } from "../../shared/publicUrl";
@@ -14,18 +14,28 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const DAY_REMINDERS: Record<number, string> = {
-  0: "", // Sunday — no special reminder
-  1: "Selamat hari Senin kak! Awal minggu — yuk mulai dengan semangat baru dan target yang jelas! 💪",
-  2: "", // Tuesday — no special reminder
-  3: "Selamat hari Rabu kak! Sudah setengah minggu — waktunya cek progress dan pastikan target tetap on track. 📊",
-  4: "", // Thursday — no special reminder
-  5: "Selamat hari Jumat kak! Akhir semana kerja — pastikan semua LOPtertindak lanjuti dan rekap minggu ini! 🎯",
-  6: "", // Saturday — no special reminder
+  0: "", // Sunday
+  1: "Semoga aktivitas hari ini berjalan lancar. Jangan lupa cek progress dan pastikan setiap target tetap berjalan sesuai rencana. 📊",
+  2: "", // Tuesday
+  3: "Semoga aktivitas hari ini berjalan lancar. Jangan lupa cek progress dan pastikan setiap target tetap berjalan sesuai rencana. 📊",
+  4: "", // Thursday
+  5: "Pastikan semua LOP tertindak lanjuti dan rekap minggu ini! 🎯",
+  6: "", // Saturday
+};
+
+const DAY_NAMES: Record<number, string> = {
+  0: "Minggu", 1: "Senin", 2: "Selasa", 3: "Rabu",
+  4: "Kamis", 5: "Jumat", 6: "Sabtu",
 };
 
 function dayReminder(): string {
   const day = new Date().getDay();
   return DAY_REMINDERS[day] || "";
+}
+
+function getDayName(): string {
+  const day = new Date().getDay();
+  return DAY_NAMES[day] || "";
 }
 
 // Cooldown: track last full-welcome sent per chatId
@@ -36,7 +46,25 @@ const VERIF_CODE_UUID = "verif:code";
 const VERIF_LINK_UUID = "verif:link";
 
 let lastUpdateId = 0;
-const processedUpdates = new Set<number>();
+
+// Graceful shutdown: acknowledge the last processed update ID to Telegram
+// before the process dies. This prevents update loss during `pm2 reload`.
+export async function flushLastUpdateId(): Promise<void> {
+  if (lastUpdateId <= 0) return;
+  try {
+    const [settings] = await db.select().from(appSettingsTable);
+    if (!settings?.telegramBotToken) return;
+    const token = settings.telegramBotToken;
+    // Call getUpdates with offset=lastUpdateId+1 and timeout=1 to ACK without fetching
+    await fetch(
+      `https://api.telegram.org/bot${token}/getUpdates?limit=1&offset=${lastUpdateId + 1}&timeout=1`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    logger.info({ lastUpdateId }, "Telegram offset flushed on shutdown");
+  } catch (e) {
+    logger.warn({ err: e }, "Failed to flush Telegram offset on shutdown");
+  }
+}
 let pollerTimer: ReturnType<typeof setTimeout> | null = null;
 
 export interface BotUser {
@@ -141,12 +169,17 @@ async function doProcessImport(
     ],
   };
 
-  await sendToTelegram(token, chatId,
+  const sendMsg = (msg: string, kb?: object) =>
+    sendToTelegram(token, chatId, msg, kb).catch((e: unknown) =>
+      logger.error({ err: e }, `sendToTelegram failed for chatId ${chatId}`)
+    );
+
+  await sendMsg(
     `📥 *Import ${typeLabel} — Sedang Berlangsung*\n\n` +
     `⏳ Memproses file...\n\n` +
     `_Mohon tunggu sebentar ya kak 🙏_`,
     PROGRESS_KEYBOARD
-  ).catch(() => {});
+  );
 
   try {
     const apiResp = await fetch(`${internalBase}/api/internal${endpoint}`, {
@@ -173,23 +206,22 @@ async function doProcessImport(
           [{ text: "❌ Batalkan", callback_data: "import:cancel" }],
         ],
       };
-      await sendToTelegram(token, chatId,
-        `⚠️ *Snapshot Sudah Ada*\n\n${existingMsg}\n\n` +
+      sendMsg(`⚠️ *Snapshot Sudah Ada*\n\n${existingMsg}\n\n` +
         `⚠️ Mengimpor ulang akan *MENIMPA* snapshot lama.\n\n` +
         `Lanjutkan timpa snapshot lama kak *${linkedAm.nama.split(" ")[0]}*? 👇`,
         OVERWRITE_KEYBOARD
-      ).catch(() => {});
+      );
       state.step = "waiting_overwrite_confirm";
       importState.set(chatId, state);
       return;
     }
     if (!apiResp.ok) {
-      await sendToTelegram(token, chatId,
+      sendMsg(
         `❌ *Gagal Import ${typeLabel}*\n\n` +
         `${apiData.error || "Terjadi kesalahan saat memproses file."}\n\n` +
         `Silakan coba lagi atau hubungi admin.`,
         getMainKeyboard(linkedAm.role)
-      ).catch(() => {});
+      );
     } else {
       const rows = apiData.rowsImported ?? apiData.rows ?? 0;
       const snapId = apiData.importId;
@@ -208,28 +240,44 @@ async function doProcessImport(
         ],
       };
 
-      await sendToTelegram(token, chatId,
+      sendMsg(
         `✅ *Import ${typeLabel} Berhasil!*\n\n` +
         `📋 *Nama Snapshot:* ${snapName}\n` +
         `📊 *Tipe:* ${typeLabelLower}\n` +
         `📦 *Total Baris:* *${rows.toLocaleString("id-ID")}* baris data\n\n` +
         `Silakan pilih aksi di bawah ya kak 🙏`,
         SUCCESS_KEYBOARD
-      ).catch(() => {});
+      );
     }
   } catch (err) {
     logger.error({ err }, "Failed to call internal import API from Telegram");
-    await sendToTelegram(token, chatId,
+    sendMsg(
       `❌ *Gagal Import ${typeLabel}*\n\n` +
       `Terjadi kesalahan koneksi ke server. Silakan coba lagi nanti.`,
       getMainKeyboard(linkedAm.role)
-    ).catch(() => {});
+    );
   }
 
   importState.delete(chatId);
   funnelFileData.delete(chatId);
   activityFileData.delete(chatId);
 }
+
+const MAIN_KEYBOARD_AM = {
+  inline_keyboard: [
+    [
+      { text: "📋 Sales Funneling",   callback_data: "/funneling"   },
+      { text: "📅 Sales Activity",    callback_data: "/activity"     },
+    ],
+    [
+      { text: "📊 Performansi Revenue", callback_data: "/performansi" },
+      { text: "📊 Prognosa FY",        callback_data: "/prognosa"   },
+    ],
+    [
+      { text: "🔓 Putuskan Koneksi",   callback_data: "/logout"     },
+    ],
+  ],
+};
 
 const MAIN_KEYBOARD_ADMIN = {
   inline_keyboard: [
@@ -246,9 +294,9 @@ const MAIN_KEYBOARD_ADMIN = {
 const MAIN_KEYBOARD_EMPTY: typeof MAIN_KEYBOARD_ADMIN = { inline_keyboard: [] };
 
 function getMainKeyboard(role: string) {
-  return role === "ADMIN" || role === "MANAGER" || role === "OFFICER"
-    ? MAIN_KEYBOARD_ADMIN
-    : MAIN_KEYBOARD_EMPTY;
+  if (role === "ADMIN" || role === "MANAGER" || role === "OFFICER") return MAIN_KEYBOARD_ADMIN;
+  if (role === "ACCOUNT_MANAGER") return MAIN_KEYBOARD_AM;
+  return MAIN_KEYBOARD_EMPTY;
 }
 
 const PERF_NAV_KEYBOARD = {
@@ -256,6 +304,36 @@ const PERF_NAV_KEYBOARD = {
     [
       { text: "◀️ Pilih Bulan Lain", callback_data: "perf:menu" },
       { text: "🏠 Menu Utama",       callback_data: "nav:main"  },
+    ],
+  ],
+};
+
+const FUNNEL_SUB_KEYBOARD = {
+  inline_keyboard: [
+    [
+      { text: "📋 Laporan Terkini",    callback_data: "funnel:laporan"    },
+      { text: "🏆 Papan Peringkat",    callback_data: "funnel:peringkat"  },
+    ],
+    [
+      { text: "📊 Visualisasi Data",   callback_data: "funnel:visualisasi" },
+    ],
+    [
+      { text: "◀️ Kembali ke Menu",    callback_data: "nav:main"  },
+    ],
+  ],
+};
+
+const ACTIVITY_SUB_KEYBOARD = {
+  inline_keyboard: [
+    [
+      { text: "📋 Laporan Terkini",    callback_data: "activity:laporan"    },
+      { text: "🏆 Papan Peringkat",   callback_data: "activity:peringkat"  },
+    ],
+    [
+      { text: "📊 Visualisasi Data",   callback_data: "activity:visualisasi" },
+    ],
+    [
+      { text: "◀️ Kembali ke Menu",   callback_data: "nav:main"  },
     ],
   ],
 };
@@ -271,7 +349,47 @@ const VERIF_MAIN_KEYBOARD = {
 
 const VERIF_CODE_KEYBOARD = {
   inline_keyboard: [
-    [{ text: "◀️ Kembali", callback_data: "verif:back" }],
+    [
+      { text: "📝 Masukkan Kode Verifikasi", callback_data: VERIF_CODE_UUID },
+      { text: "🔗 Saya Butuh Tautan Verifikasi", callback_data: VERIF_LINK_UUID },
+    ],
+  ],
+};
+
+// ── Activity report pagination state ────────────────────────────────────────────
+interface ActivityPageEntry {
+  period: string;
+  summary: string;
+  details: string[];
+  totalPages: number;
+  currentPage: number;
+  nik: string;
+}
+const activityPageState = new Map<string, ActivityPageEntry>();
+
+// ── Activity detail navigation keyboard ───────────────────────────────────────
+function buildActivityNavKeyboard(currentPage: number, totalPages: number, hasMultiplePages: boolean) {
+  const rows: { text: string; callback_data: string }[][] = [];
+
+  if (hasMultiplePages) {
+    const navRow: { text: string; callback_data: string }[] = [];
+    if (currentPage > 0) navRow.push({ text: "◀️ Halaman Sebelumnya", callback_data: "activity:prev" });
+    navRow.push({ text: `📄 ${currentPage + 1}/${totalPages}`, callback_data: "activity:noop" });
+    if (currentPage < totalPages - 1) navRow.push({ text: "Halaman Selanjutnya ▶️", callback_data: "activity:next" });
+    rows.push(navRow);
+  }
+
+  rows.push([{ text: "🗓 Pilih Bulan", callback_data: "activity:period_menu" }]);
+  return { inline_keyboard: rows };
+}
+
+// "Mau apa lagi kak NADYA?" keyboard for activity
+const ACTIVITY_MORE_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "📋 Laporan Terkini",    callback_data: "activity:laporan"    }],
+    [{ text: "🏆 Papan Peringkat",   callback_data: "activity:peringkat"  }],
+    [{ text: "📊 Visualisasi Data",   callback_data: "activity:visualisasi" }],
+    [{ text: "◀️ Kembali ke Menu",   callback_data: "nav:main"  }],
   ],
 };
 
@@ -445,25 +563,33 @@ function buildLinkedConfirm(namaLengkap: string, role: string): string {
 }
 
 // Message 2A: Welcome/Recurring untuk ACCOUNT MANAGER
-async function buildWelcomeAM(namaLengkap: string): Promise<string> {
+// Welcome AM — Part 1: greeting + intro (no keyboard)
+async function buildWelcomeAMP1(namaLengkap: string): Promise<string> {
   const greeting = greetingByTime();
+  const dayName = getDayName();
   const reminder = dayReminder();
   const reminderLine = reminder ? `\n${reminder}\n` : "\n";
+  const firstName = namaLengkap.split(" ")[0];
   return (
-    `Hai kak *${namaLengkap}*! 👋 Selamat ${greeting}~${reminderLine}` +
-    `Selamat datang di *BOT LESA VI — Witel Suramadu TREG 3!* 🏢\n\n` +
-    `Bot ini siap bantu kamu pantau 3 hal penting:\n\n` +
+    `Hai Kak *${firstName}*! 👋\n\n` +
+    `Selamat datang kembali di *LESA VI — Witel Suramadu TREG 3*. 🏢\n\n` +
+    `Selamat hari *${dayName}*, Kak!${reminderLine}` +
+    `Melalui bot ini, Kakak dapat memantau beberapa informasi utama:\n\n` +
     `1. 📋 *Sales Funneling*\n` +
-    `Update & pergerakan LOP yang kamu handle, termasuk yang perlu segera ditindaklanjuti.\n\n` +
+    `Memantau update dan perkembangan LOP yang sedang Kakak tangani, termasuk peluang yang membutuhkan tindak lanjut.\n\n` +
     `2. 📅 *Sales Activity*\n` +
-    `Pantauan KPI activity kamu — hanya aktivitas *Dengan Pelanggan* yang dihitung KPI ya kak.\n\n` +
+    `Melihat perkembangan aktivitas pelanggan sebagai bagian dari monitoring KPI activity.\n\n` +
     `3. 📊 *Performansi Revenue*\n` +
-    `Rekap capaian Revenue, Sustain, Scaling, dan NGTMA setiap periode.\n\n` +
-    `⚠️ *PENTING — Mohon Perhatikan!*\n\n` +
-    `*Jangan di-mute apalagi dihapus ya kak.* Bot ini bantu kamu tetap on track, pantau progress, dan kejar target tiap periode. Tanpa notifikasi ini, info penting bisa terlewat! 🎯\n\n` +
-    `Yuk segera menangkan LOP yang ada dan terus gali prospek baru — rezeki nggak datang sendiri, semangat kak! 💪\n\n` +
-    `Pilih menu di bawah untuk akses data:`
+    `Melihat capaian Revenue, Sustain, Scaling, dan NGTMA pada setiap periode.`
   );
+}
+
+// Welcome AM — Part 2: prompt + keyboard
+function buildWelcomeAMP2(): { text: string; keyboard: object } {
+  return {
+    text: `Silakan pilih menu di bawah untuk mulai mengakses data. 👇`,
+    keyboard: MAIN_KEYBOARD_AM,
+  };
 }
 
 // Message 2B: Welcome untuk ADMIN / MANAGER / OFFICER
@@ -499,17 +625,12 @@ async function buildWelcomeUnlinked(firstName: string): Promise<{ text: string; 
 // Build message shown when user taps "Saya Butuh Tautan Verifikasi"
 async function buildVerifLinkMessage(): Promise<{ text: string; keyboard?: object }> {
   const greeting = greetingByTime();
-  const contacts = await buildContactList();
-
   const text = (
-    `${greeting}! 👋\n\n` +
-    `Bot ini menggunakan sistem *Kode Verifikasi* untuk menghubungkan akun Telegram kamu.\n\n` +
-    `Jika kamu belum punya Kode Verifikasi, silakan hubungi ADMIN, OFFICER, atau MANAGER LESAVI terlebih dahulu untuk mendapatkannya.\n\n` +
-    `*Berikut kontak yang bisa kamu hubungi:*\n\n` +
-    `${contacts}\n\n` +
-    `Setelah mendapat Kode Verifikasi, silakan ketik kode tersebut di sini.`
+    `${greeting}, Kak! 👋\n\n` +
+    `Selamat datang di *LESA VI — Witel Suramadu*.\n\n` +
+    `Sebelum menggunakan fitur yang tersedia, kami perlu melakukan verifikasi akun terlebih dahulu untuk memastikan identitas kamu. 🔐\n\n` +
+    `Silakan pilih metode verifikasi yang tersedia di bawah ini ya, Kak.`
   );
-
   return { text, keyboard: VERIF_CODE_KEYBOARD };
 }
 
@@ -541,7 +662,26 @@ function currentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// Persist across poll cycles to prevent double-processing same update ID
+// (module-level so it survives recursive pollOnce calls via setTimeout)
+const processedUpdates = new Set<number>();
+let lastCleanupAt = 0;
+const CLEANUP_INTERVAL_MS = 60_000;
+const MAX_PROCESSED_ENTRIES = 500;
+
+// Prune entries that are guaranteed-delivered (below lastUpdateId) to prevent unbounded growth
+function pruneProcessedUpdates() {
+  if (lastUpdateId <= 0) return;
+  if (processedUpdates.size <= MAX_PROCESSED_ENTRIES) return;
+  for (const id of processedUpdates) {
+    if (id < lastUpdateId) processedUpdates.delete(id);
+  }
+  lastCleanupAt = Date.now();
+}
+
+// ── pollOnce: fetch + process one batch of Telegram updates ───────────────────
 export async function pollOnce() {
+  pruneProcessedUpdates();
   try {
     const [settings] = await db.select().from(appSettingsTable);
     if (!settings?.telegramBotToken) return;
@@ -560,6 +700,9 @@ export async function pollOnce() {
       // Skip already-processed updates (defensive against race conditions)
       if (processedUpdates.has(update.update_id)) continue;
       processedUpdates.add(update.update_id);
+
+      // Advance lastUpdateId IMMEDIATELY so Telegram won't redeliver this
+      // if a new poll cycle starts while we're still processing this batch.
       if (update.update_id > lastUpdateId) lastUpdateId = update.update_id;
 
       // Debug: log ALL incoming updates
@@ -574,453 +717,1146 @@ export async function pollOnce() {
 
       // ── callback_query (inline keyboard buttons) ────────────────────────
       if (update.callback_query) {
-        const cb = update.callback_query;
-        const cbChatId = String(cb.message?.chat?.id || cb.from?.id || "");
-        const cbData = (cb.data || "").trim();
-        await answerCallbackQuery(token, cb.id);
-        if (!cbChatId) continue;
+        try {
+          const cb = update.callback_query;
+          const cbChatId = String(cb.message?.chat?.id || cb.from?.id || "");
+          const cbData = (cb.data || "").trim();
+          await answerCallbackQuery(token, cb.id);
+          if (!cbChatId) continue;
 
-        // ── Verification flow (works for unlinked users) ────────────────
-        if (cbData === VERIF_CODE_UUID) {
-          const codeMsg = buildVerifCodeMessage();
-          await sendToTelegram(token, cbChatId, codeMsg.text, codeMsg.keyboard).catch(() => {});
-          continue;
-        }
-        if (cbData === VERIF_LINK_UUID) {
-          const linkMsg = await buildVerifLinkMessage();
-          await sendToTelegram(token, cbChatId, linkMsg.text, linkMsg.keyboard).catch(() => {});
-          continue;
-        }
-        if (cbData === "verif:back") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (linkedAm) {
-            const text = linkedAm.role === "ACCOUNT_MANAGER"
-              ? await buildWelcomeAM(linkedAm.nama)
-              : await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
-            await sendToTelegram(token, cbChatId, text, getMainKeyboard(linkedAm.role)).catch(() => {});
-          } else {
-            const welcome = await buildWelcomeUnlinked(cb.message?.chat?.first_name || cb.from?.first_name || "Kak");
-            await sendToTelegram(token, cbChatId, welcome.text, welcome.keyboard).catch(() => {});
-          }
-          continue;
-        }
-
-        const [linkedAm] = await db.select().from(accountManagersTable)
-          .where(eq(accountManagersTable.telegramChatId, cbChatId));
-
-        if (!linkedAm) {
-          await sendToTelegram(token, cbChatId, `❌ Akun kamu belum terhubung. Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi.`).catch(() => {});
-          continue;
-        }
-
-        const amFirstName = linkedAm.nama.split(" ")[0];
-
-        // ── Funneling & Activity (unchanged) ────────────────────────────
-        if (cbData === "/funneling" || cbData === "/activity") {
-          const period = currentPeriod();
-          const opts = { includePerformance: false, includeFunnel: cbData === "/funneling", includeActivity: cbData === "/activity" };
-          const msgs = await buildTelegramMessages(linkedAm.nik, period, opts);
-          for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
-          if (!msgs.length) await sendToTelegram(token, cbChatId, `Belum ada data untuk periode ini kak *${amFirstName}*.`).catch(() => {});
-          continue;
-        }
-
-        // ── Performansi: show period picker ─────────────────────────────
-        if (cbData === "/performansi") {
-          const now = new Date();
-          const displayMonth = `${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}`;
-          const pickerKeyboard = {
-            inline_keyboard: [
-              [{ text: `📅 Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],
-              [{ text: "🗓 Pilih Bulan Lain", callback_data: "perf:menu" }],
-            ],
-          };
-          await sendToTelegram(token, cbChatId,
-            `📊 *Performansi Revenue*\n\nMau lihat rekap performansi bulan apa, kak *${amFirstName}*?`,
-            pickerKeyboard
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── perf:current — current month, snapshot-aware ─────────────────
-        if (cbData === "perf:current") {
-          const period = currentPeriod();
-          const msgs = await buildTelegramMessages(linkedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
-          for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
-          if (!msgs.length) {
-            const now = new Date();
-            await sendToTelegram(token, cbChatId,
-              `_Data performansi untuk *${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
-            ).catch(() => {});
-          } else {
-            await sendToTelegram(token, cbChatId, `Butuh apa lagi kak *${amFirstName}*? 😊`, PERF_NAV_KEYBOARD).catch(() => {});
-          }
-          continue;
-        }
-
-        // ── perf:menu — show available month buttons ──────────────────────
-        if (cbData === "perf:menu") {
-          const periods = await getAvailablePerfPeriods(linkedAm.nik);
-          if (!periods.length) {
-            await sendToTelegram(token, cbChatId, `❌ Belum ada data performansi tersimpan untuk akun kamu kak *${amFirstName}*.`).catch(() => {});
+          // ── Verification flow (works for unlinked users) ────────────────
+          if (cbData === VERIF_CODE_UUID) {
+            const codeMsg = buildVerifCodeMessage();
+            await sendToTelegram(token, cbChatId, codeMsg.text, codeMsg.keyboard).catch(() => {});
             continue;
           }
-          const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-          const buttons = periods.map(p => ({
-            text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
-            callback_data: `perf:${p.tahun}-${String(p.bulan).padStart(2, "0")}`,
-          }));
-          const rows: typeof buttons[] = [];
-          for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
-          await sendToTelegram(token, cbChatId,
-            `🗓 *Pilih Periode Performansi*\n\nSilakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
-            { inline_keyboard: rows }
-          ).catch(() => {});
-          continue;
-        }
+          if (cbData === VERIF_LINK_UUID) {
+            const linkMsg = await buildVerifLinkMessage();
+            await sendToTelegram(token, cbChatId, linkMsg.text, linkMsg.keyboard).catch(() => {});
+            continue;
+          }
+          if (cbData === "verif:back") {
+            const [linkedAm] = await db.select().from(accountManagersTable)
+              .where(eq(accountManagersTable.telegramChatId, cbChatId));
+            if (linkedAm) {
+              if (linkedAm.role === "ACCOUNT_MANAGER") {
+                const p1 = await buildWelcomeAMP1(linkedAm.nama);
+                const p2 = buildWelcomeAMP2();
+                await sendToTelegram(token, cbChatId, p1).catch(() => {});
+                await new Promise(r => setTimeout(r, 300));
+                await sendToTelegram(token, cbChatId, p2.text, p2.keyboard).catch(() => {});
+              } else {
+                const text = await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
+                await sendToTelegram(token, cbChatId, text, getMainKeyboard(linkedAm.role)).catch(() => {});
+              }
+            } else {
+              const welcome = await buildWelcomeUnlinked(cb.message?.chat?.first_name || cb.from?.first_name || "Kak");
+              await sendToTelegram(token, cbChatId, welcome.text, welcome.keyboard).catch(() => {});
+            }
+            continue;
+          }
 
-        // ── perf:YYYY-MM — specific period, snapshot-aware ────────────────
-        if (cbData.startsWith("perf:")) {
-          const periodStr = cbData.slice(5);
-          if (/^\d{4}-\d{2}$/.test(periodStr)) {
-            const msgs = await buildTelegramMessages(linkedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
+          // Look up linked AM by telegramUserId first (works from group & DM),
+          // then fall back to telegramChatId (for DM-only scenarios).
+          const cbFromId = Number(cb.from?.id) || 0;
+          const [linkedAm] = await db.select().from(accountManagersTable)
+            .where(eq(accountManagersTable.telegramUserId, cbFromId));
+          const linkedAmByChatId = linkedAm ? null : await db.select().from(accountManagersTable)
+            .where(eq(accountManagersTable.telegramChatId, cbChatId)).then(r => r[0]);
+          const resolvedAm = linkedAm || linkedAmByChatId;
+
+          if (!resolvedAm) {
+            await sendToTelegram(token, cbChatId, `❌ Akun kamu belum terhubung. Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi.`).catch(() => {});
+            continue;
+          }
+
+          const amFirstName = resolvedAm.nama.split(" ")[0];
+
+          // ── Funneling — show sub-menu ────────────────────────────────────
+          if (cbData === "/funneling") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            await sendToTelegram(token, cbChatId,
+              `📋 *Sales Funneling — LESA VI*\n\n` +
+              `Halo kak *${firstName}*! 👋\n\n` +
+              `Melalui fitur ini, kakak bisa mengakses data Sales Funneling yang meliputi:\n\n` +
+              `📋 *Laporan Terkini*\n` +
+              `Ringkasan kondisi funneling terkini dan perkembangan setiap LOP dibanding snapshot sebelumnya.\n\n` +
+              `🏆 *Papan Peringkat*\n` +
+              `Peringkat performansi Sales Funneling antar AM.\n\n` +
+              `📊 *Visualisasi Data*\n` +
+              `Grafik dan visualisasi data funneling untuk analisis lebih mendalam.`,
+              FUNNEL_SUB_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── Activity — show sub-menu ───────────────────────────────────────
+          if (cbData === "/activity") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            await sendToTelegram(token, cbChatId,
+              `📅 *Sales Activity — LESA VI*\n\n` +
+              `Halo kak *${firstName}*! 👋\n\n` +
+              `Pada fitur *Sales Activity* ini, kakak bisa mengetahui laporan terkini terkait daftar aktivitas penjualan yang sudah tercatat sekaligus melihat ketercapaian jumlah aktivitas yang memenuhi KPI.\n\n` +
+              `Selain itu, kakak juga bisa mengetahui posisi peringkat capaian penuntasan KPI terhadap Account Manager lainnya.\n\n` +
+              `Untuk lebih detailnya, kakak juga bisa lihat pada *Dashboard LESAVI* untuk visualisasi data yang lebih mudah dipahami.`,
+              ACTIVITY_SUB_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── Performansi: show period picker ─────────────────────────────
+          if (cbData === "/performansi") {
+            const now = new Date();
+            const displayMonth = `${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}`;
+            const pickerKeyboard = {
+              inline_keyboard: [
+                [{ text: `📅 Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],
+                [{ text: "🗓 Pilih Bulan Lain", callback_data: "perf:menu" }],
+              ],
+            };
+            await sendToTelegram(token, cbChatId,
+              `📊 *Performansi Revenue*\n\nMau lihat rekap performansi bulan apa, kak *${amFirstName}*?`,
+              pickerKeyboard
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:current — current month, snapshot-aware ─────────────────
+          if (cbData === "perf:current") {
+            const period = currentPeriod();
+            const msgs = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
             for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
             if (!msgs.length) {
-              const [yr, mo] = periodStr.split("-").map(Number);
+              const now = new Date();
               await sendToTelegram(token, cbChatId,
-                `_Data performansi untuk *${MONTH_NAMES[mo]} ${yr}* tidak ditemukan kak *${amFirstName}*._`
+                `_Data performansi untuk *${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
               ).catch(() => {});
             } else {
               await sendToTelegram(token, cbChatId, `Butuh apa lagi kak *${amFirstName}*? 😊`, PERF_NAV_KEYBOARD).catch(() => {});
             }
-          }
-          continue;
-        }
-
-        // ── nav:main — kembali ke menu utama ─────────────────────────────
-        if (cbData === "nav:main") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (linkedAm) {
-            const text = linkedAm.role === "ACCOUNT_MANAGER"
-              ? await buildWelcomeAM(linkedAm.nama)
-              : await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
-            await sendToTelegram(token, cbChatId, text, getMainKeyboard(linkedAm.role)).catch(() => {});
-          } else {
-            await sendToTelegram(token, cbChatId, `Ketik /start untuk memulai.`, MAIN_KEYBOARD_EMPTY).catch(() => {});
-          }
-          continue;
-        }
-
-        // ── /list — show list snapshot type menu ─────────────────────────
-        if (cbData === "/list") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
-            await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
-            continue;
-          }
-          const amFirstName = linkedAm.nama.split(" ")[0];
-          snapshotState.delete(cbChatId);
-          await sendToTelegram(token, cbChatId,
-            `📋 *List Data Snapshot*\n\nPilih tipe data yang ingin dilihat kak *${amFirstName}*:`, LIST_SNAPSHOT_TYPE_KEYBOARD
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── snap:back_to_list ───────────────────────────────────────────
-        if (cbData === "snap:back_to_list") {
-          const state = snapshotState.get(cbChatId);
-          if (!state) {
-            await sendToTelegram(token, cbChatId, `Silakan mulai dari menu *List Data Snapshot* kak.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
-            continue;
-          }
-          const { text, keyboard } = await buildSnapshotListMsg(state.dataType);
-          state.step = "choose_snapshot";
-          snapshotState.set(cbChatId, state);
-          await sendToTelegram(token, cbChatId, text, keyboard).catch(() => {});
-          continue;
-        }
-
-        // ── snap:perf / snap:funnel / snap:activity ──────────────────────
-        if (["snap:perf", "snap:funnel", "snap:activity"].includes(cbData)) {
-          const dataType = cbData === "snap:perf" ? "performance" : cbData === "snap:funnel" ? "funnel" : "activity";
-          try {
-            const { text, keyboard, rows } = await buildSnapshotListMsg(dataType);
-            snapshotState.set(cbChatId, { step: "choose_snapshot", dataType, snapshots: rows, selectedIndex: 0 });
-            await sendToTelegram(token, cbChatId, text, keyboard).catch(() => {});
-          } catch (e: any) {
-            logger.error({ err: e, dataType, cbData }, "snap:buildSnapshotListMsg failed");
-          }
-          continue;
-        }
-
-        // ── snap:select ──────────────────────────────────────────────────
-        if (cbData.startsWith("snap:select:")) {
-          const parts = cbData.split(":");
-          const dataType = parts[2] as "performance" | "funnel" | "activity";
-          const snapId = parseInt(parts[3], 10);
-          if (isNaN(snapId)) { continue; }
-          const snaps = await db.select().from(dataImportsTable)
-            .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
-          if (!snaps.length) {
-            await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
-            continue;
-          }
-          const snap = snaps[0];
-          const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
-          const date = snap.snapshotDate
-            ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
-            : "-";
-          const rows = snap.rowsImported != null ? `${snap.rowsImported.toLocaleString("id-ID")} baris data` : "belum diketahui";
-          const domain = getPublicBaseUrl();
-
-          const msg =
-            `✅ *Snapshot Dipilih*\n\n` +
-            `📊 Tipe Data: *${typeLabel}*\n` +
-            `📅 Tanggal: *${date}*\n` +
-            `📦 Jumlah: *${rows}*\n\n` +
-            `🔗 *Link Akses:*\n` +
-            `• Akses Data: ${domain}/import/detail/${dataType}/${snapId}\n` +
-            `• Lihat Visualisasi: ${domain}/presentation?type=${dataType}&snapshot=${snapId}\n\n` +
-            `Silakan pilih aksi di bawah ya kak 👇`;
-
-          const keyboard = {
-            inline_keyboard: [
-              [
-                { text: "🗑 Hapus Data", callback_data: `snap:delete:${dataType}:${snapId}` },
-                { text: "◀️ Pilih Snapshot Lain", callback_data: "snap:back_to_list" },
-              ],
-            ],
-          };
-          await sendToTelegram(token, cbChatId, msg, keyboard).catch(() => {});
-          continue;
-        }
-
-        // ── snap:delete ─────────────────────────────────────────────────
-        if (cbData.startsWith("snap:delete:")) {
-          const parts = cbData.split(":");
-          const dataType = parts[2];
-          const snapId = parseInt(parts[3], 10);
-          if (isNaN(snapId)) { continue; }
-          const snap = await db.select().from(dataImportsTable)
-            .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
-          if (!snap.length) {
-            await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
-            continue;
-          }
-          const date = snap[0].snapshotDate
-            ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
-            : "-";
-          const CONFIRM_DELETE_KEYBOARD = {
-            inline_keyboard: [
-              [
-                { text: "⚠️ Ya, Hapus", callback_data: `snap:confirm_delete:${dataType}:${snapId}` },
-                { text: "❌ Batal", callback_data: "snap:back_to_list" },
-              ],
-            ],
-          };
-          await sendToTelegram(token, cbChatId,
-            `⚠️ *Konfirmasi Hapus Data*\n\nYakin ingin menghapus snapshot?\n\n📅 Tanggal: *${date}*\n📊 Tipe: *${dataType}*\n\nData yang dihapus tidak dapat dikembalikan.`, CONFIRM_DELETE_KEYBOARD
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── snap:confirm_delete ─────────────────────────────────────────
-        if (cbData.startsWith("snap:confirm_delete:")) {
-          const parts = cbData.split(":");
-          const dataType = parts[2];
-          const snapId = parseInt(parts[3], 10);
-          if (isNaN(snapId)) { continue; }
-          const snap = await db.select().from(dataImportsTable)
-            .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
-          if (!snap.length) {
-            await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
-            continue;
-          }
-          await db.delete(dataImportsTable).where(eq(dataImportsTable.id, snapId));
-          await sendToTelegram(token, cbChatId, `✅ Snapshot berhasil dihapus.`).catch(() => {});
-          continue;
-        }
-
-        // ── /import — show import type selection ─────────────────────────
-        if (cbData === "/import") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
-            await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
-            continue;
-          }
-          importState.set(cbChatId, { step: "idle", importType: "funnel", period: "" });
-          const IMPORT_TYPE_KEYBOARD = {
-            inline_keyboard: [
-              [{ text: "📊 Import Performance", callback_data: "import:type:performance" }],
-              [{ text: "🔻 Import Sales Funnel", callback_data: "import:type:funnel" }],
-              [{ text: "📅 Import Sales Activity", callback_data: "import:type:activity" }],
-              [{ text: "◀️ Menu Utama", callback_data: "nav:main" }],
-            ],
-          };
-          await sendToTelegram(token, cbChatId,
-            `📥 *Import Data*\n\nPilih tipe data yang ingin diimport kak *${linkedAm.nama.split(" ")[0]}*:`,
-            IMPORT_TYPE_KEYBOARD
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── /website — send website link ─────────────────────────────────
-        if (cbData === "/website") {
-          const domain = getPublicBaseUrl();
-          await sendToTelegram(token, cbChatId,
-            `🌐 *Akses Website*\n\nKlik link berikut untuk membuka dashboard:\n\n${domain}`, MAIN_KEYBOARD_ADMIN
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── import:type:* — set import type and ask for file ─────────────
-        if (cbData.startsWith("import:type:")) {
-          const type = cbData.split(":")[2] as "performance" | "funnel" | "activity";
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
-            await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
-            continue;
-          }
-          const state: ImportState = { step: "waiting_file", importType: type, period: "" };
-          importState.set(cbChatId, state);
-          funnelFileData.delete(cbChatId);
-          activityFileData.delete(cbChatId);
-          const typeLabel = type === "performance" ? "Performance" : type === "funnel" ? "Sales Funnel" : "Sales Activity";
-          const IMPORT_FILE_KEYBOARD = {
-            inline_keyboard: [
-              [{ text: "◀️ Kembali ke Menu Import", callback_data: "/import" }],
-              [{ text: "🏠 Menu Utama", callback_data: "nav:main" }],
-            ],
-          };
-          await sendToTelegram(token, cbChatId,
-            `📥 *Import ${typeLabel}*\n\nKirim file *Excel (.xlsx)* atau *CSV* yang ingin diimport kak *${linkedAm.nama.split(" ")[0]}*.\n\nPastikan nama file mengandung periode data (format: *DDMMYYYY* atau *YYYYMMDD*) ya kak.`,
-            IMPORT_FILE_KEYBOARD
-          ).catch(() => {});
-          continue;
-        }
-
-        // ── import:confirm — process the uploaded file ─────────────────────
-        if (cbData === "import:confirm") {
-          console.log(`[DEBUG] import:confirm received! cbChatId=${cbChatId}, updateId=${update.update_id}`);
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
-            await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
             continue;
           }
 
-          const state = importState.get(cbChatId);
-          if (!state) {
-            console.error(`[IMPORT DEBUG] importState keys: ${JSON.stringify([...importState.keys()])}`);
-            await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan (state=null). ChatID: ${cbChatId}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(linkedAm.role)).catch(() => {});
+          // ── perf:menu — show available month buttons ──────────────────────
+          if (cbData === "perf:menu") {
+            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            if (!periods.length) {
+              await sendToTelegram(token, cbChatId, `❌ Belum ada data performansi tersimpan untuk akun kamu kak *${amFirstName}*.`).catch(() => {});
+              continue;
+            }
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const buttons = periods.map(p => ({
+              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
+              callback_data: `perf:${p.tahun}-${String(p.bulan).padStart(2, "0")}`,
+            }));
+            const rows: typeof buttons[] = [];
+            for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            await sendToTelegram(token, cbChatId,
+              `🗓 *Pilih Periode Performansi*\n\nSilakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
+              { inline_keyboard: rows }
+            ).catch(() => {});
             continue;
           }
-          if (state.step !== "waiting_confirm") {
-            console.error(`[IMPORT DEBUG] state found but step=${state.step}, expected=waiting_confirm`);
-            await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan. Step: ${state.step}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(linkedAm.role)).catch(() => {});
+
+          // ── perf:YYYY-MM — specific period, snapshot-aware ────────────────
+          if (cbData.startsWith("perf:")) {
+            const periodStr = cbData.slice(5);
+            if (/^\d{4}-\d{2}$/.test(periodStr)) {
+              const msgs = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
+              for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
+              if (!msgs.length) {
+                const [yr, mo] = periodStr.split("-").map(Number);
+                await sendToTelegram(token, cbChatId,
+                  `_Data performansi untuk *${MONTH_NAMES[mo]} ${yr}* tidak ditemukan kak *${amFirstName}*._`
+                ).catch(() => {});
+              } else {
+                await sendToTelegram(token, cbChatId, `Butuh apa lagi kak *${amFirstName}*? 😊`, PERF_NAV_KEYBOARD).catch(() => {});
+              }
+            }
             continue;
           }
 
-          // Get file data from storage
-          const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
-          const fileData = fileKey.get(cbChatId);
-          if (!fileData) {
-            await sendToTelegram(token, cbChatId, `❌ File tidak ditemukan. Silakan upload ulang.`, getMainKeyboard(linkedAm.role)).catch(() => {});
+          // ── /prognosa — Prognosa FY ────────────────────────────────────────
+          if (cbData === "/prognosa") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            await sendToTelegram(token, cbChatId,
+              `📊 *Prognosa FY*\n\n` +
+              `Halo kak *${firstName}*! 👋\n\n` +
+              `Fitur *Prognosa FY* memungkinkan Kakak melihat proyeksi capaian Revenue, Sustain, Scaling, dan NGTMA berdasarkan data terbaru.\n\n` +
+              `Fitur ini sedang dalam pengembangan dan akan segera tersedia.\n\n` +
+              `Ditunggu ya kak! 🚀`,
+              { inline_keyboard: [[{ text: "◀️ Kembali ke Menu", callback_data: "nav:main" }]] }
+            ).catch(() => {});
             continue;
           }
 
-          const typeLabel = state.importType === "performance" ? "Performance" : state.importType === "funnel" ? "Sales Funnel" : "Sales Activity";
-          const dbType = state.importType === "performance" ? "performance" : state.importType === "funnel" ? "funnel" : "activity";
+          // ── funnel:laporan — Laporan Terkini Sales Funneling ──────────────
+          if (cbData === "funnel:laporan") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            const reportYear = new Date().getFullYear().toString();
 
-          // ── Check for existing snapshot ──────────────────────────────────
-          const importPeriod = state.period || "";
-          const [existingSnap] = await db.select().from(dataImportsTable)
-            .where(and(eq(dataImportsTable.type, dbType), eq(dataImportsTable.period, importPeriod)));
+            // Get funnel snapshots — sorted by createdAt DESC (newest first)
+            const funnelImportsRaw = await db.select()
+              .from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "funnel"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(10);
 
-          if (existingSnap) {
-            // Ask user: overwrite or cancel
-            const existingDate = existingSnap.createdAt
-              ? new Date(existingSnap.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-              : "-";
-            const existingRows = existingSnap.rowsImported ?? 0;
+            if (funnelImportsRaw.length === 0) {
+              await sendToTelegram(token, cbChatId, `Belum ada data Sales Funneling tersedia kak *${firstName}*.`).catch(() => {});
+              continue;
+            }
 
-            state.step = "waiting_overwrite_confirm";
-            importState.set(cbChatId, state);
+            // funnelImportsRaw[0] = newest, [1] = second newest
+            const latestImport = funnelImportsRaw[0];
+            const prevImport = funnelImportsRaw.length >= 2 ? funnelImportsRaw[1] : null;
 
-            const OVERWRITE_KEYBOARD = {
-              inline_keyboard: [
-                [{ text: "✅ Ya, Timpa Snapshot Lama", callback_data: "import:overwrite" }],
-                [{ text: "❌ Batalkan", callback_data: "import:cancel" }],
-              ],
+            // Load active AM NIKs (same rule as dashboard: ACCOUNT_MANAGER or AM, aktif=true)
+            const activeAms = await db.select().from(accountManagersTable);
+            const activeNikSet = new Set(
+              activeAms
+                .filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik)
+                .map(m => m.nik)
+            );
+
+            const allLopsRaw = await db.select().from(salesFunnelTable)
+              .where(eq(salesFunnelTable.nikAm, resolvedAm.nik));
+
+            // Build latest state (highest importId per lopid — same as dashboard)
+            const lopLatest = new Map<string, typeof allLopsRaw[0]>();
+            for (const l of allLopsRaw) {
+              const existing = lopLatest.get(l.lopid);
+              if (!existing || (l.importId || 0) > (existing.importId || 0)) {
+                lopLatest.set(l.lopid, l);
+              }
+            }
+
+            // Build prev state: lopids from prevImport only (for CR comparison)
+            const prevLopIds = new Set<number>();
+            if (prevImport) {
+              for (const l of allLopsRaw) {
+                if (l.importId === prevImport.id) prevLopIds.add(l.lopid);
+              }
+            }
+
+            // Year from latest snapshot's period (same as dashboard auto-select year from snapshot)
+            const latestSnapYear = latestImport.period
+              ? latestImport.period.slice(0, 4)
+              : reportYear;
+
+            function isValidLop(l: typeof allLopsRaw[0] | undefined): boolean {
+              if (!l) return false;
+              // Filter by snapshot's year (same as dashboard: reportDate year matches snapshot period year)
+              const rdYear = l.reportDate?.slice(0, 4);
+              if (!rdYear || rdYear !== latestSnapYear) return false;
+              if (["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase())) return false;
+              const vReport = l.isReport;
+              if (vReport && vReport.trim().toUpperCase() !== "Y") return false;
+              const vType = l.projectType;
+              if (vType && !["AO", "MO"].includes(vType.trim().toUpperCase())) return false;
+              // Filter by kontrak type — GTMA & Own Channel only (sama kayak dashboard)
+              const kontrak = l.kategoriKontrak || "";
+              if (kontrak && !["GTMA", "Own Channel"].includes(kontrak)) return false;
+              // Only include lopids from active AMs (same as dashboard API filter)
+              if (!l.nikAm || !activeNikSet.has(l.nikAm)) return false;
+              return true;
+            }
+
+            const latestLops = [...lopLatest.values()].filter(isValidLop);
+            const prevLops = prevImport
+              ? allLopsRaw.filter(l => prevLopIds.has(l.lopid) && isValidLop(l))
+              : [];
+
+            const FCOUNT = (lops: typeof latestLops, status: string) =>
+              lops.filter(l => l.statusF === status).length;
+            // Annualized nilaiProyek — kontrak <12 bln dihitung per tahun (nilai × 12 / bulan)
+            const FVAL = (lops: typeof latestLops, status: string) =>
+              lops.reduce((s, l) => {
+                if (l.statusF !== status) return s;
+                const m = l.monthSubs;
+                const v = Number(l.nilaiProyek || 0);
+                return s + (m && m < 12 ? Math.round(v * 12 / m) : v);
+              }, 0);
+            const fmt = (n: number) => n >= 1e9 ? `Rp${(n / 1e9).toFixed(2)}M` : n >= 1e6 ? `Rp${(n / 1e6).toFixed(2)}Jt` : n >= 1e3 ? `Rp${(n / 1e3).toFixed(0)}Rb` : `Rp${n}`;
+
+            // Phase counts & nilai — same as dashboard funnel (F0/F1 excluded from display & totals)
+            const f2 = FCOUNT(latestLops, "F2"); const v2 = FVAL(latestLops, "F2");
+            const f3 = FCOUNT(latestLops, "F3"); const v3 = FVAL(latestLops, "F3");
+            const f4 = FCOUNT(latestLops, "F4"); const v4 = FVAL(latestLops, "F4");
+            const f5 = FCOUNT(latestLops, "F5"); const v5 = FVAL(latestLops, "F5");
+            // Total from F2-F5 only (dashboard AM detail shows only F2+)
+            const totalProj = f2 + f3 + f4 + f5;
+            const totalNilai = v2 + v3 + v4 + v5;
+
+            const currentSnap = latestImport.snapshotDate || latestImport.createdAt?.toISOString().slice(0, 10) || "-";
+            const currentSnapLabel = latestImport.snapshotDate
+              ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+              : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+
+            // ── PESAN 1: LAPORAN TERKINI ────────────────────────────────
+            let msg1 = `📋 *LAPORAN TERKINI SALES FUNNELING*\n\n`;
+            msg1 += `Kak *${firstName}* — Edisi *${currentSnapLabel}*\n\n`;
+            msg1 += `Berikut merupakan laporan perkembangan Sales Funneling LESA VI.\n\n`;
+            msg1 += `📅 Report Date : *${latestSnapYear} (semua bulan)*\n`;
+            msg1 += `📑 Jenis Kontrak : GTMA & Own Channel\n`;
+            msg1 += `🧮 Perhitungan : Nilai Kontrak per Tahun\n\n`;
+            msg1 += `📊 *Ringkasan LOP Kakak Saat Ini:*\n\n`;
+            msg1 += `├ F2 (Quote)     : ${f2} proyek | ${fmt(v2)}\n`;
+            msg1 += `├ F3 (Negosiasi) : ${f3} proyek | ${fmt(v3)}\n`;
+            msg1 += `├ F4 (Closing)   : ${f4} proyek | ${fmt(v4)}\n`;
+            msg1 += `└ F5 (Win) ✅   : ${f5} proyek | ${fmt(v5)}\n\n`;
+            msg1 += `Total LOP        : *${totalProj} proyek | ${fmt(totalNilai)}*\n\n`;
+
+            if (prevLops.length > 0) {
+              const prevF5_val = FVAL(prevLops, "F5");
+              const prevF345 = FVAL(prevLops, "F3") + FVAL(prevLops, "F4") + prevF5_val;
+              const prevRate = prevF345 > 0 ? (prevF5_val / prevF345 * 100) : 0;
+              const f345 = v3 + v4 + v5;
+              const currRate = f345 > 0 ? (v5 / f345 * 100) : 0;
+              const diff = currRate - prevRate;
+              // Truncate (bukan round) agar 12.91% jadi 12.9%, bukan 13.0%
+              const fmtRate = (r: number) => `${Math.trunc(r * 10) / 10}%`;
+              const prevSnapLabel = prevImport.snapshotDate
+                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+
+              msg1 += `📈 *Perubahan dibanding snapshot sebelumnya:*\n`;
+              msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "▲" : "▼"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})\n`;
+              msg1 += `_Snapshot sebelumnya: ${prevSnapLabel}_`;
+            }
+
+            await sendToTelegram(token, cbChatId, msg1).catch(() => {});
+
+            // ── PESAN 2: ANALISIS PERKEMBANGAN LOP ───────────────────
+            if (prevLops.length > 0) {
+              const prevMap = new Map(prevLops.map(l => [l.lopid, l]));
+              const stagnan: { lopid: string; pelanggan: string; status: string }[] = [];
+              const bergerak: { lopid: string; pelanggan: string; lama: string; baru: string }[] = [];
+
+              for (const lop of latestLops) {
+                const prev = prevMap.get(lop.lopid);
+                if (!prev) continue;
+                const sb = lop.statusF || "";
+                const sl = prev.statusF || "";
+                if (sb === sl) {
+                  if (sb !== "F5") stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
+                } else {
+                  bergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", lama: sl, baru: sb });
+                }
+              }
+
+              const prevSnapLabel = prevImport.snapshotDate
+                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+
+              let msg2 = `📈 *ANALISIS PERKEMBANGAN LOP*\n\n`;
+              msg2 += `Perbandingan berdasarkan snapshot terbaru dengan snapshot sebelumnya:\n`;
+              msg2 += `📅 Snapshot sebelumnya: *${prevSnapLabel}*\n\n`;
+
+              if (stagnan.length > 0) {
+                msg2 += `⚠️ *LOP Belum Bergerak (${stagnan.length})*\n`;
+                msg2 += `LOP dengan status yang masih sama dibandingkan snapshot sebelumnya:\n\n`;
+                const show = stagnan.slice(0, 10);
+                for (const l of show) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  Status tetap *${l.status}* sejak *${prevSnapLabel}*\n\n`;
+                }
+                if (stagnan.length > 10) msg2 += `...dan *${stagnan.length - 10}* LOP lainnya belum bergerak\n\n`;
+              }
+
+              if (bergerak.length > 0) {
+                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
+                msg2 += `LOP yang mengalami perubahan status dibandingkan snapshot sebelumnya:\n\n`;
+                const show = bergerak.slice(0, 5);
+                for (const l of show) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  Bergerak dari *${l.lama}* → *${l.baru}*\n\n`;
+                }
+                if (bergerak.length > 5) msg2 += `...dan *${bergerak.length - 5}* LOP lainnya\n`;
+              }
+
+              msg2 += `\n💡 *Catatan:*\n`;
+              msg2 += `Yuk, segera lakukan follow up dan update progress LOP yang masih belum bergerak agar setiap peluang dapat terus berkembang menuju tahap berikutnya.\n\n`;
+              msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
+
+              const stagnanKeyboard = stagnan.length > 10
+                ? { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnan.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] }
+                : undefined;
+              await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {});
+            }
+
+            await sendToTelegram(token, cbChatId, `Mau apa lagi kak *${firstName}*? 😊`, FUNNEL_SUB_KEYBOARD).catch(() => {});
+            continue;
+          }
+
+          // ── funnel:peringkat — Papan Peringkat ─────────────────────────
+          if (cbData === "funnel:peringkat") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+
+            // Get latest funnel snapshot
+            const funnelImports = await db
+              .select()
+              .from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "funnel"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(2);
+
+            if (funnelImports.length === 0) {
+              await sendToTelegram(token, cbChatId, `Belum ada data Sales Funneling kak *${firstName}*.`).catch(() => {});
+              continue;
+            }
+
+            const latestImport = funnelImports[0];
+            const snapYear = latestImport.period?.slice(0, 4) || new Date().getFullYear().toString();
+            const snapLabel = latestImport.snapshotDate
+              ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { month: "long", year: "numeric" })
+              : latestImport.period
+                ? `${latestImport.period.slice(4, 6)}/${latestImport.period.slice(0, 4)}`
+                : "Terbaru";
+
+            // Active AM NIKs
+            const masterAms = await db.select().from(accountManagersTable);
+            const activeAms = masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
+            const activeNikSet = new Set(activeAms.map(m => m.nik));
+            const amNameByNik = new Map(activeAms.map(m => [m.nik, m.nama]));
+
+            // All LOPs from latest import
+            const allLops = await db.select().from(salesFunnelTable)
+              .where(eq(salesFunnelTable.importId, latestImport.id));
+
+            // Deduplicate by lopid
+            const lopMap = new Map<string, typeof allLops[0]>();
+            for (const l of allLops) {
+              const existing = lopMap.get(l.lopid);
+              if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+            }
+            const uniqueLops = [...lopMap.values()];
+
+            // Calc per-AM stats
+            const getAnn = (l: typeof uniqueLops[0]) => {
+              const m = l.monthSubs;
+              const v = Number(l.nilaiProyek || 0);
+              return (m && m < 12) ? Math.round(v * 12 / m) : v;
             };
 
-            await sendToTelegram(token, cbChatId,
-              `⚠️ *Snapshot Sudah Ada*\n\n` +
-              `Untuk tipe *${typeLabel}* periode *${importPeriod}*, sudah ada snapshot yang diimport sebelumnya:\n\n` +
-              `📅 Tanggal import : *${existingDate}*\n` +
-              `📦 Jumlah baris   : *${existingRows}* baris\n\n` +
-              `⚠️ Mengimpor ulang akan *MENIMPA* snapshot lama.\n\n` +
-              `Lanjutkan timpa snapshot lama kak *${linkedAm.nama.split(" ")[0]}*? 👇`,
-              OVERWRITE_KEYBOARD
+            const amStats: { nik: string; nama: string; lop: number; f5: number; f345: number; cr: number }[] = [];
+            for (const am of activeAms) {
+              const lops = uniqueLops.filter(l => {
+                if (l.nikAm !== am.nik) return false;
+                const rdYear = l.reportDate?.slice(0, 4);
+                if (rdYear !== snapYear) return false;
+                if (["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase())) return false;
+                const vReport = l.isReport;
+                if (vReport && vReport.trim().toUpperCase() !== "Y") return false;
+                const vType = l.projectType;
+                if (vType && !["AO", "MO"].includes(vType.trim().toUpperCase())) return false;
+                const kontrak = l.kategoriKontrak || "";
+                if (kontrak && !["GTMA", "Own Channel"].includes(kontrak)) return false;
+                return true;
+              });
+
+              const f3 = lops.filter(l => (l.statusF || "") === "F3").reduce((s, l) => s + getAnn(l), 0);
+              const f4 = lops.filter(l => (l.statusF || "") === "F4").reduce((s, l) => s + getAnn(l), 0);
+              const f5 = lops.filter(l => (l.statusF || "") === "F5").reduce((s, l) => s + getAnn(l), 0);
+              const f345 = f3 + f4 + f5;
+              const cr = f345 > 0 ? (f5 / f345) * 100 : 0;
+
+              amStats.push({ nik: am.nik, nama: am.nama, lop: lops.length, f5, f345, cr });
+            }
+
+            // Sort by CR descending, then by total nilai
+            amStats.sort((a, b) => b.cr - a.cr || b.f5 - a.f5);
+            const top = amStats.slice(0, 15);
+
+            const MEDALS = ["🥇", "🥈", "🥉"];
+            const fmtVal = (n: number) => n >= 1e9 ? `Rp${(n / 1e9).toFixed(1)}M` : n >= 1e6 ? `Rp${(n / 1e6).toFixed(0)}Jt` : `Rp${(n / 1e3).toFixed(0)}Rb`;
+            const fmtRate = (r: number) => `${Math.trunc(r * 10) / 10}%`;
+
+            let msg = `🏆 *PAPAN PERINGKAT SALES FUNNEL*\n\n`;
+            msg += `📅 Snapshot: *${snapLabel}*\n`;
+            msg += `📑 Filter: GTMA & Own Channel · Nilai per Tahun\n\n`;
+
+            for (let i = 0; i < top.length; i++) {
+              const a = top[i];
+              const r = i + 1;
+              const medal = MEDALS[i] || `${r}.`;
+              const badge = a.nik === resolvedAm.nik ? " 👈" : "";
+              msg += `${medal} *${a.nama}*${badge}\n`;
+              msg += `CR: *${fmtRate(a.cr)}* · LOP: *${a.lop}* proyek · Pipeline: ${fmtVal(a.f345)}\n\n`;
+            }
+
+            const isShown = top.some(a => a.nik === resolvedAm.nik);
+            if (!isShown) {
+              const myStat = amStats.find(a => a.nik === resolvedAm.nik);
+              if (myStat) {
+                const rank = amStats.findIndex(a => a.nik === resolvedAm.nik) + 1;
+                msg += `📌 *${firstName}* · CR: *${fmtRate(myStat.cr)}* · LOP: *${myStat.lop}* proyek · Pipeline: ${fmtVal(myStat.f345)} (#${rank}/${amStats.length})\n`;
+              }
+            }
+
+            await sendToTelegram(token, cbChatId, msg,
+              { inline_keyboard: [[{ text: "◀️ Kembali ke Sales Funneling", callback_data: "/funneling" }]] }
             ).catch(() => {});
-            // return NOT continue — we must not fall through to doProcessImport
-            return;
-          }
-
-          // ── No existing snapshot — proceed directly ─────────────────────
-          await doProcessImport(token, cbChatId, state, fileData, linkedAm);
-          continue;
-        }
-
-        // ── import:overwrite — proceed with force overwrite ───────────────
-        if (cbData === "import:overwrite") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
-            await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
             continue;
           }
 
-          const state = importState.get(cbChatId);
-          if (!state || state.step !== "waiting_overwrite_confirm") {
-            await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(linkedAm.role)).catch(() => {});
+          // ── funnel:visualisasi — Visualisasi Data ────────────────────────
+          if (cbData === "funnel:visualisasi") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            const base = getPublicBaseUrl();
+            await sendToTelegram(token, cbChatId,
+              `📊 *Visualisasi Data Sales Funneling*\n\n` +
+              `Halo kak *${firstName}*! 👋\n\n` +
+              `Kakak bisa melihat visualisasi data Sales Funneling secara lengkap melalui dashboard LESAVI.\n\n` +
+              `📎 Langsung ke Dashboard LESAVI:\n${base}/visualisasi/funnel`,
+              { inline_keyboard: [[{ text: "◀️ Kembali ke Sales Funneling", callback_data: "/funneling" }]] }
+            ).catch(() => {});
             continue;
           }
 
-          const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
-          const fileData = fileKey.get(cbChatId);
-          if (!fileData) {
-            await sendToTelegram(token, cbChatId, `❌ File tidak ditemukan.`, getMainKeyboard(linkedAm.role)).catch(() => {});
+          // ── activity:laporan — Laporan Terkini ─────────────────────────────
+          if (cbData === "activity:laporan") {
+            try {
+              const period = currentPeriod();
+              const report = await buildActivityReport(resolvedAm.nik);
+              logger.info({ cbChatId, nik: resolvedAm.nik, totalActs: report?.totalActivities, pages: report?.totalPages }, "activity:laporan");
+
+              if (!report || report.totalActivities === 0) {
+                await sendToTelegram(token, cbChatId,
+                  `📅 *SALES ACTIVITY — LESA VI*\n\n` +
+                  `Halo kak *${amFirstName}*! 👋\n\n` +
+                  `Belum ada data Sales Activity untuk periode ini kak.\n\n` +
+                  `Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
+                ).catch(() => {});
+                await sendToTelegram(token, cbChatId, `Mau apa lagi kak *${amFirstName}*? 😊`, ACTIVITY_MORE_KEYBOARD).catch(() => {});
+                continue;
+              }
+
+              // Store pagination state
+              activityPageState.set(cbChatId, {
+                period,
+                summary: report.summary,
+                details: report.details,
+                totalPages: report.totalPages,
+                currentPage: 0,
+                nik: resolvedAm.nik,
+              });
+
+              // Message 1: summary (no keyboard)
+              await sendToTelegram(token, cbChatId, report.summary).catch(() => {});
+
+              // Message 2: first detail page with pagination keyboard
+              const hasMultiplePages = report.totalPages > 1;
+              const navKb = buildActivityNavKeyboard(0, report.totalPages, hasMultiplePages);
+              await sendToTelegram(token, cbChatId, report.details[0], navKb).catch(() => {});
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              logger.error({ cbChatId, err: errMsg }, "activity:laporan error");
+              await sendToTelegram(token, cbChatId,
+                `Terjadi error saat memuat laporan: ${errMsg}`
+              ).catch(() => {});
+            }
             continue;
           }
 
-          await doProcessImport(token, cbChatId, state, fileData, linkedAm, true);
-          continue;
-        }
+          // ── activity:prev / activity:next — pagination ─────────────────────
+          if (cbData === "activity:prev" || cbData === "activity:next") {
+            const state = activityPageState.get(cbChatId);
+            if (!state) {
+              await sendToTelegram(token, cbChatId,
+                `Sesi laporan sudah expired kak. Silakan minta laporan terbaru dulu ya 👇`,
+                { inline_keyboard: [[{ text: "📋 Minta Laporan Baru", callback_data: "activity:laporan" }]] }
+              ).catch(() => {});
+              continue;
+            }
 
-        // ── import:cancel — cancel import ─────────────────────────────────
-        if (cbData === "import:cancel") {
-          const [linkedAm] = await db.select().from(accountManagersTable)
-            .where(eq(accountManagersTable.telegramChatId, cbChatId));
-          importState.delete(cbChatId);
-          funnelFileData.delete(cbChatId);
-          activityFileData.delete(cbChatId);
-          await sendToTelegram(token, cbChatId,
-            `❌ *Import Dibatalkan*\n\nImport telah dibatalkan kak *${linkedAm?.nama.split(" ")[0] || "Kak"}*.\n\n` +
-            `Silakan mulai ulang kapan saja melalui menu *Impor Data*.`,
-            linkedAm ? getMainKeyboard(linkedAm.role) : undefined
-          ).catch(() => {});
-          continue;
+            let nextPage = state.currentPage;
+            if (cbData === "activity:prev") nextPage = Math.max(0, state.currentPage - 1);
+            if (cbData === "activity:next") nextPage = Math.min(state.totalPages - 1, state.currentPage + 1);
+
+            state.currentPage = nextPage;
+            activityPageState.set(cbChatId, state);
+
+            const hasMultiplePages = state.totalPages > 1;
+            const navKb = buildActivityNavKeyboard(nextPage, state.totalPages, hasMultiplePages);
+            await sendToTelegram(token, cbChatId, state.details[nextPage], navKb).catch(() => {});
+            continue;
+          }
+
+          // ── activity:period_menu — show month picker from latest snapshot ──
+          if (cbData === "activity:period_menu") {
+            activityPageState.delete(cbChatId);
+
+            // Get latest activity snapshot
+            const [targetSnap] = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "activity"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+
+            if (!targetSnap) {
+              await sendToTelegram(token, cbChatId,
+                `Belum ada data Sales Activity tersimpan kak *${amFirstName}*.`
+              ).catch(() => {});
+              continue;
+            }
+
+            // Get distinct activity months from this snapshot
+            const allActs = await db.select({ activityEndDate: salesActivityTable.activityEndDate })
+              .from(salesActivityTable)
+              .where(eq(salesActivityTable.importId, targetSnap.id));
+
+            const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const seenMonths = new Set<string>();
+            const monthRows: { y: number; m: number; label: string }[] = [];
+
+            for (const a of allActs) {
+              if (!a.activityEndDate) continue;
+              const dateStr = a.activityEndDate.replace(/-/g, "");
+              if (dateStr.length < 6) continue;
+              const y = parseInt(dateStr.slice(0, 4));
+              const m = parseInt(dateStr.slice(4, 6));
+              const key = `${y}${String(m).padStart(2, "0")}`;
+              if (seenMonths.has(key)) continue;
+              seenMonths.add(key);
+              monthRows.push({ y, m, label: `${MONTH_SHORT[m]} ${y}` });
+            }
+
+            if (monthRows.length === 0) {
+              await sendToTelegram(token, cbChatId,
+                `Belum ada data aktivitas tersimpan kak *${amFirstName}*.`
+              ).catch(() => {});
+              continue;
+            }
+
+            // Sort Jan → Dec
+            monthRows.sort((a, b) => a.y !== b.y ? a.y - b.y : a.m - b.m);
+
+            const keyboardRows = monthRows.map(mr => [
+              { text: `📅 ${mr.label}`, callback_data: `activity:month:${mr.y}${String(mr.m).padStart(2, "0")}` }
+            ]);
+            keyboardRows.push([{ text: "◀️ Kembali ke Menu", callback_data: "nav:main" }]);
+
+            await sendToTelegram(token, cbChatId,
+              `🗓 *Pilih Bulan Sales Activity*\n\nSilakan pilih periode yang ingin dilihat kak *${amFirstName}*:`, { inline_keyboard: keyboardRows }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── activity:month:* — show report for specific month in latest snapshot ──
+          if (cbData.startsWith("activity:month:")) {
+            const monthKey = cbData.split(":")[2]; // YYYYMM
+            if (!monthKey || monthKey.length !== 6) { continue; }
+            const y = parseInt(monthKey.slice(0, 4));
+            const m = parseInt(monthKey.slice(4, 6));
+            const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const monthLabel = `${MONTH_SHORT[m]} ${y}`;
+
+            // Get latest snapshot
+            const [targetSnap] = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "activity"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+
+            if (!targetSnap) {
+              await sendToTelegram(token, cbChatId, `Data snapshot tidak ditemukan kak *${amFirstName}*.`).catch(() => {});
+              continue;
+            }
+
+            // Build report for this specific month
+            const report = await buildActivityReport(resolvedAm.nik, monthKey);
+
+            const MONTHS3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            let snapYear = y, snapMonth = m;
+            if (targetSnap.snapshotDate) {
+              const d = new Date(targetSnap.snapshotDate);
+              snapYear = d.getFullYear(); snapMonth = d.getMonth() + 1;
+            } else if (targetSnap.period) {
+              const p = targetSnap.period;
+              if (/^\d{6}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+              else if (/^\d{4}-\d{2}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(5,7)); }
+              else if (/^\d{8}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+            }
+            const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
+
+            await sendToTelegram(token, cbChatId, `⏳ Memuat laporan periode ${monthLabel}...`).catch(() => {});
+
+            if (!report || report.totalActivities === 0) {
+              await sendToTelegram(token, cbChatId,
+                `Belum ada data Sales Activity untuk ${monthLabel} kak *${amFirstName}*.`
+              ).catch(() => {});
+              continue;
+            }
+
+            // Store pagination state
+            activityPageState.set(cbChatId, {
+              period: monthKey,
+              summary: report.summary,
+              details: report.details,
+              totalPages: report.totalPages,
+              currentPage: 0,
+              nik: resolvedAm.nik,
+            });
+
+            // Message 1: summary
+            await sendToTelegram(token, cbChatId, report.summary).catch(() => {});
+
+            // Message 2: first detail page
+            const hasMultiplePages = report.totalPages > 1;
+            const navKb = buildActivityNavKeyboard(0, report.totalPages, hasMultiplePages);
+            await sendToTelegram(token, cbChatId, report.details[0], navKb).catch(() => {});
+            continue;
+          }
+
+          // ── activity:noop — do nothing (just acknowledge) ──────────────────
+          if (cbData === "activity:noop") {
+            await answerCallbackQuery(token, cb.id).catch(() => {});
+            continue;
+          }
+
+          // ── activity:peringkat — Papan Peringkat KPI Activity ──────────────
+          if (cbData === "activity:peringkat") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            const masterAms = await db.select().from(accountManagersTable);
+            const activeAms = masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
+            const kpiDefault = 25;
+
+            // Get latest activity snapshot (like dashboard does)
+            const latestImports = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "activity"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+
+            let snapshotLabel = currentPeriod();
+            let allActs: typeof salesActivityTable.$inferSelect[] = [];
+
+            if (latestImports.length > 0) {
+              const latestImport = latestImports[0];
+              allActs = await db.select().from(salesActivityTable)
+                .where(eq(salesActivityTable.importId, latestImport.id));
+
+              // Build snapshot label
+              if (latestImport.snapshotDate) {
+                const d = new Date(latestImport.snapshotDate);
+                snapshotLabel = `${MONTH_NAMES[d.getMonth() + 1]} ${d.getFullYear()}`;
+              } else if (latestImport.period) {
+                const p = latestImport.period;
+                const MONTH_SHORT2 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+                if (/^\d{6}$/.test(p)) {
+                  const y = parseInt(p.slice(0, 4));
+                  const m = parseInt(p.slice(4, 6));
+                  snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                } else if (/^\d{4}-\d{2}$/.test(p)) {
+                  const y = parseInt(p.slice(0, 4));
+                  const m = parseInt(p.slice(5, 7));
+                  snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                }
+              }
+            }
+
+            // Deduplicate by lopid + activity_end_date + label
+            const seen = new Set<string>();
+            allActs = allActs.filter(a => {
+              const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+
+            // KPI per AM (all snapshot activities, not filtered by month)
+            const amStats: { nik: string; nama: string; total: number; valid: number; kpi: number; pct: number }[] = [];
+            for (const am of activeAms) {
+              const amAllActs = allActs.filter(a => a.nik === am.nik);
+              const validActs = amAllActs.filter(a => a.label && !a.label.toLowerCase().includes("tanpa"));
+              const kpiTarget = am.kpiActivity ?? kpiDefault;
+              // KPI % capped at 100% (same as dashboard)
+              const pct = kpiTarget > 0 ? Math.min(Math.round((validActs.length / kpiTarget) * 100), 100) : 0;
+              amStats.push({ nik: am.nik, nama: am.nama, total: amAllActs.length, valid: validActs.length, kpi: kpiTarget, pct });
+            }
+
+            amStats.sort((a, b) => b.pct - a.pct || b.valid - a.valid);
+            const top = amStats.slice(0, 15);
+
+            const MEDALS = ["🥇", "🥈", "🥉"];
+
+            let msg = `🏆 *PAPAN PERINGKAT SALES ACTIVITY*\n\n`;
+            msg += `📅 Snapshot: *${snapshotLabel}*\n`;
+            msg += `📑 KPI: Jumlah aktivitas yang memenuhi KPI (capped 100%)\n\n`;
+
+            for (let i = 0; i < top.length; i++) {
+              const a = top[i];
+              const r = i + 1;
+              const medal = MEDALS[i] || `${r}.`;
+              const badge = a.nik === resolvedAm.nik ? " 👈" : "";
+              msg += `${medal} *${a.nama}*${badge}\n`;
+              msg += `KPI: *${a.valid}/${a.kpi}* aktivitas (${a.pct}%)\n\n`;
+            }
+
+            const isShown = top.some(a => a.nik === resolvedAm.nik);
+            if (!isShown) {
+              const myStat = amStats.find(a => a.nik === resolvedAm.nik);
+              if (myStat) {
+                const rank = amStats.findIndex(a => a.nik === resolvedAm.nik) + 1;
+                msg += `📌 *${firstName}* · KPI: *${myStat.valid}/${myStat.kpi}* aktivitas (${myStat.pct}%) (#${rank}/${amStats.length})\n`;
+              }
+            }
+
+            await sendToTelegram(token, cbChatId, msg, ACTIVITY_SUB_KEYBOARD).catch(() => {});
+            continue;
+          }
+
+          // ── activity:visualisasi — Visualisasi Data ────────────────────────
+          if (cbData === "activity:visualisasi") {
+            const firstName = resolvedAm.nama.split(" ")[0];
+            const base = getPublicBaseUrl();
+            await sendToTelegram(token, cbChatId,
+              `📊 *Visualisasi Data Sales Activity*\n\n` +
+              `Halo kak *${firstName}*! 👋\n\n` +
+              `Kakak bisa melihat visualisasi data Sales Activity secara lengkap melalui dashboard LESAVI.\n\n` +
+              `📎 Langsung ke Dashboard LESAVI:\n${base}/visualisasi/activity`,
+              { inline_keyboard: [[{ text: "◀️ Kembali ke Sales Activity", callback_data: "/activity" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── /logout — putuskan koneksi via inline button ──────────────────
+          if (cbData === "/logout") {
+            logger.info({ cbChatId, cbFromId, resolvedAmId: resolvedAm?.id, nama: resolvedAm?.nama }, "/logout handler reached");
+            if (!resolvedAm) {
+              await sendToTelegram(token, cbChatId, `Kamu belum terhubung ke sistem manapun kak.`).catch(() => {});
+              continue;
+            }
+            await db.update(accountManagersTable)
+              .set({ telegramChatId: null, telegramUserId: null, telegramUsername: null })
+              .where(eq(accountManagersTable.id, resolvedAm.id));
+            logger.info({ cbChatId, resolvedAmId: resolvedAm.id, nama: resolvedAm.nama, nik: resolvedAm.nik }, "DB updated — AM telegram fields cleared");
+            await sendToTelegram(token, cbChatId,
+              `🔓 *Koneksi akun berhasil diputuskan*\n\n` +
+              `Terima kasih telah menggunakan *LESA VI*.\n\n` +
+              `Jika membutuhkan bantuan terkait layanan LESA, silakan hubungi Admin, Officer, atau Manager LESA.\n\n` +
+              `Untuk menggunakan kembali fitur bot, silakan tautkan akun kamu terlebih dahulu.`,
+              { inline_keyboard: [[{ text: "🔗 Tautkan Akun", callback_data: VERIF_LINK_UUID }]] }
+            ).catch(() => {});
+            lastWelcomeSent.delete(cbChatId);
+            continue;
+          }
+
+          // ── nav:main — kembali ke menu utama ─────────────────────────────
+          if (cbData === "nav:main") {
+            if (resolvedAm) {
+              if (resolvedAm.role === "ACCOUNT_MANAGER") {
+                const p1 = await buildWelcomeAMP1(resolvedAm.nama);
+                const p2 = buildWelcomeAMP2();
+                await sendToTelegram(token, cbChatId, p1).catch(() => {});
+                await new Promise(r => setTimeout(r, 300));
+                await sendToTelegram(token, cbChatId, p2.text, p2.keyboard).catch(() => {});
+              } else {
+                const text = await buildWelcomeAdmin(resolvedAm.nama, resolvedAm.role);
+                await sendToTelegram(token, cbChatId, text, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              }
+            } else {
+              await sendToTelegram(token, cbChatId, `Ketik /start untuk memulai.`, MAIN_KEYBOARD_EMPTY).catch(() => {});
+            }
+            continue;
+          }
+
+          // ── /list — show list snapshot type menu ─────────────────────────
+          if (cbData === "/list") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            const amFirstName = resolvedAm.nama.split(" ")[0];
+            snapshotState.delete(cbChatId);
+            await sendToTelegram(token, cbChatId,
+              `📋 *List Data Snapshot*\n\nPilih tipe data yang ingin dilihat kak *${amFirstName}*:`, LIST_SNAPSHOT_TYPE_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── snap:back_to_list ───────────────────────────────────────────
+          if (cbData === "snap:back_to_list") {
+            const state = snapshotState.get(cbChatId);
+            if (!state) {
+              await sendToTelegram(token, cbChatId, `Silakan mulai dari menu *List Data Snapshot* kak.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
+              continue;
+            }
+            const { text, keyboard } = await buildSnapshotListMsg(state.dataType);
+            state.step = "choose_snapshot";
+            snapshotState.set(cbChatId, state);
+            await sendToTelegram(token, cbChatId, text, keyboard).catch(() => {});
+            continue;
+          }
+
+          // ── snap:perf / snap:funnel / snap:activity ──────────────────────
+          if (["snap:perf", "snap:funnel", "snap:activity"].includes(cbData)) {
+            const dataType = cbData === "snap:perf" ? "performance" : cbData === "snap:funnel" ? "funnel" : "activity";
+            try {
+              const { text, keyboard, rows } = await buildSnapshotListMsg(dataType);
+              snapshotState.set(cbChatId, { step: "choose_snapshot", dataType, snapshots: rows, selectedIndex: 0 });
+              await sendToTelegram(token, cbChatId, text, keyboard).catch(() => {});
+            } catch (e: any) {
+              logger.error({ err: e, dataType, cbData }, "snap:buildSnapshotListMsg failed");
+            }
+            continue;
+          }
+
+          // ── snap:select ──────────────────────────────────────────────────
+          if (cbData.startsWith("snap:select:")) {
+            const parts = cbData.split(":");
+            const dataType = parts[2] as "performance" | "funnel" | "activity";
+            const snapId = parseInt(parts[3], 10);
+            if (isNaN(snapId)) { continue; }
+            const snaps = await db.select().from(dataImportsTable)
+              .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
+            if (!snaps.length) {
+              await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
+              continue;
+            }
+            const snap = snaps[0];
+            const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const date = snap.snapshotDate
+              ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+              : "-";
+            const rows = snap.rowsImported != null ? `${snap.rowsImported.toLocaleString("id-ID")} baris data` : "belum diketahui";
+            const domain = getPublicBaseUrl();
+
+            const msg =
+              `✅ *Snapshot Dipilih*\n\n` +
+              `📊 Tipe Data: *${typeLabel}*\n` +
+              `📅 Tanggal: *${date}*\n` +
+              `📦 Jumlah: *${rows}*\n\n` +
+              `🔗 *Link Akses:*\n` +
+              `• Akses Data: ${domain}/import/detail/${dataType}/${snapId}\n` +
+              `• Lihat Visualisasi: ${domain}/presentation?type=${dataType}&snapshot=${snapId}\n\n` +
+              `Silakan pilih aksi di bawah ya kak 👇`;
+
+            const keyboard = {
+              inline_keyboard: [
+                [
+                  { text: "🗑 Hapus Data", callback_data: `snap:delete:${dataType}:${snapId}` },
+                  { text: "◀️ Pilih Snapshot Lain", callback_data: "snap:back_to_list" },
+                ],
+              ],
+            };
+            await sendToTelegram(token, cbChatId, msg, keyboard).catch(() => {});
+            continue;
+          }
+
+          // ── snap:delete ─────────────────────────────────────────────────
+          if (cbData.startsWith("snap:delete:")) {
+            const parts = cbData.split(":");
+            const dataType = parts[2];
+            const snapId = parseInt(parts[3], 10);
+            if (isNaN(snapId)) { continue; }
+            const snap = await db.select().from(dataImportsTable)
+              .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
+            if (!snap.length) {
+              await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
+              continue;
+            }
+            const date = snap[0].snapshotDate
+              ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+              : "-";
+            const CONFIRM_DELETE_KEYBOARD = {
+              inline_keyboard: [
+                [
+                  { text: "⚠️ Ya, Hapus", callback_data: `snap:confirm_delete:${dataType}:${snapId}` },
+                  { text: "❌ Batal", callback_data: "snap:back_to_list" },
+                ],
+              ],
+            };
+            await sendToTelegram(token, cbChatId,
+              `⚠️ *Konfirmasi Hapus Data*\n\nYakin ingin menghapus snapshot?\n\n📅 Tanggal: *${date}*\n📊 Tipe: *${dataType}*\n\nData yang dihapus tidak dapat dikembalikan.`, CONFIRM_DELETE_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── snap:confirm_delete ─────────────────────────────────────────
+          if (cbData.startsWith("snap:confirm_delete:")) {
+            const parts = cbData.split(":");
+            const dataType = parts[2];
+            const snapId = parseInt(parts[3], 10);
+            if (isNaN(snapId)) { continue; }
+            const snap = await db.select().from(dataImportsTable)
+              .where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
+            if (!snap.length) {
+              await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
+              continue;
+            }
+            await db.delete(dataImportsTable).where(eq(dataImportsTable.id, snapId));
+            await sendToTelegram(token, cbChatId, `✅ Snapshot berhasil dihapus.`).catch(() => {});
+            continue;
+          }
+
+          // ── /import — show import type selection ─────────────────────────
+          if (cbData === "/import") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            importState.set(cbChatId, { step: "idle", importType: "funnel", period: "" });
+            const IMPORT_TYPE_KEYBOARD = {
+              inline_keyboard: [
+                [{ text: "📊 Import Performance", callback_data: "import:type:performance" }],
+                [{ text: "🔻 Import Sales Funnel", callback_data: "import:type:funnel" }],
+                [{ text: "📅 Import Sales Activity", callback_data: "import:type:activity" }],
+                [{ text: "◀️ Menu Utama", callback_data: "nav:main" }],
+              ],
+            };
+            await sendToTelegram(token, cbChatId,
+              `📥 *Import Data*\n\nPilih tipe data yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*:`,
+              IMPORT_TYPE_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── /website — send website link ─────────────────────────────────
+          if (cbData === "/website") {
+            const domain = getPublicBaseUrl();
+            await sendToTelegram(token, cbChatId,
+              `🌐 *Akses Website*\n\nKlik link berikut untuk membuka dashboard:\n\n${domain}`, MAIN_KEYBOARD_ADMIN
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── import:type:* — set import type and ask for file ─────────────
+          if (cbData.startsWith("import:type:")) {
+            const type = cbData.split(":")[2] as "performance" | "funnel" | "activity";
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            const state: ImportState = { step: "waiting_file", importType: type, period: "" };
+            importState.set(cbChatId, state);
+            funnelFileData.delete(cbChatId);
+            activityFileData.delete(cbChatId);
+            const typeLabel = type === "performance" ? "Performance" : type === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const IMPORT_FILE_KEYBOARD = {
+              inline_keyboard: [
+                [{ text: "◀️ Kembali ke Menu Import", callback_data: "/import" }],
+                [{ text: "🏠 Menu Utama", callback_data: "nav:main" }],
+              ],
+            };
+            await sendToTelegram(token, cbChatId,
+              `📥 *Import ${typeLabel}*\n\nKirim file *Excel (.xlsx)* atau *CSV* yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*.\n\nPastikan nama file mengandung periode data (format: *DDMMYYYY* atau *YYYYMMDD*) ya kak.`,
+              IMPORT_FILE_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── import:confirm — process the uploaded file ─────────────────────
+          if (cbData === "import:confirm") {
+            console.log(`[DEBUG] import:confirm received! cbChatId=${cbChatId}, updateId=${update.update_id}`);
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+
+            const state = importState.get(cbChatId);
+            if (!state) {
+              console.error(`[IMPORT DEBUG] importState keys: ${JSON.stringify([...importState.keys()])}`);
+              await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan (state=null). ChatID: ${cbChatId}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+            if (state.step !== "waiting_confirm") {
+              console.error(`[IMPORT DEBUG] state found but step=${state.step}, expected=waiting_confirm`);
+              await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan. Step: ${state.step}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+
+            // Get file data from storage
+            const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
+            const fileData = fileKey.get(cbChatId);
+            if (!fileData) {
+              await sendToTelegram(token, cbChatId, `❌ File tidak ditemukan. Silakan upload ulang.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+
+            const typeLabel = state.importType === "performance" ? "Performance" : state.importType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const dbType = state.importType === "performance" ? "performance" : state.importType === "funnel" ? "funnel" : "activity";
+
+            // ── Check for existing snapshot ──────────────────────────────────
+            const importPeriod = state.period || "";
+            const [existingSnap] = await db.select().from(dataImportsTable)
+              .where(and(eq(dataImportsTable.type, dbType), eq(dataImportsTable.period, importPeriod)));
+
+            if (existingSnap) {
+              // Ask user: overwrite or cancel
+              const existingDate = existingSnap.createdAt
+                ? new Date(existingSnap.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+                : "-";
+              const existingRows = existingSnap.rowsImported ?? 0;
+
+              state.step = "waiting_overwrite_confirm";
+              importState.set(cbChatId, state);
+
+              const OVERWRITE_KEYBOARD = {
+                inline_keyboard: [
+                  [{ text: "✅ Ya, Timpa Snapshot Lama", callback_data: "import:overwrite" }],
+                  [{ text: "❌ Batalkan", callback_data: "import:cancel" }],
+                ],
+              };
+
+              await sendToTelegram(token, cbChatId,
+                `⚠️ *Snapshot Sudah Ada*\n\n` +
+                `Untuk tipe *${typeLabel}* periode *${importPeriod}*, sudah ada snapshot yang diimport sebelumnya:\n\n` +
+                `📅 Tanggal import : *${existingDate}*\n` +
+                `📦 Jumlah baris   : *${existingRows}* baris\n\n` +
+                `⚠️ Mengimpor ulang akan *MENIMPA* snapshot lama.\n\n` +
+                `Lanjutkan timpa snapshot lama kak *${resolvedAm.nama.split(" ")[0]}*? 👇`,
+                OVERWRITE_KEYBOARD
+              ).catch(() => {});
+              // return NOT continue — we must not fall through to doProcessImport
+              return;
+            }
+
+            // ── No existing snapshot — proceed directly ─────────────────────
+            await doProcessImport(token, cbChatId, state, fileData, resolvedAm);
+            continue;
+          }
+
+          // ── import:overwrite — proceed with force overwrite ───────────────
+          if (cbData === "import:overwrite") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+
+            const state = importState.get(cbChatId);
+            if (!state || state.step !== "waiting_overwrite_confirm") {
+              await sendToTelegram(token, cbChatId, `❌ Sesi import tidak ditemukan. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+
+            const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
+            const fileData = fileKey.get(cbChatId);
+            if (!fileData) {
+              await sendToTelegram(token, cbChatId, `❌ File tidak ditemukan.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+
+            await doProcessImport(token, cbChatId, state, fileData, resolvedAm, true);
+            continue;
+          }
+
+          // ── import:cancel — cancel import ─────────────────────────────────
+          if (cbData === "import:cancel") {
+            importState.delete(cbChatId);
+            funnelFileData.delete(cbChatId);
+            activityFileData.delete(cbChatId);
+            await sendToTelegram(token, cbChatId,
+              `❌ *Import Dibatalkan*\n\nImport telah dibatalkan kak *${resolvedAm?.nama.split(" ")[0] || "Kak"}*.\n\n` +
+              `Silakan mulai ulang kapan saja melalui menu *Impor Data*.`,
+              resolvedAm ? getMainKeyboard(resolvedAm.role) : undefined
+            ).catch(() => {});
+            continue;
+          }
+        } catch (cbErr) {
+          logger.error({ err: cbErr, cbData, chatId: cbChatId }, "Callback handler error");
         }
 
         continue;
 
-        continue;
       }
 
       // ── Regular messages ───────────────────────────────────────────────
@@ -1181,10 +2017,17 @@ export async function pollOnce() {
           const now = Date.now();
           const lastSent = lastWelcomeSent.get(chatId) ?? 0;
           if (now - lastSent >= WELCOME_COOLDOWN_MS) {
-            const text = linkedAm.role === "ACCOUNT_MANAGER"
-              ? await buildWelcomeAM(linkedAm.nama)
-              : await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
-            await sendToTelegram(token, chatId, text, getMainKeyboard(linkedAm.role)).catch(() => {});
+            if (linkedAm.role === "ACCOUNT_MANAGER") {
+              // Split into 2 messages so neither is too long
+              const p1 = await buildWelcomeAMP1(linkedAm.nama);
+              const p2 = buildWelcomeAMP2();
+              await sendToTelegram(token, chatId, p1).catch(() => {});
+              await new Promise(r => setTimeout(r, 300));
+              await sendToTelegram(token, chatId, p2.text, p2.keyboard).catch(() => {});
+            } else {
+              const text = await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
+              await sendToTelegram(token, chatId, text, getMainKeyboard(linkedAm.role)).catch(() => {});
+            }
             lastWelcomeSent.set(chatId, now);
           } else {
             // Still acknowledge but don't spam
@@ -1216,9 +2059,9 @@ export async function pollOnce() {
         }
         await db.update(accountManagersTable)
           .set({ telegramChatId: null, telegramUserId: null, telegramUsername: null })
-          .where(eq(accountManagersTable.telegramChatId, chatId));
+          .where(eq(accountManagersTable.id, linkedAm.id));
         await sendToTelegram(token, chatId,
-          `🔓 *Koneksi Terputus*\n\nAkun Telegram kamu sudah berhasil diputuskan dari *${linkedAm.nama}* (${linkedAm.nik}).\n\nJika ingin terhubung kembali, minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi baru ya kak.`
+          `🔓 *Koneksi Terputus*\n\nAkun Telegram kamu sudah berhasil inúmer dari *${linkedAm.nama}* (${linkedAm.nik}).\n\nJika ingin terhubung kembali, minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi baru ya kak.`
         ).catch(() => {});
         lastWelcomeSent.delete(chatId);
         logger.info({ chatId, nama: linkedAm.nama, nik: linkedAm.nik }, "AM disconnected via /logout");
@@ -1226,7 +2069,7 @@ export async function pollOnce() {
       }
 
       // Text shortcuts
-      if (["/funneling", "/activity", "/performansi"].includes(text)) {
+      if (["/activity", "/performansi"].includes(text)) {
         const [linkedAm] = await db.select().from(accountManagersTable)
           .where(eq(accountManagersTable.telegramChatId, chatId));
         if (!linkedAm) {
@@ -1249,10 +2092,16 @@ export async function pollOnce() {
         const now = Date.now();
         const lastSent = lastWelcomeSent.get(chatId) ?? 0;
         if (now - lastSent >= WELCOME_COOLDOWN_MS) {
-          const welcomeText = linkedAm.role === "ACCOUNT_MANAGER"
-            ? await buildWelcomeAM(linkedAm.nama)
-            : await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
-          await sendToTelegram(token, chatId, welcomeText, getMainKeyboard(linkedAm.role)).catch(() => {});
+          if (linkedAm.role === "ACCOUNT_MANAGER") {
+            const p1 = await buildWelcomeAMP1(linkedAm.nama);
+            const p2 = buildWelcomeAMP2();
+            await sendToTelegram(token, chatId, p1).catch(() => {});
+            await new Promise(r => setTimeout(r, 300));
+            await sendToTelegram(token, chatId, p2.text, p2.keyboard).catch(() => {});
+          } else {
+            const welcomeText = await buildWelcomeAdmin(linkedAm.nama, linkedAm.role);
+            await sendToTelegram(token, chatId, welcomeText, getMainKeyboard(linkedAm.role)).catch(() => {});
+          }
           lastWelcomeSent.set(chatId, now);
         }
 
@@ -1273,8 +2122,21 @@ export async function pollOnce() {
           continue;
         }
 
+        // /activity → show sub-menu (intro)
+        if (text === "/activity") {
+          await sendToTelegram(token, chatId,
+            `📅 *Sales Activity — LESA VI*\n\n` +
+            `Halo kak *${amFirstName}*! 👋\n\n` +
+            `Pada fitur *Sales Activity* ini, kakak bisa mengetahui laporan terkini terkait daftar aktivitas penjualan yang sudah tercatat sekaligus melihat ketercapaian jumlah aktivitas yang memenuhi KPI.\n\n` +
+            `Selain itu, kakak juga bisa mengetahui posisi peringkat capaian penuntasan KPI terhadap Account Manager lainnya.\n\n` +
+            `Untuk lebih detailnya, kakak juga bisa lihat pada *Dashboard LESAVI* untuk visualisasi data yang lebih mudah dipahami.`,
+            ACTIVITY_SUB_KEYBOARD
+          ).catch(() => {});
+          continue;
+        }
+
         const period = currentPeriod();
-        const opts = { includePerformance: false, includeFunnel: text === "/funneling", includeActivity: text === "/activity" };
+        const opts = { includePerformance: false, includeFunnel: text === "/funneling", includeActivity: false };
         const msgs = await buildTelegramMessages(linkedAm.nik, period, opts);
         for (const m of msgs) await sendToTelegram(token, chatId, m).catch(() => {});
         if (!msgs.length) await sendToTelegram(token, chatId, `Belum ada data untuk periode ini kak *${amFirstName}*.`).catch(() => {});
@@ -1343,6 +2205,32 @@ async function deleteWebhookIfAny(token: string) {
   } catch { /* non-fatal */ }
 }
 
+// Public commands (visible to everyone in / menu).
+// Role-specific commands are shown via inline keyboard in the welcome message instead.
+const PUBLIC_BOT_COMMANDS = [
+  { command: "start", description: "Memulai bot & verifikasi akun" },
+  { command: "list", description: "List Data Snapshot" },
+  { command: "website", description: "Buka Dashboard LESA VI" },
+];
+
+async function registerBotCommands(token: string) {
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands: PUBLIC_BOT_COMMANDS }),
+    });
+    const data = await resp.json() as { ok: boolean };
+    if (data.ok) {
+      logger.info({ count: PUBLIC_BOT_COMMANDS.length }, "Bot commands registered with Telegram");
+    } else {
+      logger.warn({ err: data }, "Failed to register bot commands");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to register bot commands (non-fatal)");
+  }
+}
+
 export function startTelegramPoller(intervalMs = 3000) {
   const run = async () => {
     await pollOnce();
@@ -1350,7 +2238,8 @@ export function startTelegramPoller(intervalMs = 3000) {
   };
   db.select().from(appSettingsTable).then(([settings]) => {
     if (settings?.telegramBotToken) {
-      deleteWebhookIfAny(settings.telegramBotToken).then(() => {
+      deleteWebhookIfAny(settings.telegramBotToken).then(async () => {
+        await registerBotCommands(settings.telegramBotToken!);
         logger.info({ intervalMs }, "Telegram background poller started");
         pollerTimer = setTimeout(run, 3000);
       });
@@ -1359,6 +2248,17 @@ export function startTelegramPoller(intervalMs = 3000) {
       pollerTimer = setTimeout(run, 5000);
     }
   }).catch(() => { pollerTimer = setTimeout(run, 5000); });
+
+  // Graceful shutdown: flush lastUpdateId before process exits (SIGTERM/SIGINT from pm2)
+  const shutdown = async () => {
+    logger.info("Received shutdown signal — flushing Telegram offset...");
+    clearTimeout(pollerTimer);
+    await flushLastUpdateId();
+    logger.info("Graceful shutdown complete");
+    process.exit(0);
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 }
 
 export function stopTelegramPoller() {

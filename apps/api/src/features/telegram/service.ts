@@ -431,34 +431,195 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
   return msg;
 }
 
-async function buildActivityMessage(nik: string, period: string): Promise<string | null> {
-  const [year, month] = period.split("-").map(Number);
+// Return type for activity report — handler controls pagination UI
+export interface ActivityReport {
+  summary: string;
+  details: string[];
+  amFirstName: string;
+  totalPages: number;
+  totalActivities: number;
+  validCount: number;
+  kpiTarget: number;
+  kpiPercent: number;
+  snapshotLabel: string;
+  nik: string;
+}
 
+export async function buildActivityReport(nik: string, monthKey?: string): Promise<ActivityReport | null> {
+  function currentPeriod(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
 
-  const firstName = am.nama.split(" ")[0];
+  // Always get the latest activity snapshot
+  const [targetSnap] = await db.select().from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "activity"))
+    .orderBy(desc(dataImportsTable.createdAt))
+    .limit(1);
 
-  const acts = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, nik));
-  const monthActs = acts.filter(a => a.activityEndDate?.startsWith(period));
-  const achieved = monthActs.length >= am.kpiActivity;
-  const remaining = am.kpiActivity - monthActs.length;
-  const greeting = greetingByTime();
+  let allNikActs: typeof salesActivityTable.$inferSelect[] = [];
 
-  let msg = `📌 *SALES ACTIVITY*\n`;
-  msg += `LESA VI — Witel Suramadu\n\n`;
-  msg += `Halo kak ${firstName}! 👋 ${greeting}\n\n`;
-  msg += `Status *Sales Activity* — ${MONTH_NAMES[month]} ${year}:\n\n`;
-  msg += `Activity   : *${monthActs.length}* / ${am.kpiActivity} KPI\n`;
-  msg += `Status     : ${achieved ? `✅ KPI Tercapai!` : `⚠️ Belum tercapai — butuh *${remaining}* lagi`}\n\n`;
-
-  if (!achieved && remaining <= 3) {
-    msg += `_Hampir sampai, kak ${firstName}! Tinggal ${remaining} lagi 💪_\n\n`;
-  } else if (!achieved) {
-    msg += `_Yuk tambah activity kak ${firstName}, masih ada waktu! 🚀_\n\n`;
+  // Determine snapshot year and latest month
+  let snapYear = new Date().getFullYear();
+  let snapMonth = new Date().getMonth() + 1;
+  if (targetSnap) {
+    if (targetSnap.snapshotDate) {
+      const d = new Date(targetSnap.snapshotDate);
+      snapYear = d.getFullYear();
+      snapMonth = d.getMonth() + 1;
+    } else if (targetSnap.period) {
+      const p = targetSnap.period;
+      if (/^\d{6}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+      else if (/^\d{4}-\d{2}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(5,7)); }
+      else if (/^\d{8}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+    }
   }
 
-  return msg;
+  // Filter to selected month (or snapshot's latest month if no monthKey)
+  const MONTH_NAMES3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const targetMonthStr = monthKey ?? `${snapYear}${String(snapMonth).padStart(2,"0")}`;
+  // snapshotLabel: if monthKey provided, use that month; otherwise snapshot's latest month
+  const labelMonth = monthKey ? parseInt(monthKey.slice(4,6)) : snapMonth;
+  const labelYear  = monthKey ? parseInt(monthKey.slice(0,4)) : snapYear;
+  const labelSnapshot = `${MONTH_NAMES3[labelMonth]} ${labelYear}`;
+
+  if (targetSnap) {
+    const allActs = await db.select().from(salesActivityTable)
+      .where(eq(salesActivityTable.importId, targetSnap.id));
+    allNikActs = allActs.filter(a => a.nik === nik);
+
+    // Deduplicate
+    const seen = new Set<string>();
+    allNikActs = allNikActs.filter(a => {
+      const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } else {
+    allNikActs = [];
+  }
+
+  // Filter to target month only
+  allNikActs = allNikActs.filter(a => {
+    const d = a.activityEndDate;
+    if (!d) return false;
+    return d.replace(/-/g, "").slice(0, 6) === targetMonthStr;
+  });
+
+  const validActs = allNikActs.filter(a => a.label && !a.label.toLowerCase().includes("tanpa"));
+  const denganPelanggan = allNikActs.filter(a => a.label?.toLowerCase().includes("pelanggan") && !a.label?.toLowerCase().includes("proyek")).length;
+  const denganProyek = allNikActs.filter(a => a.label?.toLowerCase().includes("proyek")).length;
+  const kpiTarget = am.kpiActivity ?? 25;
+  const validCount = validActs.length;
+  const kpiPercent = kpiTarget > 0 ? Math.min(Math.round((validCount / kpiTarget) * 100), 100) : 0;
+
+  const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const divider = `━━━━━━━━━━━━━━━━━━`;
+
+  const fmtDate = (dateStr: string | null) => {
+    if (!dateStr) return "-- ---";
+    const parts = dateStr.split("-");
+    if (parts.length < 3) return dateStr.slice(0, 10);
+    const d = parseInt(parts[2], 10);
+    const m = parseInt(parts[1], 10);
+    return `${d} ${MONTH_SHORT[m] ?? "???"}`;
+  };
+
+  const kpiBar = (pct: number) => {
+    const filled = Math.round(pct / 10);
+    return `▓`.repeat(filled) + `░`.repeat(10 - filled);
+  };
+
+  const amFirstName = am.nama.split(" ")[0];
+  const kpiStatus = kpiPercent >= 100 ? "✅ *Tercapai!*"
+    : kpiPercent >= 70 ? "⚡ *Mendekati target*"
+    : `📌 *${kpiTarget - validCount} aktivitas lagi*`;
+
+  // ── SUMMARY MESSAGE ──────────────────────────────────────────────
+  const summary =
+    `📅 *SALES ACTIVITY — LESA VI*\n` +
+    `${divider}\n` +
+    `👤 *${am.nama}*\n` +
+    `📆 Periode : *${labelSnapshot}*\n` +
+    `${divider}\n` +
+    `📊 *RINGKASAN AKTIVITAS*\n\n` +
+    `├ 📋 Total      : *${allNikActs.length}* aktivitas\n` +
+    `├ 👤 Pelanggan  : *${denganPelanggan}*\n` +
+    `├ 📁 Proyek     : *${denganProyek}*\n` +
+    `└ 🎯 KPI        : *${validCount}/${kpiTarget}* (*${kpiPercent}%*)\n\n` +
+    `${kpiBar(kpiPercent)} *${kpiPercent}%* — ${kpiStatus}\n` +
+    `${divider}`;
+
+  // ── DETAIL PAGES ─────────────────────────────────────────────────
+  // Sort by date descending
+  const sorted = [...allNikActs].sort((a, b) => {
+    const da = a.activityEndDate ?? ""; const db2 = b.activityEndDate ?? "";
+    return db2 < da ? -1 : db2 > da ? 1 : 0;
+  });
+
+  const CHUNK_SIZE = 8;
+  const chunks: typeof sorted[] = [];
+  for (let i = 0; i < sorted.length; i += CHUNK_SIZE) {
+    chunks.push(sorted.slice(i, i + CHUNK_SIZE));
+  }
+
+  const details: string[] = [];
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    const baseIdx = c * CHUNK_SIZE;
+
+    let partMsg = `📋 *DETAIL AKTIVITAS*\n`;
+
+    for (let i = 0; i < chunk.length; i++) {
+      const a = chunk[i];
+      const num = baseIdx + i + 1;
+      const dateStr = fmtDate(a.activityEndDate);
+      const customer = a.caName?.toUpperCase() ?? a.picName?.toUpperCase() ?? "—";
+      const notes = a.activityNotes?.split("\n")[0].trim() ?? "—";
+      const kategori = a.activityType ?? a.label ?? "—";
+      const shortNotes = notes.length > 65 ? notes.slice(0, 62) + "..." : notes;
+      const isProyek = a.label?.toLowerCase().includes("proyek");
+      const labelBadge = isProyek ? "📁 *Dg Proyek*" : "👤 *Dg Pelanggan*";
+
+      partMsg += `──────────────────\n`;
+      partMsg += `*#${num} · ${dateStr}*\n`;
+      partMsg += `🏢 *${customer}*\n`;
+      partMsg += `${shortNotes}\n`;
+      partMsg += `📌 *${kategori}*  ${labelBadge}\n`;
+      partMsg += `\n`;
+    }
+
+    // Footer per page
+    partMsg += `──────────────────\n`;
+    if (chunks.length > 1) {
+      partMsg += `_Halaman ${c + 1}/${chunks.length} · ${allNikActs.length} aktivitas_`;
+    }
+
+    details.push(partMsg);
+  }
+
+  return {
+    summary,
+    details,
+    amFirstName,
+    totalPages: chunks.length,
+    totalActivities: allNikActs.length,
+    validCount,
+    kpiTarget,
+    kpiPercent,
+    snapshotLabel: labelSnapshot,
+    nik,
+  };
+}
+
+// kept for backwards compat — delegates to buildActivityReport
+async function buildActivityMessage(nik: string, _period: string): Promise<string[]> {
+  const report = await buildActivityReport(nik);
+  if (!report) return [];
+  return [report.summary, ...report.details];
 }
 
 // --- PUBLIC API ---
@@ -481,8 +642,8 @@ export async function buildTelegramMessages(
   }
 
   if (options.includeActivity) {
-    const m = await buildActivityMessage(nik, period);
-    if (m) messages.push(m);
+    const msgs = await buildActivityMessage(nik, period);
+    messages.push(...msgs);
   }
 
   return messages;
@@ -511,10 +672,12 @@ export async function sendToTelegram(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {
     const data = await response.json() as { description?: string };
+    logger.error({ status: response.status, chatId, error: data.description }, "sendToTelegram failed");
     throw new Error(data.description || "Telegram API error");
   }
 }

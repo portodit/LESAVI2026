@@ -377,9 +377,12 @@ function fmtCompactFS(n: number): string {
   if (n>=1e6)  return `${Math.round(n/1e6)} jt`;
   return String(n);
 }
-function periodLabelFS(p: string): string {
-  const [y,m] = p.split("-");
-  return `${FS_MONTHS_ID[parseInt(m)]||m} ${y}`;
+function periodLabelFS(p: string | null | undefined): string {
+  if (!p) return "";
+  if (/^\d{8}$/.test(p)) return `${FS_MONTHS_ID[parseInt(p.slice(4,6))]||p.slice(4,6)} ${p.slice(0,4)}`;
+  if (/^\d{6}$/.test(p)) return `${FS_MONTHS_ID[parseInt(p.slice(4,6))]||p.slice(4,6)} ${p.slice(0,4)}`;
+  const [y, m2] = p.split("-");
+  return `${FS_MONTHS_ID[parseInt(m2)]||m2} ${y}`;
 }
 
 function FSSelectDropdown({ label, value, onChange, options, disabled, className }: {
@@ -2262,11 +2265,11 @@ function ActivitySlide() {
 
   const snapOptions = useMemo(()=>[
     ...(Array.isArray(actSnaps)?actSnaps:[]).map((s:any)=>{
-      let lbl = s.period||`Import #${s.id}`;
+      let lbl = s.period ? periodLabelFS(s.period) : `Import #${s.id}`;
       if(s.snapshotDate){
         try{
           const d=new Date(s.snapshotDate);
-          lbl=`${d.getDate()} ${ACT_MONTHS_SHORT[d.getMonth()+1]} ${d.getFullYear()}${s.period?` · ${s.period}`:""}`;
+          lbl=`${d.getDate()} ${ACT_MONTHS_SHORT[d.getMonth()+1]} ${d.getFullYear()}${s.period?` — ${periodLabelFS(s.period)}`:""}`;
         }catch{/**/}
       }
       return {value:String(s.id),label:lbl};
