@@ -47,3 +47,87 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Claude Code
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local environment files (contain secrets)
+.env
+.env.*
+!.env.example
+
+# Temp / debug / test files
+_*.log
+_*.py
+_*.mjs
+_*.bat
+_*.json
+_analyze_*
+_check_*
+_debug_*
+_rebuild_*
+_reorder_*
+_rewrite_*
+_temp_*
+_test_*
+_snaps.json
+_test_fun*.json
+api-error.log
+api-new-stderr.log
+api-server.err
+dashboard-server.log
+server_err.log
+server_out.log
+analyze.py
+check_*.py
+compare*.py
+debug_*.py
+fix_*.py
+fix_*.mjs
+ssh_vps.py
+test_auth.py
+upload_*.py
+verify_fix.py
+sections.txt
+
+# PM2 / process logs
+apps/api/_*.txt
+apps/api/_*.log
+apps/api/*.log
+apps/api/telegram-import*.log
+apps/api/build-all.mjs
+apps/api/cleanup-bad-accounts.mjs
+apps/api/cookies*.txt
+apps/api/dash_cookies.txt
+apps/api/pres_cookies.txt
+apps/api/pid.txt
+apps/api/api-server-*.log
+apps/api/dashboard/
+apps/api/dist-public/
+apps/api/dist_public/
+apps/telegram-import.log
+
+# Dashboard / local dev logs
+apps/_*.log
+apps/_server*.log
+apps/dashboard/cookies_e2e.txt
+dashboard/
+funnel_converter/
+import_performance_backup.zip
+local_local.ts
+local_local_service.ts
+run-api-dev.bat
+run-api.bat
+serve-dashboard.js
+test_cookies.txt
+cookies*.txt
+vps_poller.ts
+
+# Local node modules override / build artifacts
+apps/api/.env
+
+# Task files
+TASK/
+TROUBLESHOOT/
+check_nik.ps1
