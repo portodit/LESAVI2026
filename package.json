@@ -4,6 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "dev:all": "pnpm run --filter @workspace/dashboard build && pnpm run --filter @workspace/api-server start",
     "preinstall": "node -e \"const fs=require('fs');['package-lock.json','yarn.lock'].forEach(f=>{if(fs.existsSync(f))fs.unlinkSync(f)});const ua=process.env.npm_config_user_agent||'';if(ua&&!ua.startsWith('pnpm/')){console.error('Use pnpm instead');process.exit(1)}\"",
     "clean": "pnpm run --filter @workspace/api-server clean && pnpm run --filter @workspace/dashboard clean",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",

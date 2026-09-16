@@ -30,11 +30,11 @@ var __export = (target, all) => {
   for (var name2 in all)
     __defProp(target, name2, { get: all[name2], enumerable: true });
 };
-var __copyProps = (to, from, except2, desc3) => {
+var __copyProps = (to, from, except2, desc2) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
       if (!__hasOwnProp.call(to, key) && key !== except2)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc3 = __getOwnPropDesc(from, key)) || desc3.enumerable });
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
   }
   return to;
 };
@@ -1356,10 +1356,10 @@ var require_http_errors = __commonJS({
       return ServerError;
     }
     function nameFunc(func, name2) {
-      var desc3 = Object.getOwnPropertyDescriptor(func, "name");
-      if (desc3 && desc3.configurable) {
-        desc3.value = name2;
-        Object.defineProperty(func, "name", desc3);
+      var desc2 = Object.getOwnPropertyDescriptor(func, "name");
+      if (desc2 && desc2.configurable) {
+        desc2.value = name2;
+        Object.defineProperty(func, "name", desc2);
       }
     }
     function populateConstructorExports(exports2, codes, HttpError) {
@@ -5650,9 +5650,9 @@ var require_on_finished = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/content-type@2.0.0/node_modules/content-type/dist/index.js
+// ../../node_modules/.pnpm/content-type@2.1.0/node_modules/content-type/dist/index.js
 var require_dist = __commonJS({
-  "../../node_modules/.pnpm/content-type@2.0.0/node_modules/content-type/dist/index.js"(exports) {
+  "../../node_modules/.pnpm/content-type@2.1.0/node_modules/content-type/dist/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.format = format;
@@ -5684,14 +5684,17 @@ var require_dist = __commonJS({
       return result;
     }
     function parse3(header, options) {
+      const stopChar = options?.comma === true ? COMMA : 65536;
       const len = header.length;
-      let index = skipOWS(header, 0, len);
+      let index = skipOWS(header, options?.start ?? 0, len);
       const valueStart = index;
-      index = skipValue(header, index, len);
+      index = skipValue(header, index, len, stopChar);
       const valueEnd = trailingOWS(header, valueStart, index);
       const type = header.slice(valueStart, valueEnd).toLowerCase();
-      const parameters = options?.parameters === false ? new NullObject() : parseParameters(header, index, len);
-      return { type, parameters };
+      if (options?.parameters === false) {
+        return { type, index, parameters: new NullObject() };
+      }
+      return parseParameters(header, type, index, len, stopChar);
     }
     var SP = 32;
     var HTAB = 9;
@@ -5699,13 +5702,18 @@ var require_dist = __commonJS({
     var EQ = 61;
     var DQUOTE = 34;
     var BSLASH = 92;
-    function parseParameters(header, index, len) {
+    var COMMA = 44;
+    function parseParameters(header, type, index, len, stopChar) {
       const parameters = new NullObject();
       parameter: while (index < len) {
+        if (header.charCodeAt(index) === stopChar)
+          break;
         index = skipOWS(header, index + 1, len);
         const keyStart = index;
         while (index < len) {
           const code = header.charCodeAt(index);
+          if (code === stopChar)
+            break parameter;
           if (code === SEMI)
             continue parameter;
           if (code === EQ) {
@@ -5718,7 +5726,7 @@ var require_dist = __commonJS({
               while (index < len) {
                 const code2 = header.charCodeAt(index++);
                 if (code2 === DQUOTE) {
-                  index = skipValue(header, index, len);
+                  index = skipValue(header, index, len, stopChar);
                   if (parameters[key] === void 0)
                     parameters[key] = value;
                   break;
@@ -5732,7 +5740,7 @@ var require_dist = __commonJS({
               continue parameter;
             }
             const valueStart = index;
-            index = skipValue(header, index, len);
+            index = skipValue(header, index, len, stopChar);
             if (parameters[key] === void 0) {
               const valueEnd = trailingOWS(header, valueStart, index);
               parameters[key] = header.slice(valueStart, valueEnd);
@@ -5742,12 +5750,12 @@ var require_dist = __commonJS({
           index++;
         }
       }
-      return parameters;
+      return { type, index, parameters };
     }
-    function skipValue(str, index, len) {
+    function skipValue(str, index, len, stopChar) {
       while (index < len) {
-        const char2 = str.charCodeAt(index);
-        if (char2 === SEMI)
+        const code = str.charCodeAt(index);
+        if (code === SEMI || code === stopChar)
           break;
         index++;
       }
@@ -16845,14 +16853,14 @@ var require_get = __commonJS({
         throw e;
       }
     }
-    var desc3 = !!hasProtoAccessor && gOPD && gOPD(
+    var desc2 = !!hasProtoAccessor && gOPD && gOPD(
       Object.prototype,
       /** @type {keyof typeof Object.prototype} */
       "__proto__"
     );
     var $Object = Object;
     var $getPrototypeOf = $Object.getPrototypeOf;
-    module.exports = desc3 && typeof desc3.get === "function" ? callBind([desc3.get]) : typeof $getPrototypeOf === "function" ? (
+    module.exports = desc2 && typeof desc2.get === "function" ? callBind([desc2.get]) : typeof $getPrototypeOf === "function" ? (
       /** @type {import('./get')} */
       function getDunder(value) {
         return $getPrototypeOf(value == null ? value : $Object(value));
@@ -17202,10 +17210,10 @@ var require_get_intrinsic = __commonJS({
             return void undefined2;
           }
           if ($gOPD && i + 1 >= parts.length) {
-            var desc3 = $gOPD(value, part);
-            isOwn = !!desc3;
-            if (isOwn && "get" in desc3 && !("originalValue" in desc3.get)) {
-              value = desc3.get;
+            var desc2 = $gOPD(value, part);
+            isOwn = !!desc2;
+            if (isOwn && "get" in desc2 && !("originalValue" in desc2.get)) {
+              value = desc2.get;
             } else {
               value = value[part];
             }
@@ -17415,9 +17423,9 @@ var require_side_channel = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/formats.js
+// ../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/formats.js
 var require_formats = __commonJS({
-  "../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/formats.js"(exports, module) {
+  "../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/formats.js"(exports, module) {
     "use strict";
     var replace = String.prototype.replace;
     var percentTwenties = /%20/g;
@@ -17441,9 +17449,9 @@ var require_formats = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/utils.js
+// ../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/utils.js
 var require_utils2 = __commonJS({
-  "../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/utils.js"(exports, module) {
+  "../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/utils.js"(exports, module) {
     "use strict";
     var formats = require_formats();
     var getSideChannel = require_side_channel();
@@ -17695,15 +17703,19 @@ var require_utils2 = __commonJS({
       if (!obj || typeof obj !== "object") {
         return false;
       }
-      return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
+      return !!(obj.constructor && typeof obj.constructor.isBuffer === "function" && obj.constructor.isBuffer(obj));
     };
     var combine = function combine2(a, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
       if (isOverflow(a)) {
         if (throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
         }
-        var newIndex = getMaxIndex(a) + 1;
-        a[newIndex] = b;
+        var bValues = isArray(b) ? b : [b];
+        var newIndex = getMaxIndex(a);
+        for (var i = 0; i < bValues.length; ++i) {
+          newIndex += 1;
+          a[newIndex] = bValues[i];
+        }
         setMaxIndex(a, newIndex);
         return a;
       }
@@ -17743,9 +17755,9 @@ var require_utils2 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/stringify.js
+// ../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/stringify.js
 var require_stringify = __commonJS({
-  "../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/stringify.js"(exports, module) {
+  "../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/stringify.js"(exports, module) {
     "use strict";
     var getSideChannel = require_side_channel();
     var utils2 = require_utils2();
@@ -17779,6 +17791,7 @@ var require_stringify = __commonJS({
       charsetSentinel: false,
       commaRoundTrip: false,
       delimiter: "&",
+      depth: Infinity,
       encode: true,
       encodeDotInKeys: false,
       encoder: utils2.encode,
@@ -17798,8 +17811,11 @@ var require_stringify = __commonJS({
       return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "symbol" || typeof v === "bigint";
     };
     var sentinel = {};
-    var stringify = function stringify2(object2, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel) {
+    var stringify = function stringify2(object2, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel, depth, currentDepth) {
       var obj = object2;
+      if (currentDepth > depth) {
+        throw new RangeError("Input depth exceeded depth option of " + depth);
+      }
       var tmpSc = sideChannel;
       var step = 0;
       var findFlag = false;
@@ -17817,9 +17833,8 @@ var require_stringify = __commonJS({
           step = 0;
         }
       }
-      if (typeof filter === "function") {
-        obj = filter(prefix, obj);
-      } else if (obj instanceof Date) {
+      obj = typeof filter === "function" ? filter(prefix, obj) : obj;
+      if (obj instanceof Date) {
         obj = serializeDate(obj);
       } else if (generateArrayPrefix === "comma" && isArray(obj)) {
         obj = utils2.maybeMap(obj, function(value2) {
@@ -17862,7 +17877,7 @@ var require_stringify = __commonJS({
       }
       var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
       var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
-      if (allowEmptyArrays && isArray(obj) && obj.length === 0) {
+      if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
         return adjustedPrefix + "[]";
       }
       for (var j = 0; j < objKeys.length; ++j) {
@@ -17894,7 +17909,9 @@ var require_stringify = __commonJS({
           formatter,
           encodeValuesOnly,
           charset,
-          valueSideChannel
+          valueSideChannel,
+          depth,
+          currentDepth + 1
         ));
       }
       return values;
@@ -17949,6 +17966,7 @@ var require_stringify = __commonJS({
         charsetSentinel: typeof opts.charsetSentinel === "boolean" ? opts.charsetSentinel : defaults2.charsetSentinel,
         commaRoundTrip: !!opts.commaRoundTrip,
         delimiter: typeof opts.delimiter === "undefined" ? defaults2.delimiter : opts.delimiter,
+        depth: typeof opts.depth === "number" ? opts.depth : defaults2.depth,
         encode: typeof opts.encode === "boolean" ? opts.encode : defaults2.encode,
         encodeDotInKeys: typeof opts.encodeDotInKeys === "boolean" ? opts.encodeDotInKeys : defaults2.encodeDotInKeys,
         encoder: typeof opts.encoder === "function" ? opts.encoder : defaults2.encoder,
@@ -17996,9 +18014,10 @@ var require_stringify = __commonJS({
         if (options.skipNulls && value === null) {
           continue;
         }
+        var encodedKey = options.encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
         pushToArray(keys, stringify(
           value,
-          key,
+          encodedKey,
           generateArrayPrefix,
           commaRoundTrip,
           options.allowEmptyArrays,
@@ -18014,7 +18033,9 @@ var require_stringify = __commonJS({
           options.formatter,
           options.encodeValuesOnly,
           options.charset,
-          sideChannel
+          sideChannel,
+          options.depth,
+          0
         ));
       }
       var joined = keys.join(options.delimiter);
@@ -18031,9 +18052,9 @@ var require_stringify = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/parse.js
+// ../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/parse.js
 var require_parse = __commonJS({
-  "../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/parse.js"(exports, module) {
+  "../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/parse.js"(exports, module) {
     "use strict";
     var utils2 = require_utils2();
     var has = Object.prototype.hasOwnProperty;
@@ -18067,9 +18088,9 @@ var require_parse = __commonJS({
         return String.fromCharCode(parseInt(numberStr, 10));
       });
     };
-    var parseArrayValue = function(val, options, currentArrayLength, isFlatArrayValue) {
+    var parseArrayValue = function(val, options, currentArrayLength) {
       if (val && typeof val === "string" && options.comma && val.indexOf(",") > -1) {
-        if (isFlatArrayValue && options.throwOnLimitExceeded) {
+        if (options.throwOnLimitExceeded) {
           var commaCount = 0;
           var commaIndex = val.indexOf(",");
           while (commaIndex > -1) {
@@ -18136,8 +18157,7 @@ var require_parse = __commonJS({
               parseArrayValue(
                 part.slice(pos + 1),
                 options,
-                isArray(obj[key]) ? obj[key].length : 0,
-                part.indexOf("[]=") === -1
+                isArray(obj[key]) ? obj[key].length : 0
               ),
               function(encodedVal) {
                 return options.decoder(encodedVal, defaults2.decoder, charset, "value");
@@ -18360,9 +18380,9 @@ var require_parse = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/index.js
+// ../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/index.js
 var require_lib2 = __commonJS({
-  "../../node_modules/.pnpm/qs@6.15.3/node_modules/qs/lib/index.js"(exports, module) {
+  "../../node_modules/.pnpm/qs@6.16.0/node_modules/qs/lib/index.js"(exports, module) {
     "use strict";
     var stringify = require_stringify();
     var parse3 = require_parse();
@@ -18784,8 +18804,8 @@ var require_view = __commonJS({
     var extname = path3.extname;
     var join = path3.join;
     var resolve2 = path3.resolve;
-    module.exports = View3;
-    function View3(name2, options) {
+    module.exports = View2;
+    function View2(name2, options) {
       var opts = options || {};
       this.defaultEngine = opts.defaultEngine;
       this.ext = extname(name2);
@@ -18811,7 +18831,7 @@ var require_view = __commonJS({
       this.engine = opts.engines[this.ext];
       this.path = this.lookup(fileName);
     }
-    View3.prototype.lookup = function lookup(name2) {
+    View2.prototype.lookup = function lookup(name2) {
       var path4;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name2);
@@ -18824,7 +18844,7 @@ var require_view = __commonJS({
       }
       return path4;
     };
-    View3.prototype.render = function render(options, callback) {
+    View2.prototype.render = function render(options, callback) {
       var sync = true;
       debug('render "%s"', this.path);
       this.engine(this.path, options, function onRender() {
@@ -18842,7 +18862,7 @@ var require_view = __commonJS({
       });
       sync = false;
     };
-    View3.prototype.resolve = function resolve3(dir, file2) {
+    View2.prototype.resolve = function resolve3(dir, file2) {
       var ext = this.ext;
       var path4 = join(dir, file2);
       var stat = tryStat(path4);
@@ -21095,7 +21115,7 @@ var require_application = __commonJS({
     "use strict";
     var finalhandler = require_finalhandler();
     var debug = require_src()("express:application");
-    var View3 = require_view();
+    var View2 = require_view();
     var http = __require("node:http");
     var methods = require_utils3().methods;
     var compileETag = require_utils3().compileETag;
@@ -21154,7 +21174,7 @@ var require_application = __commonJS({
       this.locals = /* @__PURE__ */ Object.create(null);
       this.mountpath = "/";
       this.locals.settings = this.settings;
-      this.set("view", View3);
+      this.set("view", View2);
       this.set("views", resolve2("views"));
       this.set("jsonp callback name", "callback");
       if (env === "production") {
@@ -21310,8 +21330,8 @@ var require_application = __commonJS({
         view = cache[name2];
       }
       if (!view) {
-        var View4 = this.get("view");
-        view = new View4(name2, {
+        var View3 = this.get("view");
+        view = new View3(name2, {
           defaultEngine: this.get("view engine"),
           root: this.get("views"),
           engines
@@ -21350,42 +21370,55 @@ var require_application = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/charset.js
-var require_charset = __commonJS({
-  "../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/charset.js"(exports, module) {
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/accept.js
+var require_accept = __commonJS({
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/accept.js"(exports, module) {
     "use strict";
+    var contentType = require_dist();
+    module.exports = parseAccept;
+    function parseAccept(header) {
+      var values = [];
+      var index = 0;
+      while (index < header.length) {
+        var start = skipOptionalWhitespace(header, index);
+        var parsed = contentType.parse(header, { comma: true, start });
+        parsed.type = header.slice(start, start + parsed.type.length);
+        values.push(parsed);
+        index = parsed.index + 1;
+      }
+      return values;
+    }
+    function skipOptionalWhitespace(header, index) {
+      var cursor = index;
+      while (header.charCodeAt(cursor) === 32 || header.charCodeAt(cursor) === 9) {
+        cursor++;
+      }
+      return cursor;
+    }
+  }
+});
+
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/charset.js
+var require_charset = __commonJS({
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/charset.js"(exports, module) {
+    "use strict";
+    var parseAccept = require_accept();
     module.exports = preferredCharsets;
     module.exports.preferredCharsets = preferredCharsets;
-    var simpleCharsetRegExp = /^\s*([^\s;]+)\s*(?:;(.*))?$/;
     function parseAcceptCharset(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var charset = parseCharset(accepts[i].trim(), i);
-        if (charset) {
-          accepts[j++] = charset;
-        }
+        var charset = formatCharset(accepts[i], i);
+        if (charset) accepts[j++] = charset;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseCharset(str, i) {
-      var match = simpleCharsetRegExp.exec(str);
-      if (!match) return null;
-      var charset = match[1];
-      var q = 1;
-      if (match[2]) {
-        var params = match[2].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].trim().split("=");
-          if (p[0] === "q") {
-            q = parseFloat(p[1]);
-            break;
-          }
-        }
-      }
+    function formatCharset(parsed, i) {
+      if (!parsed.type) return null;
       return {
-        charset,
-        q,
+        charset: parsed.type,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i
       };
     }
@@ -21437,19 +21470,19 @@ var require_charset = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/encoding.js
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/encoding.js
 var require_encoding = __commonJS({
-  "../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/encoding.js"(exports, module) {
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/encoding.js"(exports, module) {
     "use strict";
+    var parseAccept = require_accept();
     module.exports = preferredEncodings;
     module.exports.preferredEncodings = preferredEncodings;
-    var simpleEncodingRegExp = /^\s*([^\s;]+)\s*(?:;(.*))?$/;
     function parseAcceptEncoding(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       var hasIdentity = false;
       var minQuality = 1;
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var encoding = parseEncoding(accepts[i].trim(), i);
+        var encoding = formatEncoding(accepts[i], i);
         if (encoding) {
           accepts[j++] = encoding;
           hasIdentity = hasIdentity || specify("identity", encoding);
@@ -21466,24 +21499,11 @@ var require_encoding = __commonJS({
       accepts.length = j;
       return accepts;
     }
-    function parseEncoding(str, i) {
-      var match = simpleEncodingRegExp.exec(str);
-      if (!match) return null;
-      var encoding = match[1];
-      var q = 1;
-      if (match[2]) {
-        var params = match[2].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].trim().split("=");
-          if (p[0] === "q") {
-            q = parseFloat(p[1]);
-            break;
-          }
-        }
-      }
+    function formatEncoding(parsed, i) {
+      if (!parsed.type) return null;
       return {
-        encoding,
-        q,
+        encoding: parsed.type,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i
       };
     }
@@ -21550,45 +21570,34 @@ var require_encoding = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/language.js
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/language.js
 var require_language = __commonJS({
-  "../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/language.js"(exports, module) {
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/language.js"(exports, module) {
     "use strict";
+    var contentType = require_dist();
+    var parseAccept = require_accept();
     module.exports = preferredLanguages;
     module.exports.preferredLanguages = preferredLanguages;
-    var simpleLanguageRegExp = /^\s*([^\s\-;]+)(?:-([^\s;]+))?\s*(?:;(.*))?$/;
     function parseAcceptLanguage(accept) {
-      var accepts = accept.split(",");
+      var accepts = parseAccept(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var language = parseLanguage(accepts[i].trim(), i);
-        if (language) {
-          accepts[j++] = language;
-        }
+        var language = formatLanguage(accepts[i], i);
+        if (language) accepts[j++] = language;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseLanguage(str, i) {
-      var match = simpleLanguageRegExp.exec(str);
-      if (!match) return null;
-      var prefix = match[1];
-      var suffix = match[2];
-      var full = prefix;
-      if (suffix) full += "-" + suffix;
-      var q = 1;
-      if (match[3]) {
-        var params = match[3].split(";");
-        for (var j = 0; j < params.length; j++) {
-          var p = params[j].split("=");
-          if (p[0] === "q") q = parseFloat(p[1]);
-        }
-      }
+    function formatLanguage(parsed, i) {
+      if (!parsed.type) return null;
+      var hyphen = parsed.type.indexOf("-");
+      var prefix = hyphen === -1 ? parsed.type : parsed.type.slice(0, hyphen);
+      var suffix = hyphen === -1 ? void 0 : parsed.type.slice(hyphen + 1);
       return {
         prefix,
         suffix,
-        q,
+        q: parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1,
         i,
-        full
+        full: parsed.type
       };
     }
     function getLanguagePriority(language, accepted, index) {
@@ -21602,7 +21611,7 @@ var require_language = __commonJS({
       return priority;
     }
     function specify(language, spec, index) {
-      var p = parseLanguage(language);
+      var p = formatLanguage(contentType.parse(language), 0);
       if (!p) return null;
       var s = 0;
       if (spec.full.toLowerCase() === p.full.toLowerCase()) {
@@ -21645,49 +21654,32 @@ var require_language = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/mediaType.js
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/mediaType.js
 var require_mediaType = __commonJS({
-  "../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/lib/mediaType.js"(exports, module) {
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/lib/mediaType.js"(exports, module) {
     "use strict";
+    var contentType = require_dist();
+    var parseAcceptHeader = require_accept();
     module.exports = preferredMediaTypes;
     module.exports.preferredMediaTypes = preferredMediaTypes;
-    var simpleMediaTypeRegExp = /^\s*([^\s\/;]+)\/([^;\s]+)\s*(?:;(.*))?$/;
     function parseAccept(accept) {
-      var accepts = splitMediaTypes(accept);
+      var accepts = parseAcceptHeader(accept);
       for (var i = 0, j = 0; i < accepts.length; i++) {
-        var mediaType = parseMediaType(accepts[i].trim(), i);
-        if (mediaType) {
-          accepts[j++] = mediaType;
-        }
+        var mediaType = formatMediaType(accepts[i], i);
+        if (mediaType) accepts[j++] = mediaType;
       }
       accepts.length = j;
       return accepts;
     }
-    function parseMediaType(str, i) {
-      var match = simpleMediaTypeRegExp.exec(str);
-      if (!match) return null;
-      var params = /* @__PURE__ */ Object.create(null);
-      var q = 1;
-      var subtype = match[2];
-      var type = match[1];
-      if (match[3]) {
-        var kvps = splitParameters(match[3]).map(splitKeyValuePair);
-        for (var j = 0; j < kvps.length; j++) {
-          var pair = kvps[j];
-          var key = pair[0].toLowerCase();
-          var val = pair[1];
-          var value = val && val[0] === '"' && val[val.length - 1] === '"' ? val.slice(1, -1) : val;
-          if (key === "q") {
-            q = parseFloat(value);
-            break;
-          }
-          params[key] = value;
-        }
-      }
+    function formatMediaType(parsed, i) {
+      var slash = parsed.type.indexOf("/");
+      if (slash === -1) return null;
+      var q = parsed.parameters.q ? parseFloat(parsed.parameters.q) : 1;
+      delete parsed.parameters.q;
       return {
-        type,
-        subtype,
-        params,
+        type: parsed.type.slice(0, slash),
+        subtype: parsed.type.slice(slash + 1),
+        params: parsed.parameters,
         q,
         i
       };
@@ -21703,7 +21695,7 @@ var require_mediaType = __commonJS({
       return priority;
     }
     function specify(type, spec, index) {
-      var p = parseMediaType(type);
+      var p = formatMediaType(contentType.parse(type), 0);
       var s = 0;
       if (!p) {
         return null;
@@ -21756,60 +21748,12 @@ var require_mediaType = __commonJS({
     function isQuality(spec) {
       return spec.q > 0;
     }
-    function quoteCount(string4) {
-      var count2 = 0;
-      var index = 0;
-      while ((index = string4.indexOf('"', index)) !== -1) {
-        count2++;
-        index++;
-      }
-      return count2;
-    }
-    function splitKeyValuePair(str) {
-      var index = str.indexOf("=");
-      var key;
-      var val;
-      if (index === -1) {
-        key = str;
-      } else {
-        key = str.slice(0, index);
-        val = str.slice(index + 1);
-      }
-      return [key, val];
-    }
-    function splitMediaTypes(accept) {
-      var accepts = accept.split(",");
-      for (var i = 1, j = 0; i < accepts.length; i++) {
-        if (quoteCount(accepts[j]) % 2 == 0) {
-          accepts[++j] = accepts[i];
-        } else {
-          accepts[j] += "," + accepts[i];
-        }
-      }
-      accepts.length = j + 1;
-      return accepts;
-    }
-    function splitParameters(str) {
-      var parameters = str.split(";");
-      for (var i = 1, j = 0; i < parameters.length; i++) {
-        if (quoteCount(parameters[j]) % 2 == 0) {
-          parameters[++j] = parameters[i];
-        } else {
-          parameters[j] += ";" + parameters[i];
-        }
-      }
-      parameters.length = j + 1;
-      for (var i = 0; i < parameters.length; i++) {
-        parameters[i] = parameters[i].trim();
-      }
-      return parameters;
-    }
   }
 });
 
-// ../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/index.js
+// ../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/index.js
 var require_negotiator = __commonJS({
-  "../../node_modules/.pnpm/negotiator@1.0.0/node_modules/negotiator/index.js"(exports, module) {
+  "../../node_modules/.pnpm/negotiator@1.1.0/node_modules/negotiator/index.js"(exports, module) {
     "use strict";
     var preferredCharsets = require_charset();
     var preferredEncodings = require_encoding();
@@ -22167,7 +22111,7 @@ var require_request = __commonJS({
       var querystring = parse3(this).query;
       return queryparse(querystring);
     });
-    req.is = function is3(types3) {
+    req.is = function is2(types3) {
       var arr = types3;
       if (!Array.isArray(types3)) {
         arr = new Array(arguments.length);
@@ -26096,7 +26040,7 @@ var require_indexes = __commonJS({
 var require_thread_stream = __commonJS({
   "../../node_modules/.pnpm/thread-stream@3.1.0/node_modules/thread-stream/index.js"(exports, module) {
     "use strict";
-    var { version: version4 } = require_package();
+    var { version: version3 } = require_package();
     var { EventEmitter } = __require("events");
     var { Worker } = __require("worker_threads");
     var { join } = __require("path");
@@ -26145,7 +26089,7 @@ var require_thread_stream = __commonJS({
           stateBuf: stream[kImpl].stateBuf,
           workerData: {
             $context: {
-              threadStreamVersion: version4
+              threadStreamVersion: version3
             },
             ...workerData
           }
@@ -27255,7 +27199,7 @@ var require_proto = __commonJS({
       noop
     } = require_tools();
     var {
-      version: version4
+      version: version3
     } = require_meta();
     var redaction = require_redaction();
     var constructor = class Pino {
@@ -27267,7 +27211,7 @@ var require_proto = __commonJS({
       setBindings,
       flush,
       isLevelEnabled,
-      version: version4,
+      version: version3,
       get level() {
         return this[getLevelSym]();
       },
@@ -28234,7 +28178,7 @@ var require_pino = __commonJS({
       normalizeDestFileDescriptor,
       noop
     } = require_tools();
-    var { version: version4 } = require_meta();
+    var { version: version3 } = require_meta();
     var {
       chindingsSym,
       redactFmtSym,
@@ -28415,7 +28359,7 @@ var require_pino = __commonJS({
     module.exports.stdSerializers = serializers;
     module.exports.stdTimeFunctions = Object.assign({}, time4);
     module.exports.symbols = symbols;
-    module.exports.version = version4;
+    module.exports.version = version3;
     module.exports.default = pino2;
     module.exports.pino = pino2;
   }
@@ -32007,12 +31951,12 @@ var require_result = __commonJS({
         }
         const row = /* @__PURE__ */ Object.create(null);
         for (let i = 0; i < fieldDescriptions.length; i++) {
-          const desc3 = fieldDescriptions[i];
-          row[desc3.name] = null;
+          const desc2 = fieldDescriptions[i];
+          row[desc2.name] = null;
           if (this._types) {
-            this._parsers[i] = this._types.getTypeParser(desc3.dataTypeID, desc3.format || "text");
+            this._parsers[i] = this._types.getTypeParser(desc2.dataTypeID, desc2.format || "text");
           } else {
-            this._parsers[i] = types3.getTypeParser(desc3.dataTypeID, desc3.format || "text");
+            this._parsers[i] = types3.getTypeParser(desc2.dataTypeID, desc2.format || "text");
           }
         }
         this._prebuiltEmptyResultObject = { ...row };
@@ -35354,7 +35298,7 @@ var init_esm = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/entity.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/entity.js
 function is(value, type) {
   if (!value || typeof value !== "object") {
     return false;
@@ -35378,17 +35322,18 @@ function is(value, type) {
   }
   return false;
 }
-var entityKind;
+var entityKind, hasOwnEntityKind;
 var init_entity = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/entity.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/entity.js"() {
     entityKind = /* @__PURE__ */ Symbol.for("drizzle:entityKind");
+    hasOwnEntityKind = /* @__PURE__ */ Symbol.for("drizzle:hasOwnEntityKind");
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/logger.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/logger.js
 var ConsoleLogWriter, DefaultLogger, NoopLogger;
 var init_logger = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/logger.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/logger.js"() {
     init_entity();
     ConsoleLogWriter = class {
       static [entityKind] = "ConsoleLogWriter";
@@ -35422,10 +35367,10 @@ var init_logger = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/query-promise.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/query-promise.js
 var QueryPromise;
 var init_query_promise = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/query-promise.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/query-promise.js"() {
     init_entity();
     QueryPromise = class {
       static [entityKind] = "QueryPromise";
@@ -35452,10 +35397,10 @@ var init_query_promise = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/column.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/column.js
 var Column;
 var init_column = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/column.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/column.js"() {
     init_entity();
     Column = class {
       constructor(table, config2) {
@@ -35509,10 +35454,10 @@ var init_column = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/column-builder.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/column-builder.js
 var ColumnBuilder;
 var init_column_builder = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/column-builder.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/column-builder.js"() {
     init_entity();
     ColumnBuilder = class {
       static [entityKind] = "ColumnBuilder";
@@ -35618,18 +35563,18 @@ var init_column_builder = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/table.utils.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/table.utils.js
 var TableName;
 var init_table_utils = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/table.utils.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/table.utils.js"() {
     TableName = /* @__PURE__ */ Symbol.for("drizzle:Name");
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/foreign-keys.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/foreign-keys.js
 var ForeignKeyBuilder, ForeignKey;
 var init_foreign_keys = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/foreign-keys.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/foreign-keys.js"() {
     init_entity();
     init_table_utils();
     ForeignKeyBuilder = class {
@@ -35690,16 +35635,16 @@ var init_foreign_keys = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/tracing-utils.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/tracing-utils.js
 function iife(fn, ...args) {
   return fn(...args);
 }
 var init_tracing_utils = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/tracing-utils.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/tracing-utils.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/unique-constraint.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/unique-constraint.js
 function unique(name2) {
   return new UniqueOnConstraintBuilder(name2);
 }
@@ -35708,7 +35653,7 @@ function uniqueKeyName(table, columns) {
 }
 var UniqueConstraintBuilder, UniqueOnConstraintBuilder, UniqueConstraint;
 var init_unique_constraint = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/unique-constraint.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/unique-constraint.js"() {
     init_entity();
     init_table_utils();
     UniqueConstraintBuilder = class {
@@ -35759,7 +35704,7 @@ var init_unique_constraint = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils/array.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils/array.js
 function parsePgArrayValue(arrayString, startFrom, inQuotes) {
   for (let i = startFrom; i < arrayString.length; i++) {
     const char2 = arrayString[i];
@@ -35835,14 +35780,14 @@ function makePgArray(array2) {
   }).join(",")}}`;
 }
 var init_array = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils/array.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils/array.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/common.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/common.js
 var PgColumnBuilder, PgColumn, ExtraConfigColumn, IndexedColumn, PgArrayBuilder, PgArray;
 var init_common = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/common.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/common.js"() {
     init_column_builder();
     init_column();
     init_entity();
@@ -36035,7 +35980,7 @@ var init_common = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/enum.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/enum.js
 function isPgEnum(obj) {
   return !!obj && typeof obj === "function" && isPgEnumSym in obj && obj[isPgEnumSym] === true;
 }
@@ -36065,7 +36010,7 @@ function pgEnumObjectWithSchema(enumName, values, schema) {
 }
 var PgEnumObjectColumnBuilder, PgEnumObjectColumn, isPgEnumSym, PgEnumColumnBuilder, PgEnumColumn;
 var init_enum = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/enum.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/enum.js"() {
     init_entity();
     init_common();
     PgEnumObjectColumnBuilder = class extends PgColumnBuilder {
@@ -36124,17 +36069,17 @@ var init_enum = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/subquery.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/subquery.js
 var Subquery, WithSubquery;
 var init_subquery = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/subquery.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/subquery.js"() {
     init_entity();
     Subquery = class {
       static [entityKind] = "Subquery";
-      constructor(sql4, fields, alias, isWith = false, usedTables = []) {
+      constructor(sql3, fields, alias, isWith = false, usedTables = []) {
         this._ = {
           brand: "Subquery",
-          sql: sql4,
+          sql: sql3,
           selectedFields: fields,
           alias,
           isWith,
@@ -36151,18 +36096,18 @@ var init_subquery = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/version.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/version.js
 var version;
 var init_version = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/version.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/version.js"() {
     version = "0.45.2";
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/tracing.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/tracing.js
 var otel, rawTracer, tracer;
 var init_tracing = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/tracing.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/tracing.js"() {
     init_tracing_utils();
     init_version();
     tracer = {
@@ -36174,14 +36119,14 @@ var init_tracing = __esm({
           rawTracer = otel.trace.getTracer("drizzle-orm", version);
         }
         return iife(
-          (otel22, rawTracer22) => rawTracer22.startActiveSpan(
+          (otel2, rawTracer2) => rawTracer2.startActiveSpan(
             name2,
             (span) => {
               try {
                 return fn(span);
               } catch (e) {
                 span.setStatus({
-                  code: otel22.SpanStatusCode.ERROR,
+                  code: otel2.SpanStatusCode.ERROR,
                   message: e instanceof Error ? e.message : "Unknown error"
                   // eslint-disable-line no-instanceof/no-instanceof
                 });
@@ -36199,15 +36144,15 @@ var init_tracing = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/view-common.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/view-common.js
 var ViewBaseConfig;
 var init_view_common = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/view-common.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/view-common.js"() {
     ViewBaseConfig = /* @__PURE__ */ Symbol.for("drizzle:ViewBaseConfig");
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/table.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/table.js
 function isTable(table) {
   return typeof table === "object" && table !== null && IsDrizzleTable in table;
 }
@@ -36219,7 +36164,7 @@ function getTableUniqueName(table) {
 }
 var Schema, Columns, ExtraConfigColumns, OriginalName, BaseName, IsAlias, ExtraConfigBuilder, IsDrizzleTable, Table;
 var init_table = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/table.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/table.js"() {
     init_entity();
     init_table_utils();
     Schema = /* @__PURE__ */ Symbol.for("drizzle:Schema");
@@ -36279,7 +36224,7 @@ var init_table = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/sql.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/sql.js
 function isSQLWrapper(value) {
   return value !== null && value !== void 0 && typeof value.getSQL === "function";
 }
@@ -36297,8 +36242,14 @@ function mergeQueries(queries) {
   }
   return result;
 }
+function name(value) {
+  return new Name(value);
+}
 function isDriverValueEncoder(value) {
   return typeof value === "object" && value !== null && "mapToDriverValue" in value && typeof value.mapToDriverValue === "function";
+}
+function param(value, encoder) {
+  return new Param(value, encoder);
 }
 function sql(strings, ...params) {
   const queryChunks = [];
@@ -36309,6 +36260,9 @@ function sql(strings, ...params) {
     queryChunks.push(param2, new StringChunk(strings[paramIndex + 1]));
   }
   return new SQL(queryChunks);
+}
+function placeholder(name2) {
+  return new Placeholder(name2);
 }
 function fillPlaceholders(params, values) {
   return params.map((p) => {
@@ -36330,9 +36284,12 @@ function fillPlaceholders(params, values) {
 function isView(view) {
   return typeof view === "object" && view !== null && IsDrizzleView in view;
 }
+function getViewName(view) {
+  return view[ViewBaseConfig].name;
+}
 var FakePrimitiveParam, StringChunk, SQL, Name, noopDecoder, noopEncoder, noopMapper, Param, Placeholder, IsDrizzleView, View;
 var init_sql = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/sql.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/sql.js"() {
     init_entity();
     init_enum();
     init_subquery();
@@ -36626,7 +36583,7 @@ var init_sql = __esm({
       }
       sql22.param = param2;
     })(sql || (sql = {}));
-    ((SQL22) => {
+    ((SQL2) => {
       class Aliased {
         constructor(sql22, fieldAlias) {
           this.sql = sql22;
@@ -36643,7 +36600,7 @@ var init_sql = __esm({
           return new Aliased(this.sql, this.fieldAlias);
         }
       }
-      SQL22.Aliased = Aliased;
+      SQL2.Aliased = Aliased;
     })(SQL || (SQL = {}));
     Placeholder = class {
       constructor(name2) {
@@ -36688,9 +36645,12 @@ var init_sql = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/alias.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/alias.js
 function aliasedTable(table, tableAlias) {
   return new Proxy(table, new TableAliasProxyHandler(tableAlias, false));
+}
+function aliasedRelation(relation, tableAlias) {
+  return new Proxy(relation, new RelationTableAliasProxyHandler(tableAlias));
 }
 function aliasedTableColumn(column, tableAlias) {
   return new Proxy(
@@ -36717,7 +36677,7 @@ function mapColumnsInSQLToAlias(query, alias) {
 }
 var ColumnAliasProxyHandler, TableAliasProxyHandler, RelationTableAliasProxyHandler;
 var init_alias = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/alias.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/alias.js"() {
     init_column();
     init_entity();
     init_sql();
@@ -36794,10 +36754,10 @@ var init_alias = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/selection-proxy.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/selection-proxy.js
 var SelectionProxyHandler;
 var init_selection_proxy = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/selection-proxy.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/selection-proxy.js"() {
     init_alias();
     init_column();
     init_entity();
@@ -36873,7 +36833,7 @@ var init_selection_proxy = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/utils.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/utils.js
 function mapResultRow(columns, row, joinsNotNullableMap) {
   const nullifyMap = {};
   const result = columns.reduce(
@@ -37027,7 +36987,7 @@ function isConfig(data) {
 }
 var textDecoder;
 var init_utils = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/utils.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/utils.js"() {
     init_column();
     init_entity();
     init_sql();
@@ -37038,10 +36998,10 @@ var init_utils = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/int.common.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/int.common.js
 var PgIntColumnBaseBuilder;
 var init_int_common = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/int.common.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/int.common.js"() {
     init_entity();
     init_common();
     PgIntColumnBaseBuilder = class extends PgColumnBuilder {
@@ -37084,7 +37044,7 @@ var init_int_common = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/bigint.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/bigint.js
 function bigint(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (config2.mode === "number") {
@@ -37094,7 +37054,7 @@ function bigint(a, b) {
 }
 var PgBigInt53Builder, PgBigInt53, PgBigInt64Builder, PgBigInt64;
 var init_bigint = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/bigint.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/bigint.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37147,7 +37107,7 @@ var init_bigint = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/bigserial.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/bigserial.js
 function bigserial(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (config2.mode === "number") {
@@ -37157,7 +37117,7 @@ function bigserial(a, b) {
 }
 var PgBigSerial53Builder, PgBigSerial53, PgBigSerial64Builder, PgBigSerial64;
 var init_bigserial = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/bigserial.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/bigserial.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37215,13 +37175,13 @@ var init_bigserial = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/boolean.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/boolean.js
 function boolean(name2) {
   return new PgBooleanBuilder(name2 ?? "");
 }
 var PgBooleanBuilder, PgBoolean;
 var init_boolean = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/boolean.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/boolean.js"() {
     init_entity();
     init_common();
     PgBooleanBuilder = class extends PgColumnBuilder {
@@ -37243,14 +37203,14 @@ var init_boolean = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/char.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/char.js
 function char(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgCharBuilder(name2, config2);
 }
 var PgCharBuilder, PgChar;
 var init_char = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/char.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/char.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37280,13 +37240,13 @@ var init_char = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/cidr.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/cidr.js
 function cidr(name2) {
   return new PgCidrBuilder(name2 ?? "");
 }
 var PgCidrBuilder, PgCidr;
 var init_cidr = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/cidr.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/cidr.js"() {
     init_entity();
     init_common();
     PgCidrBuilder = class extends PgColumnBuilder {
@@ -37308,7 +37268,7 @@ var init_cidr = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/custom.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/custom.js
 function customType(customTypeParams) {
   return (a, b) => {
     const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
@@ -37317,7 +37277,7 @@ function customType(customTypeParams) {
 }
 var PgCustomColumnBuilder, PgCustomColumn;
 var init_custom = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/custom.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/custom.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37360,10 +37320,10 @@ var init_custom = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/date.common.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/date.common.js
 var PgDateColumnBaseBuilder;
 var init_date_common = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/date.common.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/date.common.js"() {
     init_entity();
     init_sql();
     init_common();
@@ -37376,7 +37336,7 @@ var init_date_common = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/date.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/date.js
 function date(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (config2?.mode === "date") {
@@ -37386,7 +37346,7 @@ function date(a, b) {
 }
 var PgDateBuilder, PgDate, PgDateStringBuilder, PgDateString;
 var init_date = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/date.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/date.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37440,13 +37400,13 @@ var init_date = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/double-precision.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/double-precision.js
 function doublePrecision(name2) {
   return new PgDoublePrecisionBuilder(name2 ?? "");
 }
 var PgDoublePrecisionBuilder, PgDoublePrecision;
 var init_double_precision = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/double-precision.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/double-precision.js"() {
     init_entity();
     init_common();
     PgDoublePrecisionBuilder = class extends PgColumnBuilder {
@@ -37477,13 +37437,13 @@ var init_double_precision = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/inet.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/inet.js
 function inet(name2) {
   return new PgInetBuilder(name2 ?? "");
 }
 var PgInetBuilder, PgInet;
 var init_inet = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/inet.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/inet.js"() {
     init_entity();
     init_common();
     PgInetBuilder = class extends PgColumnBuilder {
@@ -37505,13 +37465,13 @@ var init_inet = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/integer.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/integer.js
 function integer(name2) {
   return new PgIntegerBuilder(name2 ?? "");
 }
 var PgIntegerBuilder, PgInteger;
 var init_integer = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/integer.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/integer.js"() {
     init_entity();
     init_common();
     init_int_common();
@@ -37540,14 +37500,14 @@ var init_integer = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/interval.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/interval.js
 function interval(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgIntervalBuilder(name2, config2);
 }
 var PgIntervalBuilder, PgInterval;
 var init_interval = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/interval.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/interval.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37575,13 +37535,13 @@ var init_interval = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/json.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/json.js
 function json(name2) {
   return new PgJsonBuilder(name2 ?? "");
 }
 var PgJsonBuilder, PgJson;
 var init_json = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/json.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/json.js"() {
     init_entity();
     init_common();
     PgJsonBuilder = class extends PgColumnBuilder {
@@ -37619,13 +37579,13 @@ var init_json = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/jsonb.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/jsonb.js
 function jsonb(name2) {
   return new PgJsonbBuilder(name2 ?? "");
 }
 var PgJsonbBuilder, PgJsonb;
 var init_jsonb = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/jsonb.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/jsonb.js"() {
     init_entity();
     init_common();
     PgJsonbBuilder = class extends PgColumnBuilder {
@@ -37663,7 +37623,7 @@ var init_jsonb = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/line.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/line.js
 function line(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (!config2?.mode || config2.mode === "tuple") {
@@ -37673,7 +37633,7 @@ function line(a, b) {
 }
 var PgLineBuilder, PgLineTuple, PgLineABCBuilder, PgLineABC;
 var init_line = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/line.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/line.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37732,13 +37692,13 @@ var init_line = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/macaddr.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/macaddr.js
 function macaddr(name2) {
   return new PgMacaddrBuilder(name2 ?? "");
 }
 var PgMacaddrBuilder, PgMacaddr;
 var init_macaddr = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/macaddr.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/macaddr.js"() {
     init_entity();
     init_common();
     PgMacaddrBuilder = class extends PgColumnBuilder {
@@ -37760,13 +37720,13 @@ var init_macaddr = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/macaddr8.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/macaddr8.js
 function macaddr8(name2) {
   return new PgMacaddr8Builder(name2 ?? "");
 }
 var PgMacaddr8Builder, PgMacaddr8;
 var init_macaddr8 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/macaddr8.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/macaddr8.js"() {
     init_entity();
     init_common();
     PgMacaddr8Builder = class extends PgColumnBuilder {
@@ -37788,7 +37748,7 @@ var init_macaddr8 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/numeric.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/numeric.js
 function numeric(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   const mode = config2?.mode;
@@ -37796,7 +37756,7 @@ function numeric(a, b) {
 }
 var PgNumericBuilder, PgNumeric, PgNumericNumberBuilder, PgNumericNumber, PgNumericBigIntBuilder, PgNumericBigInt;
 var init_numeric = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/numeric.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/numeric.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37913,7 +37873,7 @@ var init_numeric = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/point.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/point.js
 function point(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (!config2?.mode || config2.mode === "tuple") {
@@ -37923,7 +37883,7 @@ function point(a, b) {
 }
 var PgPointTupleBuilder, PgPointTuple, PgPointObjectBuilder, PgPointObject;
 var init_point = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/point.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/point.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -37988,7 +37948,7 @@ var init_point = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js
 function hexToBytes(hex) {
   const bytes = [];
   for (let c = 0; c < hex.length; c += 2) {
@@ -38027,11 +37987,11 @@ function parseEWKB(hex) {
   throw new Error("Unsupported geometry type");
 }
 var init_utils2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js
 function geometry(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (!config2?.mode || config2.mode === "tuple") {
@@ -38041,7 +38001,7 @@ function geometry(a, b) {
 }
 var PgGeometryBuilder, PgGeometry, PgGeometryObjectBuilder, PgGeometryObject;
 var init_geometry = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38100,13 +38060,13 @@ var init_geometry = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/real.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/real.js
 function real(name2) {
   return new PgRealBuilder(name2 ?? "");
 }
 var PgRealBuilder, PgReal;
 var init_real = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/real.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/real.js"() {
     init_entity();
     init_common();
     PgRealBuilder = class extends PgColumnBuilder {
@@ -38138,13 +38098,13 @@ var init_real = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/serial.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/serial.js
 function serial(name2) {
   return new PgSerialBuilder(name2 ?? "");
 }
 var PgSerialBuilder, PgSerial;
 var init_serial = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/serial.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/serial.js"() {
     init_entity();
     init_common();
     PgSerialBuilder = class extends PgColumnBuilder {
@@ -38168,13 +38128,13 @@ var init_serial = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/smallint.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/smallint.js
 function smallint(name2) {
   return new PgSmallIntBuilder(name2 ?? "");
 }
 var PgSmallIntBuilder, PgSmallInt;
 var init_smallint = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/smallint.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/smallint.js"() {
     init_entity();
     init_common();
     init_int_common();
@@ -38203,13 +38163,13 @@ var init_smallint = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/smallserial.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/smallserial.js
 function smallserial(name2) {
   return new PgSmallSerialBuilder(name2 ?? "");
 }
 var PgSmallSerialBuilder, PgSmallSerial;
 var init_smallserial = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/smallserial.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/smallserial.js"() {
     init_entity();
     init_common();
     PgSmallSerialBuilder = class extends PgColumnBuilder {
@@ -38236,14 +38196,14 @@ var init_smallserial = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/text.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/text.js
 function text(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgTextBuilder(name2, config2);
 }
 var PgTextBuilder, PgText;
 var init_text = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/text.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/text.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38268,14 +38228,14 @@ var init_text = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/time.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/time.js
 function time(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgTimeBuilder(name2, config2.withTimezone ?? false, config2.precision);
 }
 var PgTimeBuilder, PgTime;
 var init_time = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/time.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/time.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38311,7 +38271,7 @@ var init_time = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/timestamp.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/timestamp.js
 function timestamp(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   if (config2?.mode === "string") {
@@ -38321,7 +38281,7 @@ function timestamp(a, b = {}) {
 }
 var PgTimestampBuilder, PgTimestamp, PgTimestampStringBuilder, PgTimestampString;
 var init_timestamp = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/timestamp.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/timestamp.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38401,13 +38361,13 @@ var init_timestamp = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/uuid.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/uuid.js
 function uuid(name2) {
   return new PgUUIDBuilder(name2 ?? "");
 }
 var PgUUIDBuilder, PgUUID;
 var init_uuid = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/uuid.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/uuid.js"() {
     init_entity();
     init_sql();
     init_common();
@@ -38436,14 +38396,14 @@ var init_uuid = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/varchar.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/varchar.js
 function varchar(a, b = {}) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgVarcharBuilder(name2, config2);
 }
 var PgVarcharBuilder, PgVarchar;
 var init_varchar = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/varchar.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/varchar.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38473,14 +38433,14 @@ var init_varchar = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js
 function bit(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgBinaryVectorBuilder(name2, config2);
 }
 var PgBinaryVectorBuilder, PgBinaryVector;
 var init_bit = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38508,14 +38468,14 @@ var init_bit = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js
 function halfvec(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgHalfVectorBuilder(name2, config2);
 }
 var PgHalfVectorBuilder, PgHalfVector;
 var init_halfvec = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38549,14 +38509,14 @@ var init_halfvec = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js
 function sparsevec(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgSparseVectorBuilder(name2, config2);
 }
 var PgSparseVectorBuilder, PgSparseVector;
 var init_sparsevec = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38584,14 +38544,14 @@ var init_sparsevec = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js
 function vector(a, b) {
   const { name: name2, config: config2 } = getColumnNameAndConfig(a, b);
   return new PgVectorBuilder(name2, config2);
 }
 var PgVectorBuilder, PgVector;
 var init_vector = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js"() {
     init_entity();
     init_utils();
     init_common();
@@ -38625,7 +38585,7 @@ var init_vector = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/all.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/all.js
 function getPgColumnBuilders() {
   return {
     bigint,
@@ -38663,7 +38623,7 @@ function getPgColumnBuilders() {
   };
 }
 var init_all = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/all.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/all.js"() {
     init_bigint();
     init_bigserial();
     init_boolean();
@@ -38699,7 +38659,7 @@ var init_all = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/table.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/table.js
 function pgTableWithSchema(name2, columns, extraConfig, schema, baseName = name2) {
   const rawTable = new PgTable(name2, schema, baseName);
   const parsedColumns = typeof columns === "function" ? columns(getPgColumnBuilders()) : columns;
@@ -38735,7 +38695,7 @@ function pgTableWithSchema(name2, columns, extraConfig, schema, baseName = name2
 }
 var InlineForeignKeys, EnableRLS, PgTable, pgTable;
 var init_table2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/table.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/table.js"() {
     init_entity();
     init_table();
     init_all();
@@ -38763,10 +38723,10 @@ var init_table2 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/checks.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/checks.js
 var CheckBuilder, Check;
 var init_checks = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/checks.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/checks.js"() {
     init_entity();
     CheckBuilder = class {
       constructor(name2, value) {
@@ -38793,9 +38753,9 @@ var init_checks = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/index.js
 var init_columns = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/columns/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/columns/index.js"() {
     init_bigint();
     init_bigserial();
     init_boolean();
@@ -38834,10 +38794,10 @@ var init_columns = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/indexes.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/indexes.js
 var IndexBuilderOn, IndexBuilder, Index;
 var init_indexes = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/indexes.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/indexes.js"() {
     init_sql();
     init_entity();
     init_columns();
@@ -38948,10 +38908,10 @@ var init_indexes = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/policies.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/policies.js
 var PgPolicy;
 var init_policies = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/policies.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/policies.js"() {
     init_entity();
     PgPolicy = class {
       constructor(name2, config2) {
@@ -38980,7 +38940,7 @@ var init_policies = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/primary-keys.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/primary-keys.js
 function primaryKey(...config2) {
   if (config2[0].columns) {
     return new PrimaryKeyBuilder(config2[0].columns, config2[0].name);
@@ -38989,7 +38949,7 @@ function primaryKey(...config2) {
 }
 var PrimaryKeyBuilder, PrimaryKey;
 var init_primary_keys = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/primary-keys.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/primary-keys.js"() {
     init_entity();
     init_table2();
     PrimaryKeyBuilder = class {
@@ -39023,15 +38983,15 @@ var init_primary_keys = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view-common.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view-common.js
 var PgViewConfig;
 var init_view_common2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view-common.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view-common.js"() {
     PgViewConfig = /* @__PURE__ */ Symbol.for("drizzle:PgViewConfig");
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/casing.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/casing.js
 function toSnakeCase(input) {
   const words = input.replace(/['\u2019]/g, "").match(/[\da-z]+|[A-Z]+(?![a-z])|[A-Z][\da-z]+/g) ?? [];
   return words.map((word) => word.toLowerCase()).join("_");
@@ -39048,7 +39008,7 @@ function noopCase(input) {
 }
 var CasingCache;
 var init_casing = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/casing.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/casing.js"() {
     init_entity();
     init_table();
     CasingCache = class {
@@ -39090,10 +39050,10 @@ var init_casing = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/errors.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/errors.js
 var DrizzleError, DrizzleQueryError, TransactionRollbackError;
 var init_errors = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/errors.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/errors.js"() {
     init_entity();
     DrizzleError = class extends Error {
       static [entityKind] = "DrizzleError";
@@ -39123,7 +39083,7 @@ params: ${params}`);
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/conditions.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/conditions.js
 function bindIfParam(value, column) {
   if (isDriverValueEncoder(column) && !isSQLWrapper(value) && !is(value, Param) && !is(value, Placeholder) && !is(value, Column) && !is(value, Table) && !is(value, View)) {
     return new Param(value, column);
@@ -39219,9 +39179,39 @@ function ilike(column, value) {
 function notIlike(column, value) {
   return sql`${column} not ilike ${value}`;
 }
+function arrayContains(column, values) {
+  if (Array.isArray(values)) {
+    if (values.length === 0) {
+      throw new Error("arrayContains requires at least one value");
+    }
+    const array2 = sql`${bindIfParam(values, column)}`;
+    return sql`${column} @> ${array2}`;
+  }
+  return sql`${column} @> ${bindIfParam(values, column)}`;
+}
+function arrayContained(column, values) {
+  if (Array.isArray(values)) {
+    if (values.length === 0) {
+      throw new Error("arrayContained requires at least one value");
+    }
+    const array2 = sql`${bindIfParam(values, column)}`;
+    return sql`${column} <@ ${array2}`;
+  }
+  return sql`${column} <@ ${bindIfParam(values, column)}`;
+}
+function arrayOverlaps(column, values) {
+  if (Array.isArray(values)) {
+    if (values.length === 0) {
+      throw new Error("arrayOverlaps requires at least one value");
+    }
+    const array2 = sql`${bindIfParam(values, column)}`;
+    return sql`${column} && ${array2}`;
+  }
+  return sql`${column} && ${bindIfParam(values, column)}`;
+}
 var eq, ne, gt, gte, lt, lte;
 var init_conditions = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/conditions.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/conditions.js"() {
     init_column();
     init_entity();
     init_table();
@@ -39247,7 +39237,7 @@ var init_conditions = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/select.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/select.js
 function asc(column) {
   return sql`${column} asc`;
 }
@@ -39255,20 +39245,20 @@ function desc(column) {
   return sql`${column} desc`;
 }
 var init_select = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/select.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/select.js"() {
     init_sql();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/index.js
 var init_expressions = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/expressions/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/expressions/index.js"() {
     init_conditions();
     init_select();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/relations.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/relations.js
 function getOperators() {
   return {
     and,
@@ -39340,11 +39330,11 @@ function extractTablesRelationalConfig(schema, configHelpers) {
     } else if (is(value, Relations)) {
       const dbName = getTableUniqueName(value.table);
       const tableName = tableNamesMap[dbName];
-      const relations22 = value.config(
+      const relations2 = value.config(
         configHelpers(value.table)
       );
       let primaryKey2;
-      for (const [relationName, relation] of Object.entries(relations22)) {
+      for (const [relationName, relation] of Object.entries(relations2)) {
         if (tableName) {
           const tableConfig = tablesConfig[tableName];
           tableConfig.relations[relationName] = relation;
@@ -39365,11 +39355,11 @@ function extractTablesRelationalConfig(schema, configHelpers) {
   }
   return { tables: tablesConfig, tableNamesMap };
 }
-function relations(table, relations22) {
+function relations(table, relations2) {
   return new Relations(
     table,
     (helpers) => Object.fromEntries(
-      Object.entries(relations22(helpers)).map(([key, value]) => [
+      Object.entries(relations2(helpers)).map(([key, value]) => [
         key,
         value.withFieldName(key)
       ])
@@ -39489,7 +39479,7 @@ function mapRelationalRow(tablesConfig, tableConfig, row, buildQueryResultSelect
 }
 var Relation, Relations, One, Many;
 var init_relations = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/relations.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/relations.js"() {
     init_table();
     init_column();
     init_entity();
@@ -39551,39 +39541,106 @@ var init_relations = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/aggregate.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/aggregate.js
+function count(expression) {
+  return sql`count(${expression || sql.raw("*")})`.mapWith(Number);
+}
+function countDistinct(expression) {
+  return sql`count(distinct ${expression})`.mapWith(Number);
+}
+function avg(expression) {
+  return sql`avg(${expression})`.mapWith(String);
+}
+function avgDistinct(expression) {
+  return sql`avg(distinct ${expression})`.mapWith(String);
+}
+function sum(expression) {
+  return sql`sum(${expression})`.mapWith(String);
+}
+function sumDistinct(expression) {
+  return sql`sum(distinct ${expression})`.mapWith(String);
+}
+function max(expression) {
+  return sql`max(${expression})`.mapWith(is(expression, Column) ? expression : String);
+}
+function min(expression) {
+  return sql`min(${expression})`.mapWith(is(expression, Column) ? expression : String);
+}
 var init_aggregate = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/aggregate.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/aggregate.js"() {
+    init_column();
+    init_entity();
+    init_sql();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/vector.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/vector.js
+function toSql(value) {
+  return JSON.stringify(value);
+}
+function l2Distance(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <-> ${toSql(value)}`;
+  }
+  return sql`${column} <-> ${value}`;
+}
+function l1Distance(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <+> ${toSql(value)}`;
+  }
+  return sql`${column} <+> ${value}`;
+}
+function innerProduct(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <#> ${toSql(value)}`;
+  }
+  return sql`${column} <#> ${value}`;
+}
+function cosineDistance(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <=> ${toSql(value)}`;
+  }
+  return sql`${column} <=> ${value}`;
+}
+function hammingDistance(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <~> ${toSql(value)}`;
+  }
+  return sql`${column} <~> ${value}`;
+}
+function jaccardDistance(column, value) {
+  if (Array.isArray(value)) {
+    return sql`${column} <%> ${toSql(value)}`;
+  }
+  return sql`${column} <%> ${value}`;
+}
 var init_vector2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/vector.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/vector.js"() {
+    init_sql();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/index.js
 var init_functions = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/functions/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/functions/index.js"() {
     init_aggregate();
     init_vector2();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/index.js
 var init_sql2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/sql/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/sql/index.js"() {
     init_expressions();
     init_functions();
     init_sql();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view-base.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view-base.js
 var PgViewBase;
 var init_view_base = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view-base.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view-base.js"() {
     init_entity();
     init_sql();
     PgViewBase = class extends View {
@@ -39592,10 +39649,10 @@ var init_view_base = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/dialect.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/dialect.js
 var PgDialect;
 var init_dialect = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/dialect.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/dialect.js"() {
     init_alias();
     init_casing();
     init_column();
@@ -40717,10 +40774,10 @@ var init_dialect = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/query-builders/query-builder.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/query-builders/query-builder.js
 var TypedQueryBuilder;
 var init_query_builder = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/query-builders/query-builder.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/query-builders/query-builder.js"() {
     init_entity();
     TypedQueryBuilder = class {
       static [entityKind] = "TypedQueryBuilder";
@@ -40732,7 +40789,7 @@ var init_query_builder = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/select.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/select.js
 function createSetOperator(type, isAll) {
   return (leftSelect, rightSelect, ...restSelects) => {
     const setOperators = [rightSelect, ...restSelects].map((select) => ({
@@ -40752,7 +40809,7 @@ function createSetOperator(type, isAll) {
 }
 var PgSelectBuilder, PgSelectQueryBuilderBase, PgSelectBase, getPgSetOperators, union, unionAll, intersect, intersectAll, except, exceptAll;
 var init_select2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/select.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/select.js"() {
     init_entity();
     init_view_base();
     init_query_builder();
@@ -41566,10 +41623,10 @@ var init_select2 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/query-builder.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/query-builder.js
 var QueryBuilder;
 var init_query_builder2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/query-builder.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/query-builder.js"() {
     init_entity();
     init_dialect();
     init_selection_proxy();
@@ -41663,7 +41720,7 @@ var init_query_builder2 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view.js
 function pgViewWithSchema(name2, selection, schema) {
   if (selection) {
     return new ManualViewBuilder(name2, selection, schema);
@@ -41678,7 +41735,7 @@ function pgMaterializedViewWithSchema(name2, selection, schema) {
 }
 var DefaultViewBuilderCore, ViewBuilder, ManualViewBuilder, MaterializedViewBuilderCore, MaterializedViewBuilder, ManualMaterializedViewBuilder, PgView, PgMaterializedViewConfig, PgMaterializedView;
 var init_view = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/view.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/view.js"() {
     init_entity();
     init_selection_proxy();
     init_utils();
@@ -41912,7 +41969,7 @@ var init_view = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils.js
 function extractUsedTable(table) {
   if (is(table, PgTable)) {
     return [table[Schema] ? `${table[Schema]}.${table[Table.Symbol.BaseName]}` : table[Table.Symbol.BaseName]];
@@ -41926,7 +41983,7 @@ function extractUsedTable(table) {
   return [];
 }
 var init_utils3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils.js"() {
     init_entity();
     init_table2();
     init_sql();
@@ -41935,10 +41992,10 @@ var init_utils3 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/delete.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/delete.js
 var PgDeleteBase;
 var init_delete = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/delete.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/delete.js"() {
     init_entity();
     init_query_promise();
     init_selection_proxy();
@@ -42043,10 +42100,10 @@ var init_delete = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/insert.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/insert.js
 var PgInsertBuilder, PgInsertBase;
 var init_insert = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/insert.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/insert.js"() {
     init_entity();
     init_query_promise();
     init_selection_proxy();
@@ -42250,10 +42307,10 @@ var init_insert = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js
 var PgRefreshMaterializedView;
 var init_refresh_materialized_view = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js"() {
     init_entity();
     init_query_promise();
     init_tracing();
@@ -42312,16 +42369,16 @@ var init_refresh_materialized_view = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/select.types.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/select.types.js
 var init_select_types = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/select.types.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/select.types.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/update.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/update.js
 var PgUpdateBuilder, PgUpdateBase;
 var init_update = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/update.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/update.js"() {
     init_entity();
     init_table2();
     init_query_promise();
@@ -42545,9 +42602,9 @@ var init_update = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/index.js
 var init_query_builders = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/index.js"() {
     init_delete();
     init_insert();
     init_query_builder2();
@@ -42558,10 +42615,10 @@ var init_query_builders = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/count.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/count.js
 var PgCountBuilder;
 var init_count = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/count.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/count.js"() {
     init_entity();
     init_sql();
     PgCountBuilder = class _PgCountBuilder extends SQL {
@@ -42616,10 +42673,10 @@ var init_count = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/query.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/query.js
 var RelationalQueryBuilder, PgRelationalQuery;
 var init_query = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/query.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/query.js"() {
     init_entity();
     init_query_promise();
     init_relations();
@@ -42738,17 +42795,17 @@ var init_query = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/raw.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/raw.js
 var PgRaw;
 var init_raw = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/query-builders/raw.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/query-builders/raw.js"() {
     init_entity();
     init_query_promise();
     PgRaw = class extends QueryPromise {
-      constructor(execute, sql4, query, mapBatchResult) {
+      constructor(execute, sql3, query, mapBatchResult) {
         super();
         this.execute = execute;
-        this.sql = sql4;
+        this.sql = sql3;
         this.query = query;
         this.mapBatchResult = mapBatchResult;
       }
@@ -42774,10 +42831,10 @@ var init_raw = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/db.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/db.js
 var PgDatabase;
 var init_db = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/db.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/db.js"() {
     init_entity();
     init_query_builders();
     init_selection_proxy();
@@ -43067,9 +43124,9 @@ var init_db = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/cache/core/cache.js
-async function hashQuery(sql4, params) {
-  const dataToHash = `${sql4}-${JSON.stringify(params)}`;
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/cache/core/cache.js
+async function hashQuery(sql3, params) {
+  const dataToHash = `${sql3}-${JSON.stringify(params)}`;
   const encoder = new TextEncoder();
   const data = encoder.encode(dataToHash);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -43079,7 +43136,7 @@ async function hashQuery(sql4, params) {
 }
 var Cache, NoopCache;
 var init_cache = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/cache/core/cache.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/cache/core/cache.js"() {
     init_entity();
     Cache = class {
       static [entityKind] = "Cache";
@@ -43100,23 +43157,23 @@ var init_cache = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/cache/core/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/cache/core/index.js
 var init_core = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/cache/core/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/cache/core/index.js"() {
     init_cache();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/alias.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/alias.js
 var init_alias2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/alias.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/alias.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/roles.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/roles.js
 var PgRole;
 var init_roles = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/roles.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/roles.js"() {
     init_entity();
     PgRole = class {
       constructor(name2, config2) {
@@ -43144,13 +43201,13 @@ var init_roles = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/sequence.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/sequence.js
 function pgSequenceWithSchema(name2, options, schema) {
   return new PgSequence(name2, options, schema);
 }
 var PgSequence;
 var init_sequence = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/sequence.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/sequence.js"() {
     init_entity();
     PgSequence = class {
       constructor(seqName, seqOptions, schema) {
@@ -43163,10 +43220,10 @@ var init_sequence = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/schema.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/schema.js
 var PgSchema;
 var init_schema = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/schema.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/schema.js"() {
     init_entity();
     init_sql();
     init_enum();
@@ -43207,10 +43264,10 @@ var init_schema = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/session.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/session.js
 var PgPreparedQuery, PgSession, PgTransaction;
 var init_session = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/session.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/session.js"() {
     init_cache();
     init_entity();
     init_errors();
@@ -43378,22 +43435,22 @@ var init_session = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/subquery.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/subquery.js
 var init_subquery2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/subquery.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/subquery.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils/index.js
 var init_utils4 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/utils/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/utils/index.js"() {
     init_array();
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/index.js
 var init_pg_core = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/pg-core/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/pg-core/index.js"() {
     init_alias2();
     init_checks();
     init_columns();
@@ -43418,10 +43475,10 @@ var init_pg_core = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/session.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/session.js
 var Pool2, types2, NodePgPreparedQuery, NodePgSession, NodePgTransaction;
 var init_session2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/session.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/session.js"() {
     init_esm();
     init_core();
     init_entity();
@@ -43648,7 +43705,7 @@ var init_session2 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/driver.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/driver.js
 function construct(client, config2 = {}) {
   const dialect = new PgDialect({ casing: config2.casing });
   let logger2;
@@ -43698,7 +43755,7 @@ function drizzle(...params) {
 }
 var NodePgDriver, NodePgDatabase;
 var init_driver = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/driver.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/driver.js"() {
     init_esm();
     init_entity();
     init_logger();
@@ -43733,9 +43790,9 @@ var init_driver = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/index.js
 var init_node_postgres = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/node-postgres/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/node-postgres/index.js"() {
     init_driver();
     init_session2();
   }
@@ -44624,10 +44681,10 @@ var init_regexes = __esm({
     duration = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/;
     extendedDuration = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/;
     guid = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
-    uuid2 = (version4) => {
-      if (!version4)
+    uuid2 = (version3) => {
+      if (!version3)
         return /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$/;
-      return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version4}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
+      return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version3}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
     };
     uuid4 = /* @__PURE__ */ uuid2(4);
     uuid6 = /* @__PURE__ */ uuid2(6);
@@ -55350,15 +55407,136 @@ var init_v4 = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/operations.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/operations.js
 var init_operations = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/operations.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/operations.js"() {
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/index.js
+// ../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/index.js
+var drizzle_orm_exports = {};
+__export(drizzle_orm_exports, {
+  BaseName: () => BaseName,
+  Column: () => Column,
+  ColumnAliasProxyHandler: () => ColumnAliasProxyHandler,
+  ColumnBuilder: () => ColumnBuilder,
+  Columns: () => Columns,
+  ConsoleLogWriter: () => ConsoleLogWriter,
+  DefaultLogger: () => DefaultLogger,
+  DrizzleError: () => DrizzleError,
+  DrizzleQueryError: () => DrizzleQueryError,
+  ExtraConfigBuilder: () => ExtraConfigBuilder,
+  ExtraConfigColumns: () => ExtraConfigColumns,
+  FakePrimitiveParam: () => FakePrimitiveParam,
+  IsAlias: () => IsAlias,
+  Many: () => Many,
+  Name: () => Name,
+  NoopLogger: () => NoopLogger,
+  One: () => One,
+  OriginalName: () => OriginalName,
+  Param: () => Param,
+  Placeholder: () => Placeholder,
+  QueryPromise: () => QueryPromise,
+  Relation: () => Relation,
+  RelationTableAliasProxyHandler: () => RelationTableAliasProxyHandler,
+  Relations: () => Relations,
+  SQL: () => SQL,
+  Schema: () => Schema,
+  StringChunk: () => StringChunk,
+  Subquery: () => Subquery,
+  Table: () => Table,
+  TableAliasProxyHandler: () => TableAliasProxyHandler,
+  TransactionRollbackError: () => TransactionRollbackError,
+  View: () => View,
+  ViewBaseConfig: () => ViewBaseConfig,
+  WithSubquery: () => WithSubquery,
+  aliasedRelation: () => aliasedRelation,
+  aliasedTable: () => aliasedTable,
+  aliasedTableColumn: () => aliasedTableColumn,
+  and: () => and,
+  applyMixins: () => applyMixins,
+  arrayContained: () => arrayContained,
+  arrayContains: () => arrayContains,
+  arrayOverlaps: () => arrayOverlaps,
+  asc: () => asc,
+  avg: () => avg,
+  avgDistinct: () => avgDistinct,
+  between: () => between,
+  bindIfParam: () => bindIfParam,
+  cosineDistance: () => cosineDistance,
+  count: () => count,
+  countDistinct: () => countDistinct,
+  createMany: () => createMany,
+  createOne: () => createOne,
+  createTableRelationsHelpers: () => createTableRelationsHelpers,
+  desc: () => desc,
+  entityKind: () => entityKind,
+  eq: () => eq,
+  exists: () => exists,
+  extractTablesRelationalConfig: () => extractTablesRelationalConfig,
+  fillPlaceholders: () => fillPlaceholders,
+  getColumnNameAndConfig: () => getColumnNameAndConfig,
+  getOperators: () => getOperators,
+  getOrderByOperators: () => getOrderByOperators,
+  getTableColumns: () => getTableColumns,
+  getTableLikeName: () => getTableLikeName,
+  getTableName: () => getTableName,
+  getTableUniqueName: () => getTableUniqueName,
+  getViewName: () => getViewName,
+  getViewSelectedFields: () => getViewSelectedFields,
+  gt: () => gt,
+  gte: () => gte,
+  hammingDistance: () => hammingDistance,
+  hasOwnEntityKind: () => hasOwnEntityKind,
+  haveSameKeys: () => haveSameKeys,
+  ilike: () => ilike,
+  inArray: () => inArray,
+  innerProduct: () => innerProduct,
+  is: () => is,
+  isConfig: () => isConfig,
+  isDriverValueEncoder: () => isDriverValueEncoder,
+  isNotNull: () => isNotNull,
+  isNull: () => isNull,
+  isSQLWrapper: () => isSQLWrapper,
+  isTable: () => isTable,
+  isView: () => isView,
+  jaccardDistance: () => jaccardDistance,
+  l1Distance: () => l1Distance,
+  l2Distance: () => l2Distance,
+  like: () => like,
+  lt: () => lt,
+  lte: () => lte,
+  mapColumnsInAliasedSQLToAlias: () => mapColumnsInAliasedSQLToAlias,
+  mapColumnsInSQLToAlias: () => mapColumnsInSQLToAlias,
+  mapRelationalRow: () => mapRelationalRow,
+  mapResultRow: () => mapResultRow,
+  mapUpdateSet: () => mapUpdateSet,
+  max: () => max,
+  min: () => min,
+  name: () => name,
+  ne: () => ne,
+  noopDecoder: () => noopDecoder,
+  noopEncoder: () => noopEncoder,
+  noopMapper: () => noopMapper,
+  normalizeRelation: () => normalizeRelation,
+  not: () => not,
+  notBetween: () => notBetween,
+  notExists: () => notExists,
+  notIlike: () => notIlike,
+  notInArray: () => notInArray,
+  notLike: () => notLike,
+  or: () => or,
+  orderSelectedFields: () => orderSelectedFields,
+  param: () => param,
+  placeholder: () => placeholder,
+  relations: () => relations,
+  sql: () => sql,
+  sum: () => sum,
+  sumDistinct: () => sumDistinct,
+  textDecoder: () => textDecoder
+});
 var init_drizzle_orm = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_0e9cab36dde92f8749ee4e37b92f597d/node_modules/drizzle-orm/index.js"() {
+  "../../node_modules/.pnpm/drizzle-orm@0.45.2_@neondat_f6882cd8a9810dab0768093c77be306b/node_modules/drizzle-orm/index.js"() {
     init_alias();
     init_column_builder();
     init_column();
@@ -55376,7 +55554,7 @@ var init_drizzle_orm = __esm({
   }
 });
 
-// ../../node_modules/.pnpm/drizzle-zod@0.8.3_drizzle-o_2849bc3a608471dee4269ed46afe7df3/node_modules/drizzle-zod/index.mjs
+// ../../node_modules/.pnpm/drizzle-zod@0.8.3_drizzle-o_7bb0c3abe028e8142594a4eadfb350c9/node_modules/drizzle-zod/index.mjs
 function isColumnType(column, columnTypes) {
   return columnTypes.includes(column.columnType);
 }
@@ -55588,7 +55766,7 @@ function handleColumns(columns, refinements, conditions, factory) {
 }
 var CONSTANTS, literalSchema, jsonSchema, bufferSchema, insertConditions, createInsertSchema;
 var init_drizzle_zod = __esm({
-  "../../node_modules/.pnpm/drizzle-zod@0.8.3_drizzle-o_2849bc3a608471dee4269ed46afe7df3/node_modules/drizzle-zod/index.mjs"() {
+  "../../node_modules/.pnpm/drizzle-zod@0.8.3_drizzle-o_7bb0c3abe028e8142594a4eadfb350c9/node_modules/drizzle-zod/index.mjs"() {
     init_v4();
     init_drizzle_orm();
     CONSTANTS = {
@@ -55769,13 +55947,13 @@ var init_salesFunnel = __esm({
 });
 
 // ../../packages/db/src/schema/salesActivity.ts
-var salesActivityTable2, insertSalesActivitySchema;
+var salesActivityTable, insertSalesActivitySchema;
 var init_salesActivity = __esm({
   "../../packages/db/src/schema/salesActivity.ts"() {
     "use strict";
     init_pg_core();
     init_drizzle_zod();
-    salesActivityTable2 = pgTable("sales_activity", {
+    salesActivityTable = pgTable("sales_activity", {
       id: serial("id").primaryKey(),
       nik: text("nik").notNull(),
       fullname: text("fullname"),
@@ -55791,7 +55969,7 @@ var init_salesActivity = __esm({
       importId: integer("import_id"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     });
-    insertSalesActivitySchema = createInsertSchema(salesActivityTable2).omit({ id: true, createdAt: true });
+    insertSalesActivitySchema = createInsertSchema(salesActivityTable).omit({ id: true, createdAt: true });
   }
 });
 
@@ -56217,7 +56395,7 @@ __export(schema_exports, {
   rolePermissionsTable: () => rolePermissionsTable,
   rolesRelations: () => rolesRelations,
   rolesTable: () => rolesTable,
-  salesActivityTable: () => salesActivityTable2,
+  salesActivityTable: () => salesActivityTable,
   salesFunnelTable: () => salesFunnelTable,
   salesFunnelTargetTable: () => salesFunnelTargetTable,
   telegramAccessCodesRelations: () => telegramAccessCodesRelations,
@@ -56283,7 +56461,7 @@ __export(src_exports, {
   rolePermissionsTable: () => rolePermissionsTable,
   rolesRelations: () => rolesRelations,
   rolesTable: () => rolesTable,
-  salesActivityTable: () => salesActivityTable2,
+  salesActivityTable: () => salesActivityTable,
   salesFunnelTable: () => salesFunnelTable,
   salesFunnelTargetTable: () => salesFunnelTargetTable,
   telegramAccessCodesRelations: () => telegramAccessCodesRelations,
@@ -56307,2398 +56485,6 @@ var init_src = __esm({
     }
     pool = new Pool3({ connectionString: process.env.DATABASE_URL });
     db = drizzle(pool, { schema: schema_exports });
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/entity.js
-function is2(value, type) {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  if (value instanceof type) {
-    return true;
-  }
-  if (!Object.prototype.hasOwnProperty.call(type, entityKind2)) {
-    throw new Error(
-      `Class "${type.name ?? "<unknown>"}" doesn't look like a Drizzle entity. If this is incorrect and the class is provided by Drizzle, please report this as a bug.`
-    );
-  }
-  let cls = Object.getPrototypeOf(value).constructor;
-  if (cls) {
-    while (cls) {
-      if (entityKind2 in cls && cls[entityKind2] === type[entityKind2]) {
-        return true;
-      }
-      cls = Object.getPrototypeOf(cls);
-    }
-  }
-  return false;
-}
-var entityKind2, hasOwnEntityKind;
-var init_entity2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/entity.js"() {
-    entityKind2 = /* @__PURE__ */ Symbol.for("drizzle:entityKind");
-    hasOwnEntityKind = /* @__PURE__ */ Symbol.for("drizzle:hasOwnEntityKind");
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/column.js
-var Column2;
-var init_column2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/column.js"() {
-    init_entity2();
-    Column2 = class {
-      constructor(table, config2) {
-        this.table = table;
-        this.config = config2;
-        this.name = config2.name;
-        this.keyAsName = config2.keyAsName;
-        this.notNull = config2.notNull;
-        this.default = config2.default;
-        this.defaultFn = config2.defaultFn;
-        this.onUpdateFn = config2.onUpdateFn;
-        this.hasDefault = config2.hasDefault;
-        this.primary = config2.primaryKey;
-        this.isUnique = config2.isUnique;
-        this.uniqueName = config2.uniqueName;
-        this.uniqueType = config2.uniqueType;
-        this.dataType = config2.dataType;
-        this.columnType = config2.columnType;
-        this.generated = config2.generated;
-        this.generatedIdentity = config2.generatedIdentity;
-      }
-      static [entityKind2] = "Column";
-      name;
-      keyAsName;
-      primary;
-      notNull;
-      default;
-      defaultFn;
-      onUpdateFn;
-      hasDefault;
-      isUnique;
-      uniqueName;
-      uniqueType;
-      dataType;
-      columnType;
-      enumValues = void 0;
-      generated = void 0;
-      generatedIdentity = void 0;
-      config;
-      mapFromDriverValue(value) {
-        return value;
-      }
-      mapToDriverValue(value) {
-        return value;
-      }
-      // ** @internal */
-      shouldDisableInsert() {
-        return this.config.generated !== void 0 && this.config.generated.type !== "byDefault";
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/column-builder.js
-var ColumnBuilder2;
-var init_column_builder2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/column-builder.js"() {
-    init_entity2();
-    ColumnBuilder2 = class {
-      static [entityKind2] = "ColumnBuilder";
-      config;
-      constructor(name2, dataType, columnType) {
-        this.config = {
-          name: name2,
-          keyAsName: name2 === "",
-          notNull: false,
-          default: void 0,
-          hasDefault: false,
-          primaryKey: false,
-          isUnique: false,
-          uniqueName: void 0,
-          uniqueType: void 0,
-          dataType,
-          columnType,
-          generated: void 0
-        };
-      }
-      /**
-       * Changes the data type of the column. Commonly used with `json` columns. Also, useful for branded types.
-       *
-       * @example
-       * ```ts
-       * const users = pgTable('users', {
-       * 	id: integer('id').$type<UserId>().primaryKey(),
-       * 	details: json('details').$type<UserDetails>().notNull(),
-       * });
-       * ```
-       */
-      $type() {
-        return this;
-      }
-      /**
-       * Adds a `not null` clause to the column definition.
-       *
-       * Affects the `select` model of the table - columns *without* `not null` will be nullable on select.
-       */
-      notNull() {
-        this.config.notNull = true;
-        return this;
-      }
-      /**
-       * Adds a `default <value>` clause to the column definition.
-       *
-       * Affects the `insert` model of the table - columns *with* `default` are optional on insert.
-       *
-       * If you need to set a dynamic default value, use {@link $defaultFn} instead.
-       */
-      default(value) {
-        this.config.default = value;
-        this.config.hasDefault = true;
-        return this;
-      }
-      /**
-       * Adds a dynamic default value to the column.
-       * The function will be called when the row is inserted, and the returned value will be used as the column value.
-       *
-       * **Note:** This value does not affect the `drizzle-kit` behavior, it is only used at runtime in `drizzle-orm`.
-       */
-      $defaultFn(fn) {
-        this.config.defaultFn = fn;
-        this.config.hasDefault = true;
-        return this;
-      }
-      /**
-       * Alias for {@link $defaultFn}.
-       */
-      $default = this.$defaultFn;
-      /**
-       * Adds a dynamic update value to the column.
-       * The function will be called when the row is updated, and the returned value will be used as the column value if none is provided.
-       * If no `default` (or `$defaultFn`) value is provided, the function will be called when the row is inserted as well, and the returned value will be used as the column value.
-       *
-       * **Note:** This value does not affect the `drizzle-kit` behavior, it is only used at runtime in `drizzle-orm`.
-       */
-      $onUpdateFn(fn) {
-        this.config.onUpdateFn = fn;
-        this.config.hasDefault = true;
-        return this;
-      }
-      /**
-       * Alias for {@link $onUpdateFn}.
-       */
-      $onUpdate = this.$onUpdateFn;
-      /**
-       * Adds a `primary key` clause to the column definition. This implicitly makes the column `not null`.
-       *
-       * In SQLite, `integer primary key` implicitly makes the column auto-incrementing.
-       */
-      primaryKey() {
-        this.config.primaryKey = true;
-        this.config.notNull = true;
-        return this;
-      }
-      /** @internal Sets the name of the column to the key within the table definition if a name was not given. */
-      setName(name2) {
-        if (this.config.name !== "") return;
-        this.config.name = name2;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/table.utils.js
-var TableName2;
-var init_table_utils2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/table.utils.js"() {
-    TableName2 = /* @__PURE__ */ Symbol.for("drizzle:Name");
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/foreign-keys.js
-var ForeignKeyBuilder2, ForeignKey2;
-var init_foreign_keys2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/foreign-keys.js"() {
-    init_entity2();
-    init_table_utils2();
-    ForeignKeyBuilder2 = class {
-      static [entityKind2] = "PgForeignKeyBuilder";
-      /** @internal */
-      reference;
-      /** @internal */
-      _onUpdate = "no action";
-      /** @internal */
-      _onDelete = "no action";
-      constructor(config2, actions) {
-        this.reference = () => {
-          const { name: name2, columns, foreignColumns } = config2();
-          return { name: name2, columns, foreignTable: foreignColumns[0].table, foreignColumns };
-        };
-        if (actions) {
-          this._onUpdate = actions.onUpdate;
-          this._onDelete = actions.onDelete;
-        }
-      }
-      onUpdate(action) {
-        this._onUpdate = action === void 0 ? "no action" : action;
-        return this;
-      }
-      onDelete(action) {
-        this._onDelete = action === void 0 ? "no action" : action;
-        return this;
-      }
-      /** @internal */
-      build(table) {
-        return new ForeignKey2(table, this);
-      }
-    };
-    ForeignKey2 = class {
-      constructor(table, builder) {
-        this.table = table;
-        this.reference = builder.reference;
-        this.onUpdate = builder._onUpdate;
-        this.onDelete = builder._onDelete;
-      }
-      static [entityKind2] = "PgForeignKey";
-      reference;
-      onUpdate;
-      onDelete;
-      getName() {
-        const { name: name2, columns, foreignColumns } = this.reference();
-        const columnNames = columns.map((column) => column.name);
-        const foreignColumnNames = foreignColumns.map((column) => column.name);
-        const chunks = [
-          this.table[TableName2],
-          ...columnNames,
-          foreignColumns[0].table[TableName2],
-          ...foreignColumnNames
-        ];
-        return name2 ?? `${chunks.join("_")}_fk`;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/tracing-utils.js
-function iife2(fn, ...args) {
-  return fn(...args);
-}
-var init_tracing_utils2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/tracing-utils.js"() {
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/unique-constraint.js
-function uniqueKeyName2(table, columns) {
-  return `${table[TableName2]}_${columns.join("_")}_unique`;
-}
-var UniqueConstraintBuilder2, UniqueOnConstraintBuilder2, UniqueConstraint2;
-var init_unique_constraint2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/unique-constraint.js"() {
-    init_entity2();
-    init_table_utils2();
-    UniqueConstraintBuilder2 = class {
-      constructor(columns, name2) {
-        this.name = name2;
-        this.columns = columns;
-      }
-      static [entityKind2] = "PgUniqueConstraintBuilder";
-      /** @internal */
-      columns;
-      /** @internal */
-      nullsNotDistinctConfig = false;
-      nullsNotDistinct() {
-        this.nullsNotDistinctConfig = true;
-        return this;
-      }
-      /** @internal */
-      build(table) {
-        return new UniqueConstraint2(table, this.columns, this.nullsNotDistinctConfig, this.name);
-      }
-    };
-    UniqueOnConstraintBuilder2 = class {
-      static [entityKind2] = "PgUniqueOnConstraintBuilder";
-      /** @internal */
-      name;
-      constructor(name2) {
-        this.name = name2;
-      }
-      on(...columns) {
-        return new UniqueConstraintBuilder2(columns, this.name);
-      }
-    };
-    UniqueConstraint2 = class {
-      constructor(table, columns, nullsNotDistinct, name2) {
-        this.table = table;
-        this.columns = columns;
-        this.name = name2 ?? uniqueKeyName2(this.table, this.columns.map((column) => column.name));
-        this.nullsNotDistinct = nullsNotDistinct;
-      }
-      static [entityKind2] = "PgUniqueConstraint";
-      columns;
-      name;
-      nullsNotDistinct = false;
-      getName() {
-        return this.name;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/utils/array.js
-function parsePgArrayValue2(arrayString, startFrom, inQuotes) {
-  for (let i = startFrom; i < arrayString.length; i++) {
-    const char2 = arrayString[i];
-    if (char2 === "\\") {
-      i++;
-      continue;
-    }
-    if (char2 === '"') {
-      return [arrayString.slice(startFrom, i).replace(/\\/g, ""), i + 1];
-    }
-    if (inQuotes) {
-      continue;
-    }
-    if (char2 === "," || char2 === "}") {
-      return [arrayString.slice(startFrom, i).replace(/\\/g, ""), i];
-    }
-  }
-  return [arrayString.slice(startFrom).replace(/\\/g, ""), arrayString.length];
-}
-function parsePgNestedArray2(arrayString, startFrom = 0) {
-  const result = [];
-  let i = startFrom;
-  let lastCharIsComma = false;
-  while (i < arrayString.length) {
-    const char2 = arrayString[i];
-    if (char2 === ",") {
-      if (lastCharIsComma || i === startFrom) {
-        result.push("");
-      }
-      lastCharIsComma = true;
-      i++;
-      continue;
-    }
-    lastCharIsComma = false;
-    if (char2 === "\\") {
-      i += 2;
-      continue;
-    }
-    if (char2 === '"') {
-      const [value2, startFrom2] = parsePgArrayValue2(arrayString, i + 1, true);
-      result.push(value2);
-      i = startFrom2;
-      continue;
-    }
-    if (char2 === "}") {
-      return [result, i + 1];
-    }
-    if (char2 === "{") {
-      const [value2, startFrom2] = parsePgNestedArray2(arrayString, i + 1);
-      result.push(value2);
-      i = startFrom2;
-      continue;
-    }
-    const [value, newStartFrom] = parsePgArrayValue2(arrayString, i, false);
-    result.push(value);
-    i = newStartFrom;
-  }
-  return [result, i];
-}
-function parsePgArray2(arrayString) {
-  const [result] = parsePgNestedArray2(arrayString, 1);
-  return result;
-}
-function makePgArray2(array2) {
-  return `{${array2.map((item) => {
-    if (Array.isArray(item)) {
-      return makePgArray2(item);
-    }
-    if (typeof item === "string") {
-      return `"${item.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-    }
-    return `${item}`;
-  }).join(",")}}`;
-}
-var init_array2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/utils/array.js"() {
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/columns/common.js
-var PgColumnBuilder2, PgColumn2, ExtraConfigColumn2, IndexedColumn2, PgArrayBuilder2, PgArray2;
-var init_common2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/columns/common.js"() {
-    init_column_builder2();
-    init_column2();
-    init_entity2();
-    init_foreign_keys2();
-    init_tracing_utils2();
-    init_unique_constraint2();
-    init_array2();
-    PgColumnBuilder2 = class extends ColumnBuilder2 {
-      foreignKeyConfigs = [];
-      static [entityKind2] = "PgColumnBuilder";
-      array(size) {
-        return new PgArrayBuilder2(this.config.name, this, size);
-      }
-      references(ref, actions = {}) {
-        this.foreignKeyConfigs.push({ ref, actions });
-        return this;
-      }
-      unique(name2, config2) {
-        this.config.isUnique = true;
-        this.config.uniqueName = name2;
-        this.config.uniqueType = config2?.nulls;
-        return this;
-      }
-      generatedAlwaysAs(as) {
-        this.config.generated = {
-          as,
-          type: "always",
-          mode: "stored"
-        };
-        return this;
-      }
-      /** @internal */
-      buildForeignKeys(column, table) {
-        return this.foreignKeyConfigs.map(({ ref, actions }) => {
-          return iife2(
-            (ref2, actions2) => {
-              const builder = new ForeignKeyBuilder2(() => {
-                const foreignColumn = ref2();
-                return { columns: [column], foreignColumns: [foreignColumn] };
-              });
-              if (actions2.onUpdate) {
-                builder.onUpdate(actions2.onUpdate);
-              }
-              if (actions2.onDelete) {
-                builder.onDelete(actions2.onDelete);
-              }
-              return builder.build(table);
-            },
-            ref,
-            actions
-          );
-        });
-      }
-      /** @internal */
-      buildExtraConfigColumn(table) {
-        return new ExtraConfigColumn2(table, this.config);
-      }
-    };
-    PgColumn2 = class extends Column2 {
-      constructor(table, config2) {
-        if (!config2.uniqueName) {
-          config2.uniqueName = uniqueKeyName2(table, [config2.name]);
-        }
-        super(table, config2);
-        this.table = table;
-      }
-      static [entityKind2] = "PgColumn";
-    };
-    ExtraConfigColumn2 = class extends PgColumn2 {
-      static [entityKind2] = "ExtraConfigColumn";
-      getSQLType() {
-        return this.getSQLType();
-      }
-      indexConfig = {
-        order: this.config.order ?? "asc",
-        nulls: this.config.nulls ?? "last",
-        opClass: this.config.opClass
-      };
-      defaultConfig = {
-        order: "asc",
-        nulls: "last",
-        opClass: void 0
-      };
-      asc() {
-        this.indexConfig.order = "asc";
-        return this;
-      }
-      desc() {
-        this.indexConfig.order = "desc";
-        return this;
-      }
-      nullsFirst() {
-        this.indexConfig.nulls = "first";
-        return this;
-      }
-      nullsLast() {
-        this.indexConfig.nulls = "last";
-        return this;
-      }
-      /**
-       * ### PostgreSQL documentation quote
-       *
-       * > An operator class with optional parameters can be specified for each column of an index.
-       * The operator class identifies the operators to be used by the index for that column.
-       * For example, a B-tree index on four-byte integers would use the int4_ops class;
-       * this operator class includes comparison functions for four-byte integers.
-       * In practice the default operator class for the column's data type is usually sufficient.
-       * The main point of having operator classes is that for some data types, there could be more than one meaningful ordering.
-       * For example, we might want to sort a complex-number data type either by absolute value or by real part.
-       * We could do this by defining two operator classes for the data type and then selecting the proper class when creating an index.
-       * More information about operator classes check:
-       *
-       * ### Useful links
-       * https://www.postgresql.org/docs/current/sql-createindex.html
-       *
-       * https://www.postgresql.org/docs/current/indexes-opclass.html
-       *
-       * https://www.postgresql.org/docs/current/xindex.html
-       *
-       * ### Additional types
-       * If you have the `pg_vector` extension installed in your database, you can use the
-       * `vector_l2_ops`, `vector_ip_ops`, `vector_cosine_ops`, `vector_l1_ops`, `bit_hamming_ops`, `bit_jaccard_ops`, `halfvec_l2_ops`, `sparsevec_l2_ops` options, which are predefined types.
-       *
-       * **You can always specify any string you want in the operator class, in case Drizzle doesn't have it natively in its types**
-       *
-       * @param opClass
-       * @returns
-       */
-      op(opClass) {
-        this.indexConfig.opClass = opClass;
-        return this;
-      }
-    };
-    IndexedColumn2 = class {
-      static [entityKind2] = "IndexedColumn";
-      constructor(name2, keyAsName, type, indexConfig) {
-        this.name = name2;
-        this.keyAsName = keyAsName;
-        this.type = type;
-        this.indexConfig = indexConfig;
-      }
-      name;
-      keyAsName;
-      type;
-      indexConfig;
-    };
-    PgArrayBuilder2 = class extends PgColumnBuilder2 {
-      static [entityKind2] = "PgArrayBuilder";
-      constructor(name2, baseBuilder, size) {
-        super(name2, "array", "PgArray");
-        this.config.baseBuilder = baseBuilder;
-        this.config.size = size;
-      }
-      /** @internal */
-      build(table) {
-        const baseColumn = this.config.baseBuilder.build(table);
-        return new PgArray2(
-          table,
-          this.config,
-          baseColumn
-        );
-      }
-    };
-    PgArray2 = class _PgArray extends PgColumn2 {
-      constructor(table, config2, baseColumn, range) {
-        super(table, config2);
-        this.baseColumn = baseColumn;
-        this.range = range;
-        this.size = config2.size;
-      }
-      size;
-      static [entityKind2] = "PgArray";
-      getSQLType() {
-        return `${this.baseColumn.getSQLType()}[${typeof this.size === "number" ? this.size : ""}]`;
-      }
-      mapFromDriverValue(value) {
-        if (typeof value === "string") {
-          value = parsePgArray2(value);
-        }
-        return value.map((v) => this.baseColumn.mapFromDriverValue(v));
-      }
-      mapToDriverValue(value, isNestedArray = false) {
-        const a = value.map(
-          (v) => v === null ? null : is2(this.baseColumn, _PgArray) ? this.baseColumn.mapToDriverValue(v, true) : this.baseColumn.mapToDriverValue(v)
-        );
-        if (isNestedArray) return a;
-        return makePgArray2(a);
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/columns/enum.js
-function isPgEnum2(obj) {
-  return !!obj && typeof obj === "function" && isPgEnumSym2 in obj && obj[isPgEnumSym2] === true;
-}
-var PgEnumObjectColumnBuilder2, PgEnumObjectColumn2, isPgEnumSym2, PgEnumColumnBuilder2, PgEnumColumn2;
-var init_enum2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/columns/enum.js"() {
-    init_entity2();
-    init_common2();
-    PgEnumObjectColumnBuilder2 = class extends PgColumnBuilder2 {
-      static [entityKind2] = "PgEnumObjectColumnBuilder";
-      constructor(name2, enumInstance) {
-        super(name2, "string", "PgEnumObjectColumn");
-        this.config.enum = enumInstance;
-      }
-      /** @internal */
-      build(table) {
-        return new PgEnumObjectColumn2(
-          table,
-          this.config
-        );
-      }
-    };
-    PgEnumObjectColumn2 = class extends PgColumn2 {
-      static [entityKind2] = "PgEnumObjectColumn";
-      enum;
-      enumValues = this.config.enum.enumValues;
-      constructor(table, config2) {
-        super(table, config2);
-        this.enum = config2.enum;
-      }
-      getSQLType() {
-        return this.enum.enumName;
-      }
-    };
-    isPgEnumSym2 = /* @__PURE__ */ Symbol.for("drizzle:isPgEnum");
-    PgEnumColumnBuilder2 = class extends PgColumnBuilder2 {
-      static [entityKind2] = "PgEnumColumnBuilder";
-      constructor(name2, enumInstance) {
-        super(name2, "string", "PgEnumColumn");
-        this.config.enum = enumInstance;
-      }
-      /** @internal */
-      build(table) {
-        return new PgEnumColumn2(
-          table,
-          this.config
-        );
-      }
-    };
-    PgEnumColumn2 = class extends PgColumn2 {
-      static [entityKind2] = "PgEnumColumn";
-      enum = this.config.enum;
-      enumValues = this.config.enum.enumValues;
-      constructor(table, config2) {
-        super(table, config2);
-        this.enum = config2.enum;
-      }
-      getSQLType() {
-        return this.enum.enumName;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/subquery.js
-var Subquery2, WithSubquery2;
-var init_subquery3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/subquery.js"() {
-    init_entity2();
-    Subquery2 = class {
-      static [entityKind2] = "Subquery";
-      constructor(sql4, fields, alias, isWith = false, usedTables = []) {
-        this._ = {
-          brand: "Subquery",
-          sql: sql4,
-          selectedFields: fields,
-          alias,
-          isWith,
-          usedTables
-        };
-      }
-      // getSQL(): SQL<unknown> {
-      // 	return new SQL([this]);
-      // }
-    };
-    WithSubquery2 = class extends Subquery2 {
-      static [entityKind2] = "WithSubquery";
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/version.js
-var version3;
-var init_version2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/version.js"() {
-    version3 = "0.45.2";
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/tracing.js
-var otel2, rawTracer2, tracer2;
-var init_tracing2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/tracing.js"() {
-    init_tracing_utils2();
-    init_version2();
-    tracer2 = {
-      startActiveSpan(name2, fn) {
-        if (!otel2) {
-          return fn();
-        }
-        if (!rawTracer2) {
-          rawTracer2 = otel2.trace.getTracer("drizzle-orm", version3);
-        }
-        return iife2(
-          (otel22, rawTracer22) => rawTracer22.startActiveSpan(
-            name2,
-            (span) => {
-              try {
-                return fn(span);
-              } catch (e) {
-                span.setStatus({
-                  code: otel22.SpanStatusCode.ERROR,
-                  message: e instanceof Error ? e.message : "Unknown error"
-                  // eslint-disable-line no-instanceof/no-instanceof
-                });
-                throw e;
-              } finally {
-                span.end();
-              }
-            }
-          ),
-          otel2,
-          rawTracer2
-        );
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/view-common.js
-var ViewBaseConfig2;
-var init_view_common3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/view-common.js"() {
-    ViewBaseConfig2 = /* @__PURE__ */ Symbol.for("drizzle:ViewBaseConfig");
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/table.js
-function isTable2(table) {
-  return typeof table === "object" && table !== null && IsDrizzleTable2 in table;
-}
-function getTableName2(table) {
-  return table[TableName2];
-}
-function getTableUniqueName2(table) {
-  return `${table[Schema2] ?? "public"}.${table[TableName2]}`;
-}
-var Schema2, Columns2, ExtraConfigColumns2, OriginalName2, BaseName2, IsAlias2, ExtraConfigBuilder2, IsDrizzleTable2, Table2;
-var init_table3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/table.js"() {
-    init_entity2();
-    init_table_utils2();
-    Schema2 = /* @__PURE__ */ Symbol.for("drizzle:Schema");
-    Columns2 = /* @__PURE__ */ Symbol.for("drizzle:Columns");
-    ExtraConfigColumns2 = /* @__PURE__ */ Symbol.for("drizzle:ExtraConfigColumns");
-    OriginalName2 = /* @__PURE__ */ Symbol.for("drizzle:OriginalName");
-    BaseName2 = /* @__PURE__ */ Symbol.for("drizzle:BaseName");
-    IsAlias2 = /* @__PURE__ */ Symbol.for("drizzle:IsAlias");
-    ExtraConfigBuilder2 = /* @__PURE__ */ Symbol.for("drizzle:ExtraConfigBuilder");
-    IsDrizzleTable2 = /* @__PURE__ */ Symbol.for("drizzle:IsDrizzleTable");
-    Table2 = class {
-      static [entityKind2] = "Table";
-      /** @internal */
-      static Symbol = {
-        Name: TableName2,
-        Schema: Schema2,
-        OriginalName: OriginalName2,
-        Columns: Columns2,
-        ExtraConfigColumns: ExtraConfigColumns2,
-        BaseName: BaseName2,
-        IsAlias: IsAlias2,
-        ExtraConfigBuilder: ExtraConfigBuilder2
-      };
-      /**
-       * @internal
-       * Can be changed if the table is aliased.
-       */
-      [TableName2];
-      /**
-       * @internal
-       * Used to store the original name of the table, before any aliasing.
-       */
-      [OriginalName2];
-      /** @internal */
-      [Schema2];
-      /** @internal */
-      [Columns2];
-      /** @internal */
-      [ExtraConfigColumns2];
-      /**
-       *  @internal
-       * Used to store the table name before the transformation via the `tableCreator` functions.
-       */
-      [BaseName2];
-      /** @internal */
-      [IsAlias2] = false;
-      /** @internal */
-      [IsDrizzleTable2] = true;
-      /** @internal */
-      [ExtraConfigBuilder2] = void 0;
-      constructor(name2, schema, baseName) {
-        this[TableName2] = this[OriginalName2] = name2;
-        this[Schema2] = schema;
-        this[BaseName2] = baseName;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/sql.js
-function isSQLWrapper2(value) {
-  return value !== null && value !== void 0 && typeof value.getSQL === "function";
-}
-function mergeQueries2(queries) {
-  const result = { sql: "", params: [] };
-  for (const query of queries) {
-    result.sql += query.sql;
-    result.params.push(...query.params);
-    if (query.typings?.length) {
-      if (!result.typings) {
-        result.typings = [];
-      }
-      result.typings.push(...query.typings);
-    }
-  }
-  return result;
-}
-function name(value) {
-  return new Name2(value);
-}
-function isDriverValueEncoder2(value) {
-  return typeof value === "object" && value !== null && "mapToDriverValue" in value && typeof value.mapToDriverValue === "function";
-}
-function param(value, encoder) {
-  return new Param2(value, encoder);
-}
-function sql2(strings, ...params) {
-  const queryChunks = [];
-  if (params.length > 0 || strings.length > 0 && strings[0] !== "") {
-    queryChunks.push(new StringChunk2(strings[0]));
-  }
-  for (const [paramIndex, param2] of params.entries()) {
-    queryChunks.push(param2, new StringChunk2(strings[paramIndex + 1]));
-  }
-  return new SQL2(queryChunks);
-}
-function placeholder(name2) {
-  return new Placeholder2(name2);
-}
-function fillPlaceholders2(params, values) {
-  return params.map((p) => {
-    if (is2(p, Placeholder2)) {
-      if (!(p.name in values)) {
-        throw new Error(`No value for placeholder "${p.name}" was provided`);
-      }
-      return values[p.name];
-    }
-    if (is2(p, Param2) && is2(p.value, Placeholder2)) {
-      if (!(p.value.name in values)) {
-        throw new Error(`No value for placeholder "${p.value.name}" was provided`);
-      }
-      return p.encoder.mapToDriverValue(values[p.value.name]);
-    }
-    return p;
-  });
-}
-function isView2(view) {
-  return typeof view === "object" && view !== null && IsDrizzleView2 in view;
-}
-function getViewName(view) {
-  return view[ViewBaseConfig2].name;
-}
-var FakePrimitiveParam2, StringChunk2, SQL2, Name2, noopDecoder2, noopEncoder2, noopMapper2, Param2, Placeholder2, IsDrizzleView2, View2;
-var init_sql3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/sql.js"() {
-    init_entity2();
-    init_enum2();
-    init_subquery3();
-    init_tracing2();
-    init_view_common3();
-    init_column2();
-    init_table3();
-    FakePrimitiveParam2 = class {
-      static [entityKind2] = "FakePrimitiveParam";
-    };
-    StringChunk2 = class {
-      static [entityKind2] = "StringChunk";
-      value;
-      constructor(value) {
-        this.value = Array.isArray(value) ? value : [value];
-      }
-      getSQL() {
-        return new SQL2([this]);
-      }
-    };
-    SQL2 = class _SQL {
-      constructor(queryChunks) {
-        this.queryChunks = queryChunks;
-        for (const chunk of queryChunks) {
-          if (is2(chunk, Table2)) {
-            const schemaName = chunk[Table2.Symbol.Schema];
-            this.usedTables.push(
-              schemaName === void 0 ? chunk[Table2.Symbol.Name] : schemaName + "." + chunk[Table2.Symbol.Name]
-            );
-          }
-        }
-      }
-      static [entityKind2] = "SQL";
-      /** @internal */
-      decoder = noopDecoder2;
-      shouldInlineParams = false;
-      /** @internal */
-      usedTables = [];
-      append(query) {
-        this.queryChunks.push(...query.queryChunks);
-        return this;
-      }
-      toQuery(config2) {
-        return tracer2.startActiveSpan("drizzle.buildSQL", (span) => {
-          const query = this.buildQueryFromSourceParams(this.queryChunks, config2);
-          span?.setAttributes({
-            "drizzle.query.text": query.sql,
-            "drizzle.query.params": JSON.stringify(query.params)
-          });
-          return query;
-        });
-      }
-      buildQueryFromSourceParams(chunks, _config) {
-        const config2 = Object.assign({}, _config, {
-          inlineParams: _config.inlineParams || this.shouldInlineParams,
-          paramStartIndex: _config.paramStartIndex || { value: 0 }
-        });
-        const {
-          casing,
-          escapeName,
-          escapeParam,
-          prepareTyping,
-          inlineParams,
-          paramStartIndex
-        } = config2;
-        return mergeQueries2(chunks.map((chunk) => {
-          if (is2(chunk, StringChunk2)) {
-            return { sql: chunk.value.join(""), params: [] };
-          }
-          if (is2(chunk, Name2)) {
-            return { sql: escapeName(chunk.value), params: [] };
-          }
-          if (chunk === void 0) {
-            return { sql: "", params: [] };
-          }
-          if (Array.isArray(chunk)) {
-            const result = [new StringChunk2("(")];
-            for (const [i, p] of chunk.entries()) {
-              result.push(p);
-              if (i < chunk.length - 1) {
-                result.push(new StringChunk2(", "));
-              }
-            }
-            result.push(new StringChunk2(")"));
-            return this.buildQueryFromSourceParams(result, config2);
-          }
-          if (is2(chunk, _SQL)) {
-            return this.buildQueryFromSourceParams(chunk.queryChunks, {
-              ...config2,
-              inlineParams: inlineParams || chunk.shouldInlineParams
-            });
-          }
-          if (is2(chunk, Table2)) {
-            const schemaName = chunk[Table2.Symbol.Schema];
-            const tableName = chunk[Table2.Symbol.Name];
-            return {
-              sql: schemaName === void 0 || chunk[IsAlias2] ? escapeName(tableName) : escapeName(schemaName) + "." + escapeName(tableName),
-              params: []
-            };
-          }
-          if (is2(chunk, Column2)) {
-            const columnName = casing.getColumnCasing(chunk);
-            if (_config.invokeSource === "indexes") {
-              return { sql: escapeName(columnName), params: [] };
-            }
-            const schemaName = chunk.table[Table2.Symbol.Schema];
-            return {
-              sql: chunk.table[IsAlias2] || schemaName === void 0 ? escapeName(chunk.table[Table2.Symbol.Name]) + "." + escapeName(columnName) : escapeName(schemaName) + "." + escapeName(chunk.table[Table2.Symbol.Name]) + "." + escapeName(columnName),
-              params: []
-            };
-          }
-          if (is2(chunk, View2)) {
-            const schemaName = chunk[ViewBaseConfig2].schema;
-            const viewName = chunk[ViewBaseConfig2].name;
-            return {
-              sql: schemaName === void 0 || chunk[ViewBaseConfig2].isAlias ? escapeName(viewName) : escapeName(schemaName) + "." + escapeName(viewName),
-              params: []
-            };
-          }
-          if (is2(chunk, Param2)) {
-            if (is2(chunk.value, Placeholder2)) {
-              return { sql: escapeParam(paramStartIndex.value++, chunk), params: [chunk], typings: ["none"] };
-            }
-            const mappedValue = chunk.value === null ? null : chunk.encoder.mapToDriverValue(chunk.value);
-            if (is2(mappedValue, _SQL)) {
-              return this.buildQueryFromSourceParams([mappedValue], config2);
-            }
-            if (inlineParams) {
-              return { sql: this.mapInlineParam(mappedValue, config2), params: [] };
-            }
-            let typings = ["none"];
-            if (prepareTyping) {
-              typings = [prepareTyping(chunk.encoder)];
-            }
-            return { sql: escapeParam(paramStartIndex.value++, mappedValue), params: [mappedValue], typings };
-          }
-          if (is2(chunk, Placeholder2)) {
-            return { sql: escapeParam(paramStartIndex.value++, chunk), params: [chunk], typings: ["none"] };
-          }
-          if (is2(chunk, _SQL.Aliased) && chunk.fieldAlias !== void 0) {
-            return { sql: escapeName(chunk.fieldAlias), params: [] };
-          }
-          if (is2(chunk, Subquery2)) {
-            if (chunk._.isWith) {
-              return { sql: escapeName(chunk._.alias), params: [] };
-            }
-            return this.buildQueryFromSourceParams([
-              new StringChunk2("("),
-              chunk._.sql,
-              new StringChunk2(") "),
-              new Name2(chunk._.alias)
-            ], config2);
-          }
-          if (isPgEnum2(chunk)) {
-            if (chunk.schema) {
-              return { sql: escapeName(chunk.schema) + "." + escapeName(chunk.enumName), params: [] };
-            }
-            return { sql: escapeName(chunk.enumName), params: [] };
-          }
-          if (isSQLWrapper2(chunk)) {
-            if (chunk.shouldOmitSQLParens?.()) {
-              return this.buildQueryFromSourceParams([chunk.getSQL()], config2);
-            }
-            return this.buildQueryFromSourceParams([
-              new StringChunk2("("),
-              chunk.getSQL(),
-              new StringChunk2(")")
-            ], config2);
-          }
-          if (inlineParams) {
-            return { sql: this.mapInlineParam(chunk, config2), params: [] };
-          }
-          return { sql: escapeParam(paramStartIndex.value++, chunk), params: [chunk], typings: ["none"] };
-        }));
-      }
-      mapInlineParam(chunk, { escapeString }) {
-        if (chunk === null) {
-          return "null";
-        }
-        if (typeof chunk === "number" || typeof chunk === "boolean") {
-          return chunk.toString();
-        }
-        if (typeof chunk === "string") {
-          return escapeString(chunk);
-        }
-        if (typeof chunk === "object") {
-          const mappedValueAsString = chunk.toString();
-          if (mappedValueAsString === "[object Object]") {
-            return escapeString(JSON.stringify(chunk));
-          }
-          return escapeString(mappedValueAsString);
-        }
-        throw new Error("Unexpected param value: " + chunk);
-      }
-      getSQL() {
-        return this;
-      }
-      as(alias) {
-        if (alias === void 0) {
-          return this;
-        }
-        return new _SQL.Aliased(this, alias);
-      }
-      mapWith(decoder) {
-        this.decoder = typeof decoder === "function" ? { mapFromDriverValue: decoder } : decoder;
-        return this;
-      }
-      inlineParams() {
-        this.shouldInlineParams = true;
-        return this;
-      }
-      /**
-       * This method is used to conditionally include a part of the query.
-       *
-       * @param condition - Condition to check
-       * @returns itself if the condition is `true`, otherwise `undefined`
-       */
-      if(condition) {
-        return condition ? this : void 0;
-      }
-    };
-    Name2 = class {
-      constructor(value) {
-        this.value = value;
-      }
-      static [entityKind2] = "Name";
-      brand;
-      getSQL() {
-        return new SQL2([this]);
-      }
-    };
-    noopDecoder2 = {
-      mapFromDriverValue: (value) => value
-    };
-    noopEncoder2 = {
-      mapToDriverValue: (value) => value
-    };
-    noopMapper2 = {
-      ...noopDecoder2,
-      ...noopEncoder2
-    };
-    Param2 = class {
-      /**
-       * @param value - Parameter value
-       * @param encoder - Encoder to convert the value to a driver parameter
-       */
-      constructor(value, encoder = noopEncoder2) {
-        this.value = value;
-        this.encoder = encoder;
-      }
-      static [entityKind2] = "Param";
-      brand;
-      getSQL() {
-        return new SQL2([this]);
-      }
-    };
-    ((sql22) => {
-      function empty() {
-        return new SQL2([]);
-      }
-      sql22.empty = empty;
-      function fromList(list) {
-        return new SQL2(list);
-      }
-      sql22.fromList = fromList;
-      function raw(str) {
-        return new SQL2([new StringChunk2(str)]);
-      }
-      sql22.raw = raw;
-      function join(chunks, separator) {
-        const result = [];
-        for (const [i, chunk] of chunks.entries()) {
-          if (i > 0 && separator !== void 0) {
-            result.push(separator);
-          }
-          result.push(chunk);
-        }
-        return new SQL2(result);
-      }
-      sql22.join = join;
-      function identifier(value) {
-        return new Name2(value);
-      }
-      sql22.identifier = identifier;
-      function placeholder2(name2) {
-        return new Placeholder2(name2);
-      }
-      sql22.placeholder = placeholder2;
-      function param2(value, encoder) {
-        return new Param2(value, encoder);
-      }
-      sql22.param = param2;
-    })(sql2 || (sql2 = {}));
-    ((SQL22) => {
-      class Aliased {
-        constructor(sql22, fieldAlias) {
-          this.sql = sql22;
-          this.fieldAlias = fieldAlias;
-        }
-        static [entityKind2] = "SQL.Aliased";
-        /** @internal */
-        isSelectionField = false;
-        getSQL() {
-          return this.sql;
-        }
-        /** @internal */
-        clone() {
-          return new Aliased(this.sql, this.fieldAlias);
-        }
-      }
-      SQL22.Aliased = Aliased;
-    })(SQL2 || (SQL2 = {}));
-    Placeholder2 = class {
-      constructor(name2) {
-        this.name = name2;
-      }
-      static [entityKind2] = "Placeholder";
-      getSQL() {
-        return new SQL2([this]);
-      }
-    };
-    IsDrizzleView2 = /* @__PURE__ */ Symbol.for("drizzle:IsDrizzleView");
-    View2 = class {
-      static [entityKind2] = "View";
-      /** @internal */
-      [ViewBaseConfig2];
-      /** @internal */
-      [IsDrizzleView2] = true;
-      constructor({ name: name2, schema, selectedFields, query }) {
-        this[ViewBaseConfig2] = {
-          name: name2,
-          originalName: name2,
-          schema,
-          selectedFields,
-          query,
-          isExisting: !query,
-          isAlias: false
-        };
-      }
-      getSQL() {
-        return new SQL2([this]);
-      }
-    };
-    Column2.prototype.getSQL = function() {
-      return new SQL2([this]);
-    };
-    Table2.prototype.getSQL = function() {
-      return new SQL2([this]);
-    };
-    Subquery2.prototype.getSQL = function() {
-      return new SQL2([this]);
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/alias.js
-function aliasedTable2(table, tableAlias) {
-  return new Proxy(table, new TableAliasProxyHandler2(tableAlias, false));
-}
-function aliasedRelation(relation, tableAlias) {
-  return new Proxy(relation, new RelationTableAliasProxyHandler2(tableAlias));
-}
-function aliasedTableColumn2(column, tableAlias) {
-  return new Proxy(
-    column,
-    new ColumnAliasProxyHandler2(new Proxy(column.table, new TableAliasProxyHandler2(tableAlias, false)))
-  );
-}
-function mapColumnsInAliasedSQLToAlias2(query, alias) {
-  return new SQL2.Aliased(mapColumnsInSQLToAlias2(query.sql, alias), query.fieldAlias);
-}
-function mapColumnsInSQLToAlias2(query, alias) {
-  return sql2.join(query.queryChunks.map((c) => {
-    if (is2(c, Column2)) {
-      return aliasedTableColumn2(c, alias);
-    }
-    if (is2(c, SQL2)) {
-      return mapColumnsInSQLToAlias2(c, alias);
-    }
-    if (is2(c, SQL2.Aliased)) {
-      return mapColumnsInAliasedSQLToAlias2(c, alias);
-    }
-    return c;
-  }));
-}
-var ColumnAliasProxyHandler2, TableAliasProxyHandler2, RelationTableAliasProxyHandler2;
-var init_alias3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/alias.js"() {
-    init_column2();
-    init_entity2();
-    init_sql3();
-    init_table3();
-    init_view_common3();
-    ColumnAliasProxyHandler2 = class {
-      constructor(table) {
-        this.table = table;
-      }
-      static [entityKind2] = "ColumnAliasProxyHandler";
-      get(columnObj, prop) {
-        if (prop === "table") {
-          return this.table;
-        }
-        return columnObj[prop];
-      }
-    };
-    TableAliasProxyHandler2 = class {
-      constructor(alias, replaceOriginalName) {
-        this.alias = alias;
-        this.replaceOriginalName = replaceOriginalName;
-      }
-      static [entityKind2] = "TableAliasProxyHandler";
-      get(target, prop) {
-        if (prop === Table2.Symbol.IsAlias) {
-          return true;
-        }
-        if (prop === Table2.Symbol.Name) {
-          return this.alias;
-        }
-        if (this.replaceOriginalName && prop === Table2.Symbol.OriginalName) {
-          return this.alias;
-        }
-        if (prop === ViewBaseConfig2) {
-          return {
-            ...target[ViewBaseConfig2],
-            name: this.alias,
-            isAlias: true
-          };
-        }
-        if (prop === Table2.Symbol.Columns) {
-          const columns = target[Table2.Symbol.Columns];
-          if (!columns) {
-            return columns;
-          }
-          const proxiedColumns = {};
-          Object.keys(columns).map((key) => {
-            proxiedColumns[key] = new Proxy(
-              columns[key],
-              new ColumnAliasProxyHandler2(new Proxy(target, this))
-            );
-          });
-          return proxiedColumns;
-        }
-        const value = target[prop];
-        if (is2(value, Column2)) {
-          return new Proxy(value, new ColumnAliasProxyHandler2(new Proxy(target, this)));
-        }
-        return value;
-      }
-    };
-    RelationTableAliasProxyHandler2 = class {
-      constructor(alias) {
-        this.alias = alias;
-      }
-      static [entityKind2] = "RelationTableAliasProxyHandler";
-      get(target, prop) {
-        if (prop === "sourceTable") {
-          return aliasedTable2(target.sourceTable, this.alias);
-        }
-        return target[prop];
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/errors.js
-var DrizzleError2, DrizzleQueryError2, TransactionRollbackError2;
-var init_errors4 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/errors.js"() {
-    init_entity2();
-    DrizzleError2 = class extends Error {
-      static [entityKind2] = "DrizzleError";
-      constructor({ message, cause }) {
-        super(message);
-        this.name = "DrizzleError";
-        this.cause = cause;
-      }
-    };
-    DrizzleQueryError2 = class _DrizzleQueryError extends Error {
-      constructor(query, params, cause) {
-        super(`Failed query: ${query}
-params: ${params}`);
-        this.query = query;
-        this.params = params;
-        this.cause = cause;
-        Error.captureStackTrace(this, _DrizzleQueryError);
-        if (cause) this.cause = cause;
-      }
-    };
-    TransactionRollbackError2 = class extends DrizzleError2 {
-      static [entityKind2] = "TransactionRollbackError";
-      constructor() {
-        super({ message: "Rollback" });
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/logger.js
-var ConsoleLogWriter2, DefaultLogger2, NoopLogger2;
-var init_logger2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/logger.js"() {
-    init_entity2();
-    ConsoleLogWriter2 = class {
-      static [entityKind2] = "ConsoleLogWriter";
-      write(message) {
-        console.log(message);
-      }
-    };
-    DefaultLogger2 = class {
-      static [entityKind2] = "DefaultLogger";
-      writer;
-      constructor(config2) {
-        this.writer = config2?.writer ?? new ConsoleLogWriter2();
-      }
-      logQuery(query, params) {
-        const stringifiedParams = params.map((p) => {
-          try {
-            return JSON.stringify(p);
-          } catch {
-            return String(p);
-          }
-        });
-        const paramsStr = stringifiedParams.length ? ` -- params: [${stringifiedParams.join(", ")}]` : "";
-        this.writer.write(`Query: ${query}${paramsStr}`);
-      }
-    };
-    NoopLogger2 = class {
-      static [entityKind2] = "NoopLogger";
-      logQuery() {
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/operations.js
-var init_operations2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/operations.js"() {
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/query-promise.js
-var QueryPromise2;
-var init_query_promise2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/query-promise.js"() {
-    init_entity2();
-    QueryPromise2 = class {
-      static [entityKind2] = "QueryPromise";
-      [Symbol.toStringTag] = "QueryPromise";
-      catch(onRejected) {
-        return this.then(void 0, onRejected);
-      }
-      finally(onFinally) {
-        return this.then(
-          (value) => {
-            onFinally?.();
-            return value;
-          },
-          (reason) => {
-            onFinally?.();
-            throw reason;
-          }
-        );
-      }
-      then(onFulfilled, onRejected) {
-        return this.execute().then(onFulfilled, onRejected);
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/utils.js
-function mapResultRow2(columns, row, joinsNotNullableMap) {
-  const nullifyMap = {};
-  const result = columns.reduce(
-    (result2, { path: path3, field }, columnIndex) => {
-      let decoder;
-      if (is2(field, Column2)) {
-        decoder = field;
-      } else if (is2(field, SQL2)) {
-        decoder = field.decoder;
-      } else if (is2(field, Subquery2)) {
-        decoder = field._.sql.decoder;
-      } else {
-        decoder = field.sql.decoder;
-      }
-      let node = result2;
-      for (const [pathChunkIndex, pathChunk] of path3.entries()) {
-        if (pathChunkIndex < path3.length - 1) {
-          if (!(pathChunk in node)) {
-            node[pathChunk] = {};
-          }
-          node = node[pathChunk];
-        } else {
-          const rawValue = row[columnIndex];
-          const value = node[pathChunk] = rawValue === null ? null : decoder.mapFromDriverValue(rawValue);
-          if (joinsNotNullableMap && is2(field, Column2) && path3.length === 2) {
-            const objectName = path3[0];
-            if (!(objectName in nullifyMap)) {
-              nullifyMap[objectName] = value === null ? getTableName2(field.table) : false;
-            } else if (typeof nullifyMap[objectName] === "string" && nullifyMap[objectName] !== getTableName2(field.table)) {
-              nullifyMap[objectName] = false;
-            }
-          }
-        }
-      }
-      return result2;
-    },
-    {}
-  );
-  if (joinsNotNullableMap && Object.keys(nullifyMap).length > 0) {
-    for (const [objectName, tableName] of Object.entries(nullifyMap)) {
-      if (typeof tableName === "string" && !joinsNotNullableMap[tableName]) {
-        result[objectName] = null;
-      }
-    }
-  }
-  return result;
-}
-function orderSelectedFields2(fields, pathPrefix) {
-  return Object.entries(fields).reduce((result, [name2, field]) => {
-    if (typeof name2 !== "string") {
-      return result;
-    }
-    const newPath = pathPrefix ? [...pathPrefix, name2] : [name2];
-    if (is2(field, Column2) || is2(field, SQL2) || is2(field, SQL2.Aliased) || is2(field, Subquery2)) {
-      result.push({ path: newPath, field });
-    } else if (is2(field, Table2)) {
-      result.push(...orderSelectedFields2(field[Table2.Symbol.Columns], newPath));
-    } else {
-      result.push(...orderSelectedFields2(field, newPath));
-    }
-    return result;
-  }, []);
-}
-function haveSameKeys2(left, right) {
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) {
-    return false;
-  }
-  for (const [index, key] of leftKeys.entries()) {
-    if (key !== rightKeys[index]) {
-      return false;
-    }
-  }
-  return true;
-}
-function mapUpdateSet2(table, values) {
-  const entries = Object.entries(values).filter(([, value]) => value !== void 0).map(([key, value]) => {
-    if (is2(value, SQL2) || is2(value, Column2)) {
-      return [key, value];
-    } else {
-      return [key, new Param2(value, table[Table2.Symbol.Columns][key])];
-    }
-  });
-  if (entries.length === 0) {
-    throw new Error("No values to set");
-  }
-  return Object.fromEntries(entries);
-}
-function applyMixins2(baseClass, extendedClasses) {
-  for (const extendedClass of extendedClasses) {
-    for (const name2 of Object.getOwnPropertyNames(extendedClass.prototype)) {
-      if (name2 === "constructor") continue;
-      Object.defineProperty(
-        baseClass.prototype,
-        name2,
-        Object.getOwnPropertyDescriptor(extendedClass.prototype, name2) || /* @__PURE__ */ Object.create(null)
-      );
-    }
-  }
-}
-function getTableColumns2(table) {
-  return table[Table2.Symbol.Columns];
-}
-function getViewSelectedFields2(view) {
-  return view[ViewBaseConfig2].selectedFields;
-}
-function getTableLikeName2(table) {
-  return is2(table, Subquery2) ? table._.alias : is2(table, View2) ? table[ViewBaseConfig2].name : is2(table, SQL2) ? void 0 : table[Table2.Symbol.IsAlias] ? table[Table2.Symbol.Name] : table[Table2.Symbol.BaseName];
-}
-function getColumnNameAndConfig2(a, b) {
-  return {
-    name: typeof a === "string" && a.length > 0 ? a : "",
-    config: typeof a === "object" ? a : b
-  };
-}
-function isConfig2(data) {
-  if (typeof data !== "object" || data === null) return false;
-  if (data.constructor.name !== "Object") return false;
-  if ("logger" in data) {
-    const type = typeof data["logger"];
-    if (type !== "boolean" && (type !== "object" || typeof data["logger"]["logQuery"] !== "function") && type !== "undefined") return false;
-    return true;
-  }
-  if ("schema" in data) {
-    const type = typeof data["schema"];
-    if (type !== "object" && type !== "undefined") return false;
-    return true;
-  }
-  if ("casing" in data) {
-    const type = typeof data["casing"];
-    if (type !== "string" && type !== "undefined") return false;
-    return true;
-  }
-  if ("mode" in data) {
-    if (data["mode"] !== "default" || data["mode"] !== "planetscale" || data["mode"] !== void 0) return false;
-    return true;
-  }
-  if ("connection" in data) {
-    const type = typeof data["connection"];
-    if (type !== "string" && type !== "object" && type !== "undefined") return false;
-    return true;
-  }
-  if ("client" in data) {
-    const type = typeof data["client"];
-    if (type !== "object" && type !== "function" && type !== "undefined") return false;
-    return true;
-  }
-  if (Object.keys(data).length === 0) return true;
-  return false;
-}
-var textDecoder2;
-var init_utils5 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/utils.js"() {
-    init_column2();
-    init_entity2();
-    init_sql3();
-    init_subquery3();
-    init_table3();
-    init_view_common3();
-    textDecoder2 = typeof TextDecoder === "undefined" ? null : new TextDecoder();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/table.js
-var InlineForeignKeys2, EnableRLS2, PgTable2;
-var init_table4 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/table.js"() {
-    init_entity2();
-    init_table3();
-    InlineForeignKeys2 = /* @__PURE__ */ Symbol.for("drizzle:PgInlineForeignKeys");
-    EnableRLS2 = /* @__PURE__ */ Symbol.for("drizzle:EnableRLS");
-    PgTable2 = class extends Table2 {
-      static [entityKind2] = "PgTable";
-      /** @internal */
-      static Symbol = Object.assign({}, Table2.Symbol, {
-        InlineForeignKeys: InlineForeignKeys2,
-        EnableRLS: EnableRLS2
-      });
-      /**@internal */
-      [InlineForeignKeys2] = [];
-      /** @internal */
-      [EnableRLS2] = false;
-      /** @internal */
-      [Table2.Symbol.ExtraConfigBuilder] = void 0;
-      /** @internal */
-      [Table2.Symbol.ExtraConfigColumns] = {};
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/primary-keys.js
-var PrimaryKeyBuilder2, PrimaryKey2;
-var init_primary_keys2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/pg-core/primary-keys.js"() {
-    init_entity2();
-    init_table4();
-    PrimaryKeyBuilder2 = class {
-      static [entityKind2] = "PgPrimaryKeyBuilder";
-      /** @internal */
-      columns;
-      /** @internal */
-      name;
-      constructor(columns, name2) {
-        this.columns = columns;
-        this.name = name2;
-      }
-      /** @internal */
-      build(table) {
-        return new PrimaryKey2(table, this.columns, this.name);
-      }
-    };
-    PrimaryKey2 = class {
-      constructor(table, columns, name2) {
-        this.table = table;
-        this.columns = columns;
-        this.name = name2;
-      }
-      static [entityKind2] = "PgPrimaryKey";
-      columns;
-      name;
-      getName() {
-        return this.name ?? `${this.table[PgTable2.Symbol.Name]}_${this.columns.map((column) => column.name).join("_")}_pk`;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/conditions.js
-function bindIfParam2(value, column) {
-  if (isDriverValueEncoder2(column) && !isSQLWrapper2(value) && !is2(value, Param2) && !is2(value, Placeholder2) && !is2(value, Column2) && !is2(value, Table2) && !is2(value, View2)) {
-    return new Param2(value, column);
-  }
-  return value;
-}
-function and2(...unfilteredConditions) {
-  const conditions = unfilteredConditions.filter(
-    (c) => c !== void 0
-  );
-  if (conditions.length === 0) {
-    return void 0;
-  }
-  if (conditions.length === 1) {
-    return new SQL2(conditions);
-  }
-  return new SQL2([
-    new StringChunk2("("),
-    sql2.join(conditions, new StringChunk2(" and ")),
-    new StringChunk2(")")
-  ]);
-}
-function or2(...unfilteredConditions) {
-  const conditions = unfilteredConditions.filter(
-    (c) => c !== void 0
-  );
-  if (conditions.length === 0) {
-    return void 0;
-  }
-  if (conditions.length === 1) {
-    return new SQL2(conditions);
-  }
-  return new SQL2([
-    new StringChunk2("("),
-    sql2.join(conditions, new StringChunk2(" or ")),
-    new StringChunk2(")")
-  ]);
-}
-function not2(condition) {
-  return sql2`not ${condition}`;
-}
-function inArray2(column, values) {
-  if (Array.isArray(values)) {
-    if (values.length === 0) {
-      return sql2`false`;
-    }
-    return sql2`${column} in ${values.map((v) => bindIfParam2(v, column))}`;
-  }
-  return sql2`${column} in ${bindIfParam2(values, column)}`;
-}
-function notInArray2(column, values) {
-  if (Array.isArray(values)) {
-    if (values.length === 0) {
-      return sql2`true`;
-    }
-    return sql2`${column} not in ${values.map((v) => bindIfParam2(v, column))}`;
-  }
-  return sql2`${column} not in ${bindIfParam2(values, column)}`;
-}
-function isNull2(value) {
-  return sql2`${value} is null`;
-}
-function isNotNull2(value) {
-  return sql2`${value} is not null`;
-}
-function exists2(subquery) {
-  return sql2`exists ${subquery}`;
-}
-function notExists2(subquery) {
-  return sql2`not exists ${subquery}`;
-}
-function between2(column, min2, max2) {
-  return sql2`${column} between ${bindIfParam2(min2, column)} and ${bindIfParam2(
-    max2,
-    column
-  )}`;
-}
-function notBetween2(column, min2, max2) {
-  return sql2`${column} not between ${bindIfParam2(
-    min2,
-    column
-  )} and ${bindIfParam2(max2, column)}`;
-}
-function like2(column, value) {
-  return sql2`${column} like ${value}`;
-}
-function notLike2(column, value) {
-  return sql2`${column} not like ${value}`;
-}
-function ilike2(column, value) {
-  return sql2`${column} ilike ${value}`;
-}
-function notIlike2(column, value) {
-  return sql2`${column} not ilike ${value}`;
-}
-function arrayContains(column, values) {
-  if (Array.isArray(values)) {
-    if (values.length === 0) {
-      throw new Error("arrayContains requires at least one value");
-    }
-    const array2 = sql2`${bindIfParam2(values, column)}`;
-    return sql2`${column} @> ${array2}`;
-  }
-  return sql2`${column} @> ${bindIfParam2(values, column)}`;
-}
-function arrayContained(column, values) {
-  if (Array.isArray(values)) {
-    if (values.length === 0) {
-      throw new Error("arrayContained requires at least one value");
-    }
-    const array2 = sql2`${bindIfParam2(values, column)}`;
-    return sql2`${column} <@ ${array2}`;
-  }
-  return sql2`${column} <@ ${bindIfParam2(values, column)}`;
-}
-function arrayOverlaps(column, values) {
-  if (Array.isArray(values)) {
-    if (values.length === 0) {
-      throw new Error("arrayOverlaps requires at least one value");
-    }
-    const array2 = sql2`${bindIfParam2(values, column)}`;
-    return sql2`${column} && ${array2}`;
-  }
-  return sql2`${column} && ${bindIfParam2(values, column)}`;
-}
-var eq2, ne2, gt2, gte2, lt2, lte2;
-var init_conditions2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/conditions.js"() {
-    init_column2();
-    init_entity2();
-    init_table3();
-    init_sql3();
-    eq2 = (left, right) => {
-      return sql2`${left} = ${bindIfParam2(right, left)}`;
-    };
-    ne2 = (left, right) => {
-      return sql2`${left} <> ${bindIfParam2(right, left)}`;
-    };
-    gt2 = (left, right) => {
-      return sql2`${left} > ${bindIfParam2(right, left)}`;
-    };
-    gte2 = (left, right) => {
-      return sql2`${left} >= ${bindIfParam2(right, left)}`;
-    };
-    lt2 = (left, right) => {
-      return sql2`${left} < ${bindIfParam2(right, left)}`;
-    };
-    lte2 = (left, right) => {
-      return sql2`${left} <= ${bindIfParam2(right, left)}`;
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/select.js
-function asc2(column) {
-  return sql2`${column} asc`;
-}
-function desc2(column) {
-  return sql2`${column} desc`;
-}
-var init_select3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/select.js"() {
-    init_sql3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/index.js
-var init_expressions2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/expressions/index.js"() {
-    init_conditions2();
-    init_select3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/relations.js
-function getOperators2() {
-  return {
-    and: and2,
-    between: between2,
-    eq: eq2,
-    exists: exists2,
-    gt: gt2,
-    gte: gte2,
-    ilike: ilike2,
-    inArray: inArray2,
-    isNull: isNull2,
-    isNotNull: isNotNull2,
-    like: like2,
-    lt: lt2,
-    lte: lte2,
-    ne: ne2,
-    not: not2,
-    notBetween: notBetween2,
-    notExists: notExists2,
-    notLike: notLike2,
-    notIlike: notIlike2,
-    notInArray: notInArray2,
-    or: or2,
-    sql: sql2
-  };
-}
-function getOrderByOperators2() {
-  return {
-    sql: sql2,
-    asc: asc2,
-    desc: desc2
-  };
-}
-function extractTablesRelationalConfig2(schema, configHelpers) {
-  if (Object.keys(schema).length === 1 && "default" in schema && !is2(schema["default"], Table2)) {
-    schema = schema["default"];
-  }
-  const tableNamesMap = {};
-  const relationsBuffer = {};
-  const tablesConfig = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (is2(value, Table2)) {
-      const dbName = getTableUniqueName2(value);
-      const bufferedRelations = relationsBuffer[dbName];
-      tableNamesMap[dbName] = key;
-      tablesConfig[key] = {
-        tsName: key,
-        dbName: value[Table2.Symbol.Name],
-        schema: value[Table2.Symbol.Schema],
-        columns: value[Table2.Symbol.Columns],
-        relations: bufferedRelations?.relations ?? {},
-        primaryKey: bufferedRelations?.primaryKey ?? []
-      };
-      for (const column of Object.values(
-        value[Table2.Symbol.Columns]
-      )) {
-        if (column.primary) {
-          tablesConfig[key].primaryKey.push(column);
-        }
-      }
-      const extraConfig = value[Table2.Symbol.ExtraConfigBuilder]?.(value[Table2.Symbol.ExtraConfigColumns]);
-      if (extraConfig) {
-        for (const configEntry of Object.values(extraConfig)) {
-          if (is2(configEntry, PrimaryKeyBuilder2)) {
-            tablesConfig[key].primaryKey.push(...configEntry.columns);
-          }
-        }
-      }
-    } else if (is2(value, Relations2)) {
-      const dbName = getTableUniqueName2(value.table);
-      const tableName = tableNamesMap[dbName];
-      const relations22 = value.config(
-        configHelpers(value.table)
-      );
-      let primaryKey2;
-      for (const [relationName, relation] of Object.entries(relations22)) {
-        if (tableName) {
-          const tableConfig = tablesConfig[tableName];
-          tableConfig.relations[relationName] = relation;
-          if (primaryKey2) {
-            tableConfig.primaryKey.push(...primaryKey2);
-          }
-        } else {
-          if (!(dbName in relationsBuffer)) {
-            relationsBuffer[dbName] = {
-              relations: {},
-              primaryKey: primaryKey2
-            };
-          }
-          relationsBuffer[dbName].relations[relationName] = relation;
-        }
-      }
-    }
-  }
-  return { tables: tablesConfig, tableNamesMap };
-}
-function relations2(table, relations22) {
-  return new Relations2(
-    table,
-    (helpers) => Object.fromEntries(
-      Object.entries(relations22(helpers)).map(([key, value]) => [
-        key,
-        value.withFieldName(key)
-      ])
-    )
-  );
-}
-function createOne2(sourceTable) {
-  return function one(table, config2) {
-    return new One2(
-      sourceTable,
-      table,
-      config2,
-      config2?.fields.reduce((res, f) => res && f.notNull, true) ?? false
-    );
-  };
-}
-function createMany2(sourceTable) {
-  return function many(referencedTable, config2) {
-    return new Many2(sourceTable, referencedTable, config2);
-  };
-}
-function normalizeRelation2(schema, tableNamesMap, relation) {
-  if (is2(relation, One2) && relation.config) {
-    return {
-      fields: relation.config.fields,
-      references: relation.config.references
-    };
-  }
-  const referencedTableTsName = tableNamesMap[getTableUniqueName2(relation.referencedTable)];
-  if (!referencedTableTsName) {
-    throw new Error(
-      `Table "${relation.referencedTable[Table2.Symbol.Name]}" not found in schema`
-    );
-  }
-  const referencedTableConfig = schema[referencedTableTsName];
-  if (!referencedTableConfig) {
-    throw new Error(`Table "${referencedTableTsName}" not found in schema`);
-  }
-  const sourceTable = relation.sourceTable;
-  const sourceTableTsName = tableNamesMap[getTableUniqueName2(sourceTable)];
-  if (!sourceTableTsName) {
-    throw new Error(
-      `Table "${sourceTable[Table2.Symbol.Name]}" not found in schema`
-    );
-  }
-  const reverseRelations = [];
-  for (const referencedTableRelation of Object.values(
-    referencedTableConfig.relations
-  )) {
-    if (relation.relationName && relation !== referencedTableRelation && referencedTableRelation.relationName === relation.relationName || !relation.relationName && referencedTableRelation.referencedTable === relation.sourceTable) {
-      reverseRelations.push(referencedTableRelation);
-    }
-  }
-  if (reverseRelations.length > 1) {
-    throw relation.relationName ? new Error(
-      `There are multiple relations with name "${relation.relationName}" in table "${referencedTableTsName}"`
-    ) : new Error(
-      `There are multiple relations between "${referencedTableTsName}" and "${relation.sourceTable[Table2.Symbol.Name]}". Please specify relation name`
-    );
-  }
-  if (reverseRelations[0] && is2(reverseRelations[0], One2) && reverseRelations[0].config) {
-    return {
-      fields: reverseRelations[0].config.references,
-      references: reverseRelations[0].config.fields
-    };
-  }
-  throw new Error(
-    `There is not enough information to infer relation "${sourceTableTsName}.${relation.fieldName}"`
-  );
-}
-function createTableRelationsHelpers2(sourceTable) {
-  return {
-    one: createOne2(sourceTable),
-    many: createMany2(sourceTable)
-  };
-}
-function mapRelationalRow2(tablesConfig, tableConfig, row, buildQueryResultSelection, mapColumnValue = (value) => value) {
-  const result = {};
-  for (const [
-    selectionItemIndex,
-    selectionItem
-  ] of buildQueryResultSelection.entries()) {
-    if (selectionItem.isJson) {
-      const relation = tableConfig.relations[selectionItem.tsKey];
-      const rawSubRows = row[selectionItemIndex];
-      const subRows = typeof rawSubRows === "string" ? JSON.parse(rawSubRows) : rawSubRows;
-      result[selectionItem.tsKey] = is2(relation, One2) ? subRows && mapRelationalRow2(
-        tablesConfig,
-        tablesConfig[selectionItem.relationTableTsKey],
-        subRows,
-        selectionItem.selection,
-        mapColumnValue
-      ) : subRows.map(
-        (subRow) => mapRelationalRow2(
-          tablesConfig,
-          tablesConfig[selectionItem.relationTableTsKey],
-          subRow,
-          selectionItem.selection,
-          mapColumnValue
-        )
-      );
-    } else {
-      const value = mapColumnValue(row[selectionItemIndex]);
-      const field = selectionItem.field;
-      let decoder;
-      if (is2(field, Column2)) {
-        decoder = field;
-      } else if (is2(field, SQL2)) {
-        decoder = field.decoder;
-      } else {
-        decoder = field.sql.decoder;
-      }
-      result[selectionItem.tsKey] = value === null ? null : decoder.mapFromDriverValue(value);
-    }
-  }
-  return result;
-}
-var Relation2, Relations2, One2, Many2;
-var init_relations2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/relations.js"() {
-    init_table3();
-    init_column2();
-    init_entity2();
-    init_primary_keys2();
-    init_expressions2();
-    init_sql3();
-    Relation2 = class {
-      constructor(sourceTable, referencedTable, relationName) {
-        this.sourceTable = sourceTable;
-        this.referencedTable = referencedTable;
-        this.relationName = relationName;
-        this.referencedTableName = referencedTable[Table2.Symbol.Name];
-      }
-      static [entityKind2] = "Relation";
-      referencedTableName;
-      fieldName;
-    };
-    Relations2 = class {
-      constructor(table, config2) {
-        this.table = table;
-        this.config = config2;
-      }
-      static [entityKind2] = "Relations";
-    };
-    One2 = class _One extends Relation2 {
-      constructor(sourceTable, referencedTable, config2, isNullable) {
-        super(sourceTable, referencedTable, config2?.relationName);
-        this.config = config2;
-        this.isNullable = isNullable;
-      }
-      static [entityKind2] = "One";
-      withFieldName(fieldName) {
-        const relation = new _One(
-          this.sourceTable,
-          this.referencedTable,
-          this.config,
-          this.isNullable
-        );
-        relation.fieldName = fieldName;
-        return relation;
-      }
-    };
-    Many2 = class _Many extends Relation2 {
-      constructor(sourceTable, referencedTable, config2) {
-        super(sourceTable, referencedTable, config2?.relationName);
-        this.config = config2;
-      }
-      static [entityKind2] = "Many";
-      withFieldName(fieldName) {
-        const relation = new _Many(
-          this.sourceTable,
-          this.referencedTable,
-          this.config
-        );
-        relation.fieldName = fieldName;
-        return relation;
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/aggregate.js
-function count(expression) {
-  return sql2`count(${expression || sql2.raw("*")})`.mapWith(Number);
-}
-function countDistinct(expression) {
-  return sql2`count(distinct ${expression})`.mapWith(Number);
-}
-function avg(expression) {
-  return sql2`avg(${expression})`.mapWith(String);
-}
-function avgDistinct(expression) {
-  return sql2`avg(distinct ${expression})`.mapWith(String);
-}
-function sum(expression) {
-  return sql2`sum(${expression})`.mapWith(String);
-}
-function sumDistinct(expression) {
-  return sql2`sum(distinct ${expression})`.mapWith(String);
-}
-function max(expression) {
-  return sql2`max(${expression})`.mapWith(is2(expression, Column2) ? expression : String);
-}
-function min(expression) {
-  return sql2`min(${expression})`.mapWith(is2(expression, Column2) ? expression : String);
-}
-var init_aggregate2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/aggregate.js"() {
-    init_column2();
-    init_entity2();
-    init_sql3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/vector.js
-function toSql(value) {
-  return JSON.stringify(value);
-}
-function l2Distance(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <-> ${toSql(value)}`;
-  }
-  return sql2`${column} <-> ${value}`;
-}
-function l1Distance(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <+> ${toSql(value)}`;
-  }
-  return sql2`${column} <+> ${value}`;
-}
-function innerProduct(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <#> ${toSql(value)}`;
-  }
-  return sql2`${column} <#> ${value}`;
-}
-function cosineDistance(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <=> ${toSql(value)}`;
-  }
-  return sql2`${column} <=> ${value}`;
-}
-function hammingDistance(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <~> ${toSql(value)}`;
-  }
-  return sql2`${column} <~> ${value}`;
-}
-function jaccardDistance(column, value) {
-  if (Array.isArray(value)) {
-    return sql2`${column} <%> ${toSql(value)}`;
-  }
-  return sql2`${column} <%> ${value}`;
-}
-var init_vector3 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/vector.js"() {
-    init_sql3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/index.js
-var init_functions2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/functions/index.js"() {
-    init_aggregate2();
-    init_vector3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/index.js
-var init_sql4 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/sql/index.js"() {
-    init_expressions2();
-    init_functions2();
-    init_sql3();
-  }
-});
-
-// ../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/index.js
-var drizzle_orm_exports = {};
-__export(drizzle_orm_exports, {
-  BaseName: () => BaseName2,
-  Column: () => Column2,
-  ColumnAliasProxyHandler: () => ColumnAliasProxyHandler2,
-  ColumnBuilder: () => ColumnBuilder2,
-  Columns: () => Columns2,
-  ConsoleLogWriter: () => ConsoleLogWriter2,
-  DefaultLogger: () => DefaultLogger2,
-  DrizzleError: () => DrizzleError2,
-  DrizzleQueryError: () => DrizzleQueryError2,
-  ExtraConfigBuilder: () => ExtraConfigBuilder2,
-  ExtraConfigColumns: () => ExtraConfigColumns2,
-  FakePrimitiveParam: () => FakePrimitiveParam2,
-  IsAlias: () => IsAlias2,
-  Many: () => Many2,
-  Name: () => Name2,
-  NoopLogger: () => NoopLogger2,
-  One: () => One2,
-  OriginalName: () => OriginalName2,
-  Param: () => Param2,
-  Placeholder: () => Placeholder2,
-  QueryPromise: () => QueryPromise2,
-  Relation: () => Relation2,
-  RelationTableAliasProxyHandler: () => RelationTableAliasProxyHandler2,
-  Relations: () => Relations2,
-  SQL: () => SQL2,
-  Schema: () => Schema2,
-  StringChunk: () => StringChunk2,
-  Subquery: () => Subquery2,
-  Table: () => Table2,
-  TableAliasProxyHandler: () => TableAliasProxyHandler2,
-  TransactionRollbackError: () => TransactionRollbackError2,
-  View: () => View2,
-  ViewBaseConfig: () => ViewBaseConfig2,
-  WithSubquery: () => WithSubquery2,
-  aliasedRelation: () => aliasedRelation,
-  aliasedTable: () => aliasedTable2,
-  aliasedTableColumn: () => aliasedTableColumn2,
-  and: () => and2,
-  applyMixins: () => applyMixins2,
-  arrayContained: () => arrayContained,
-  arrayContains: () => arrayContains,
-  arrayOverlaps: () => arrayOverlaps,
-  asc: () => asc2,
-  avg: () => avg,
-  avgDistinct: () => avgDistinct,
-  between: () => between2,
-  bindIfParam: () => bindIfParam2,
-  cosineDistance: () => cosineDistance,
-  count: () => count,
-  countDistinct: () => countDistinct,
-  createMany: () => createMany2,
-  createOne: () => createOne2,
-  createTableRelationsHelpers: () => createTableRelationsHelpers2,
-  desc: () => desc2,
-  entityKind: () => entityKind2,
-  eq: () => eq2,
-  exists: () => exists2,
-  extractTablesRelationalConfig: () => extractTablesRelationalConfig2,
-  fillPlaceholders: () => fillPlaceholders2,
-  getColumnNameAndConfig: () => getColumnNameAndConfig2,
-  getOperators: () => getOperators2,
-  getOrderByOperators: () => getOrderByOperators2,
-  getTableColumns: () => getTableColumns2,
-  getTableLikeName: () => getTableLikeName2,
-  getTableName: () => getTableName2,
-  getTableUniqueName: () => getTableUniqueName2,
-  getViewName: () => getViewName,
-  getViewSelectedFields: () => getViewSelectedFields2,
-  gt: () => gt2,
-  gte: () => gte2,
-  hammingDistance: () => hammingDistance,
-  hasOwnEntityKind: () => hasOwnEntityKind,
-  haveSameKeys: () => haveSameKeys2,
-  ilike: () => ilike2,
-  inArray: () => inArray2,
-  innerProduct: () => innerProduct,
-  is: () => is2,
-  isConfig: () => isConfig2,
-  isDriverValueEncoder: () => isDriverValueEncoder2,
-  isNotNull: () => isNotNull2,
-  isNull: () => isNull2,
-  isSQLWrapper: () => isSQLWrapper2,
-  isTable: () => isTable2,
-  isView: () => isView2,
-  jaccardDistance: () => jaccardDistance,
-  l1Distance: () => l1Distance,
-  l2Distance: () => l2Distance,
-  like: () => like2,
-  lt: () => lt2,
-  lte: () => lte2,
-  mapColumnsInAliasedSQLToAlias: () => mapColumnsInAliasedSQLToAlias2,
-  mapColumnsInSQLToAlias: () => mapColumnsInSQLToAlias2,
-  mapRelationalRow: () => mapRelationalRow2,
-  mapResultRow: () => mapResultRow2,
-  mapUpdateSet: () => mapUpdateSet2,
-  max: () => max,
-  min: () => min,
-  name: () => name,
-  ne: () => ne2,
-  noopDecoder: () => noopDecoder2,
-  noopEncoder: () => noopEncoder2,
-  noopMapper: () => noopMapper2,
-  normalizeRelation: () => normalizeRelation2,
-  not: () => not2,
-  notBetween: () => notBetween2,
-  notExists: () => notExists2,
-  notIlike: () => notIlike2,
-  notInArray: () => notInArray2,
-  notLike: () => notLike2,
-  or: () => or2,
-  orderSelectedFields: () => orderSelectedFields2,
-  param: () => param,
-  placeholder: () => placeholder,
-  relations: () => relations2,
-  sql: () => sql2,
-  sum: () => sum,
-  sumDistinct: () => sumDistinct,
-  textDecoder: () => textDecoder2
-});
-var init_drizzle_orm2 = __esm({
-  "../../node_modules/.pnpm/drizzle-orm@0.45.2_pg@8.23.0/node_modules/drizzle-orm/index.js"() {
-    init_alias3();
-    init_column_builder2();
-    init_column2();
-    init_entity2();
-    init_errors4();
-    init_logger2();
-    init_operations2();
-    init_query_promise2();
-    init_relations2();
-    init_sql4();
-    init_subquery3();
-    init_table3();
-    init_utils5();
-    init_view_common3();
   }
 });
 
@@ -60440,12 +58226,12 @@ async function comparePassword(password, hash2) {
 async function ensureDefaultAdmin() {
   const ADMIN_EMAIL = "bliaditdev@gmail.com";
   const ADMIN_NIK = "160203";
-  const existing = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.email, ADMIN_EMAIL));
+  const existing = await db.select().from(accountManagersTable).where(eq(accountManagersTable.email, ADMIN_EMAIL));
   if (existing.length === 0) {
-    const byNik = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.nik, ADMIN_NIK));
+    const byNik = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, ADMIN_NIK));
     if (byNik.length > 0) {
       const hash2 = byNik[0].passwordHash ?? await hashPassword("admin123");
-      await db.update(accountManagersTable).set({ email: ADMIN_EMAIL, role: "ADMIN", roleId: 1, passwordHash: hash2, status: "ACTIVE" }).where(eq2(accountManagersTable.nik, ADMIN_NIK));
+      await db.update(accountManagersTable).set({ email: ADMIN_EMAIL, role: "ADMIN", roleId: 1, passwordHash: hash2, status: "ACTIVE" }).where(eq(accountManagersTable.nik, ADMIN_NIK));
     } else {
       const hash2 = await hashPassword("admin123");
       await db.insert(accountManagersTable).values({
@@ -60467,7 +58253,7 @@ async function ensureDefaultAdmin() {
     const needsUpdate = rec.role !== "ADMIN" || !rec.passwordHash || rec.nik !== ADMIN_NIK;
     if (needsUpdate) {
       const hash2 = rec.passwordHash ?? await hashPassword("admin123");
-      await db.update(accountManagersTable).set({ role: "ADMIN", roleId: 1, nik: ADMIN_NIK, passwordHash: hash2, status: "ACTIVE" }).where(eq2(accountManagersTable.email, ADMIN_EMAIL));
+      await db.update(accountManagersTable).set({ role: "ADMIN", roleId: 1, nik: ADMIN_NIK, passwordHash: hash2, status: "ACTIVE" }).where(eq(accountManagersTable.email, ADMIN_EMAIL));
     }
   }
 }
@@ -60529,14 +58315,14 @@ var init_auth = __esm({
     "use strict";
     init_bcryptjs();
     init_src();
-    init_drizzle_orm2();
+    init_drizzle_orm();
   }
 });
 
 // src/shared/logger.ts
 import path from "path";
 var import_pino, isProduction, logger;
-var init_logger3 = __esm({
+var init_logger2 = __esm({
   "src/shared/logger.ts"() {
     "use strict";
     import_pino = __toESM(require_pino(), 1);
@@ -66852,8 +64638,8 @@ var require_xlsx = __commonJS({
           var out = [], cdirs = [];
           var o = new_buf(1);
           var method = _opts.compression ? 8 : 0, flags = 0;
-          var desc3 = false;
-          if (desc3) flags |= 8;
+          var desc2 = false;
+          if (desc2) flags |= 8;
           var i2 = 0, j = 0;
           var start_cd = 0, fcnt = 0;
           var root = cfb.FullPaths[0], fp = root, fi = cfb.FileIndex[0];
@@ -67582,17 +65368,17 @@ var require_xlsx = __commonJS({
       var nsregex = /<\w*:/, nsregex2 = /<(\/?)\w+:/;
       function parsexmltag(tag, skip_root, skip_LC) {
         var z = {};
-        var eq4 = 0, c = 0;
-        for (; eq4 !== tag.length; ++eq4) if ((c = tag.charCodeAt(eq4)) === 32 || c === 10 || c === 13) break;
-        if (!skip_root) z[0] = tag.slice(0, eq4);
-        if (eq4 === tag.length) return z;
+        var eq3 = 0, c = 0;
+        for (; eq3 !== tag.length; ++eq3) if ((c = tag.charCodeAt(eq3)) === 32 || c === 10 || c === 13) break;
+        if (!skip_root) z[0] = tag.slice(0, eq3);
+        if (eq3 === tag.length) return z;
         var m = tag.match(attregexg), j = 0, v = "", i = 0, q = "", cc = "", quot = 1;
         if (m) for (i = 0; i != m.length; ++i) {
           cc = m[i];
           for (c = 0; c != cc.length; ++c) if (cc.charCodeAt(c) === 61) break;
           q = cc.slice(0, c).trim();
           while (cc.charCodeAt(c + 1) == 32) ++c;
-          quot = (eq4 = cc.charCodeAt(c + 1)) == 34 || eq4 == 39 ? 1 : 0;
+          quot = (eq3 = cc.charCodeAt(c + 1)) == 34 || eq3 == 39 ? 1 : 0;
           v = cc.slice(c + 1 + quot, cc.length - quot);
           for (j = 0; j != q.length; ++j) if (q.charCodeAt(j) === 58) break;
           if (j === q.length) {
@@ -93923,10 +91709,10 @@ var require_util = __commonJS({
       return typeof arg === "boolean";
     }
     exports.isBoolean = isBoolean;
-    function isNull5(arg) {
+    function isNull4(arg) {
       return arg === null;
     }
-    exports.isNull = isNull5;
+    exports.isNull = isNull4;
     function isNullOrUndefined(arg) {
       return arg == null;
     }
@@ -95718,9 +93504,9 @@ var require_readable = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/support.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/support.js
 var require_support = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/support.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/support.js"(exports) {
     "use strict";
     exports.base64 = true;
     exports.array = true;
@@ -95758,9 +93544,9 @@ var require_support = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/base64.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/base64.js
 var require_base64 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/base64.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/base64.js"(exports) {
     "use strict";
     var utils2 = require_utils6();
     var support = require_support();
@@ -95835,9 +93621,9 @@ var require_base64 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejsUtils.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejsUtils.js
 var require_nodejsUtils = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejsUtils.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejsUtils.js"(exports, module) {
     "use strict";
     module.exports = {
       /**
@@ -96235,9 +94021,9 @@ var require_lib7 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/external.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/external.js
 var require_external = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/external.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/external.js"(exports, module) {
     "use strict";
     var ES6Promise = null;
     if (typeof Promise !== "undefined") {
@@ -96399,9 +94185,9 @@ var require_setImmediate = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/utils.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/utils.js
 var require_utils6 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/utils.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/utils.js"(exports) {
     "use strict";
     var support = require_support();
     var base643 = require_base64();
@@ -96631,16 +94417,17 @@ var require_utils6 = __commonJS({
       if (typeof input === "string") {
         return "string";
       }
-      if (Object.prototype.toString.call(input) === "[object Array]") {
+      var proto = Object.prototype.toString.call(input);
+      if (proto === "[object Array]") {
         return "array";
       }
       if (support.nodebuffer && nodejsUtils.isBuffer(input)) {
         return "nodebuffer";
       }
-      if (support.uint8array && input instanceof Uint8Array) {
+      if (support.uint8array && proto === "[object Uint8Array]") {
         return "uint8array";
       }
-      if (support.arraybuffer && input instanceof ArrayBuffer) {
+      if (support.arraybuffer && proto === "[object ArrayBuffer]") {
         return "arraybuffer";
       }
     };
@@ -96685,20 +94472,27 @@ var require_utils6 = __commonJS({
     exports.prepareContent = function(name2, inputData, isBinary, isOptimizedBinaryString, isBase64) {
       var promise2 = external.Promise.resolve(inputData).then(function(data) {
         var isBlob = support.blob && (data instanceof Blob || ["[object File]", "[object Blob]"].indexOf(Object.prototype.toString.call(data)) !== -1);
-        if (isBlob && typeof FileReader !== "undefined") {
-          return new external.Promise(function(resolve2, reject) {
-            var reader = new FileReader();
-            reader.onload = function(e) {
-              resolve2(e.target.result);
-            };
-            reader.onerror = function(e) {
-              reject(e.target.error);
-            };
-            reader.readAsArrayBuffer(data);
-          });
-        } else {
-          return data;
+        if (isBlob) {
+          if (typeof Blob.prototype.arrayBuffer !== "undefined") {
+            return data.arrayBuffer();
+          } else if (typeof FileReader !== "undefined") {
+            return new external.Promise(function(resolve2, reject) {
+              var reader = new FileReader();
+              reader.onload = function(e) {
+                resolve2(e.target.result);
+              };
+              reader.onerror = function(e) {
+                reject(e.target.error);
+              };
+              reader.readAsArrayBuffer(data);
+            });
+          } else {
+            return external.Promise.reject(
+              new Error(name2 + " is a Blob, but we have no way of reading it.")
+            );
+          }
         }
+        return data;
       });
       return promise2.then(function(data) {
         var dataType = exports.getTypeOf(data);
@@ -96724,9 +94518,9 @@ var require_utils6 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/GenericWorker.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/GenericWorker.js
 var require_GenericWorker = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/GenericWorker.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/GenericWorker.js"(exports, module) {
     "use strict";
     function GenericWorker(name2) {
       this.name = name2 || "default";
@@ -96951,9 +94745,9 @@ var require_GenericWorker = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/utf8.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/utf8.js
 var require_utf8 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/utf8.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/utf8.js"(exports) {
     "use strict";
     var utils2 = require_utils6();
     var support = require_support();
@@ -97141,9 +94935,9 @@ var require_utf8 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/ConvertWorker.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/ConvertWorker.js
 var require_ConvertWorker = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/ConvertWorker.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/ConvertWorker.js"(exports, module) {
     "use strict";
     var GenericWorker = require_GenericWorker();
     var utils2 = require_utils6();
@@ -97162,9 +94956,9 @@ var require_ConvertWorker = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js
 var require_NodejsStreamOutputAdapter = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js"(exports, module) {
     "use strict";
     var Readable = require_readable().Readable;
     var utils2 = require_utils6();
@@ -97193,9 +94987,9 @@ var require_NodejsStreamOutputAdapter = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/StreamHelper.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/StreamHelper.js
 var require_StreamHelper = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/StreamHelper.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/StreamHelper.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var ConvertWorker = require_ConvertWorker();
@@ -97353,9 +95147,9 @@ var require_StreamHelper = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/defaults.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/defaults.js
 var require_defaults2 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/defaults.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/defaults.js"(exports) {
     "use strict";
     exports.base64 = false;
     exports.binary = false;
@@ -97370,9 +95164,9 @@ var require_defaults2 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/DataWorker.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/DataWorker.js
 var require_DataWorker = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/DataWorker.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/DataWorker.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var GenericWorker = require_GenericWorker();
@@ -97458,9 +95252,9 @@ var require_DataWorker = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/crc32.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/crc32.js
 var require_crc32 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/crc32.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/crc32.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     function makeTable() {
@@ -97505,9 +95299,9 @@ var require_crc32 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/Crc32Probe.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/Crc32Probe.js
 var require_Crc32Probe = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/Crc32Probe.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/Crc32Probe.js"(exports, module) {
     "use strict";
     var GenericWorker = require_GenericWorker();
     var crc32 = require_crc32();
@@ -97525,9 +95319,9 @@ var require_Crc32Probe = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/DataLengthProbe.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/DataLengthProbe.js
 var require_DataLengthProbe = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/stream/DataLengthProbe.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/stream/DataLengthProbe.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var GenericWorker = require_GenericWorker();
@@ -97548,9 +95342,9 @@ var require_DataLengthProbe = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/compressedObject.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/compressedObject.js
 var require_compressedObject = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/compressedObject.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/compressedObject.js"(exports, module) {
     "use strict";
     var external = require_external();
     var DataWorker = require_DataWorker();
@@ -97593,9 +95387,9 @@ var require_compressedObject = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipObject.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipObject.js
 var require_zipObject = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipObject.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipObject.js"(exports, module) {
     "use strict";
     var StreamHelper = require_StreamHelper();
     var DataWorker = require_DataWorker();
@@ -97922,14 +95716,14 @@ var require_trees = __commonJS({
         s.bi_valid -= 8;
       }
     }
-    function gen_bitlen(s, desc3) {
-      var tree = desc3.dyn_tree;
-      var max_code = desc3.max_code;
-      var stree = desc3.stat_desc.static_tree;
-      var has_stree = desc3.stat_desc.has_stree;
-      var extra = desc3.stat_desc.extra_bits;
-      var base = desc3.stat_desc.extra_base;
-      var max_length = desc3.stat_desc.max_length;
+    function gen_bitlen(s, desc2) {
+      var tree = desc2.dyn_tree;
+      var max_code = desc2.max_code;
+      var stree = desc2.stat_desc.static_tree;
+      var has_stree = desc2.stat_desc.has_stree;
+      var extra = desc2.stat_desc.extra_bits;
+      var base = desc2.stat_desc.extra_base;
+      var max_length = desc2.stat_desc.max_length;
       var h;
       var n, m;
       var bits;
@@ -98156,11 +95950,11 @@ var require_trees = __commonJS({
       }
       send_code(s, END_BLOCK, ltree);
     }
-    function build_tree(s, desc3) {
-      var tree = desc3.dyn_tree;
-      var stree = desc3.stat_desc.static_tree;
-      var has_stree = desc3.stat_desc.has_stree;
-      var elems = desc3.stat_desc.elems;
+    function build_tree(s, desc2) {
+      var tree = desc2.dyn_tree;
+      var stree = desc2.stat_desc.static_tree;
+      var has_stree = desc2.stat_desc.has_stree;
+      var elems = desc2.stat_desc.elems;
       var n, m;
       var max_code = -1;
       var node;
@@ -98183,7 +95977,7 @@ var require_trees = __commonJS({
           s.static_len -= stree[node * 2 + 1];
         }
       }
-      desc3.max_code = max_code;
+      desc2.max_code = max_code;
       for (n = s.heap_len >> 1; n >= 1; n--) {
         pqdownheap(s, tree, n);
       }
@@ -98227,7 +96021,7 @@ var require_trees = __commonJS({
         1
         /*SMALLEST*/
       ];
-      gen_bitlen(s, desc3);
+      gen_bitlen(s, desc2);
       gen_codes(tree, max_code, s.bl_count);
     }
     function scan_tree(s, tree, max_code) {
@@ -101933,9 +99727,9 @@ var require_pako = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/flate.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/flate.js
 var require_flate = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/flate.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/flate.js"(exports) {
     "use strict";
     var USE_TYPEDARRAY = typeof Uint8Array !== "undefined" && typeof Uint16Array !== "undefined" && typeof Uint32Array !== "undefined";
     var pako = require_pako();
@@ -101992,9 +99786,9 @@ var require_flate = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/compressions.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/compressions.js
 var require_compressions = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/compressions.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/compressions.js"(exports) {
     "use strict";
     var GenericWorker = require_GenericWorker();
     exports.STORE = {
@@ -102010,9 +99804,9 @@ var require_compressions = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/signature.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/signature.js
 var require_signature = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/signature.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/signature.js"(exports) {
     "use strict";
     exports.LOCAL_FILE_HEADER = "PK";
     exports.CENTRAL_FILE_HEADER = "PK";
@@ -102023,9 +99817,9 @@ var require_signature = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/generate/ZipFileWorker.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/generate/ZipFileWorker.js
 var require_ZipFileWorker = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/generate/ZipFileWorker.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/generate/ZipFileWorker.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var GenericWorker = require_GenericWorker();
@@ -102307,9 +100101,9 @@ var require_ZipFileWorker = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/generate/index.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/generate/index.js
 var require_generate = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/generate/index.js"(exports) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/generate/index.js"(exports) {
     "use strict";
     var compressions = require_compressions();
     var ZipFileWorker = require_ZipFileWorker();
@@ -102348,9 +100142,9 @@ var require_generate = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js
 var require_NodejsStreamInputAdapter = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var GenericWorker = require_GenericWorker();
@@ -102407,9 +100201,9 @@ var require_NodejsStreamInputAdapter = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/object.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/object.js
 var require_object = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/object.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/object.js"(exports, module) {
     "use strict";
     var utf8 = require_utf8();
     var utils2 = require_utils6();
@@ -102680,9 +100474,9 @@ var require_object = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/DataReader.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/DataReader.js
 var require_DataReader = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/DataReader.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/DataReader.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     function DataReader(data) {
@@ -102802,9 +100596,9 @@ var require_DataReader = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/ArrayReader.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/ArrayReader.js
 var require_ArrayReader = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/ArrayReader.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/ArrayReader.js"(exports, module) {
     "use strict";
     var DataReader = require_DataReader();
     var utils2 = require_utils6();
@@ -102844,9 +100638,9 @@ var require_ArrayReader = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/StringReader.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/StringReader.js
 var require_StringReader = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/StringReader.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/StringReader.js"(exports, module) {
     "use strict";
     var DataReader = require_DataReader();
     var utils2 = require_utils6();
@@ -102874,9 +100668,9 @@ var require_StringReader = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/Uint8ArrayReader.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/Uint8ArrayReader.js
 var require_Uint8ArrayReader = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/Uint8ArrayReader.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/Uint8ArrayReader.js"(exports, module) {
     "use strict";
     var ArrayReader = require_ArrayReader();
     var utils2 = require_utils6();
@@ -102897,9 +100691,9 @@ var require_Uint8ArrayReader = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/NodeBufferReader.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/NodeBufferReader.js
 var require_NodeBufferReader = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/NodeBufferReader.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/NodeBufferReader.js"(exports, module) {
     "use strict";
     var Uint8ArrayReader = require_Uint8ArrayReader();
     var utils2 = require_utils6();
@@ -102917,9 +100711,9 @@ var require_NodeBufferReader = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/readerFor.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/readerFor.js
 var require_readerFor = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/reader/readerFor.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/reader/readerFor.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var support = require_support();
@@ -102944,9 +100738,9 @@ var require_readerFor = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipEntry.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipEntry.js
 var require_zipEntry = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipEntry.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipEntry.js"(exports, module) {
     "use strict";
     var readerFor = require_readerFor();
     var utils2 = require_utils6();
@@ -103162,9 +100956,9 @@ var require_zipEntry = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipEntries.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipEntries.js
 var require_zipEntries = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/zipEntries.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/zipEntries.js"(exports, module) {
     "use strict";
     var readerFor = require_readerFor();
     var utils2 = require_utils6();
@@ -103360,9 +101154,9 @@ var require_zipEntries = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/load.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/load.js
 var require_load = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/load.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/load.js"(exports, module) {
     "use strict";
     var utils2 = require_utils6();
     var external = require_external();
@@ -103439,9 +101233,9 @@ var require_load = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/index.js
+// ../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/index.js
 var require_lib8 = __commonJS({
-  "../../node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/lib/index.js"(exports, module) {
+  "../../node_modules/.pnpm/jszip@3.10.2/node_modules/jszip/lib/index.js"(exports, module) {
     "use strict";
     function JSZip2() {
       if (!(this instanceof JSZip2)) {
@@ -103467,7 +101261,7 @@ var require_lib8 = __commonJS({
     JSZip2.prototype.loadAsync = require_load();
     JSZip2.support = require_support();
     JSZip2.defaults = require_defaults2();
-    JSZip2.version = "3.10.1";
+    JSZip2.version = "3.10.2";
     JSZip2.loadAsync = function(content, options) {
       return new JSZip2().loadAsync(content, options);
     };
@@ -104347,9 +102141,9 @@ async function importFunnel(rows, sourceUrl, period, snapshotDate, _fileName) {
   if (existingLopids.length > 0) {
     for (let i = 0; i < existingLopids.length; i += 200) {
       const batch = existingLopids.slice(i, i + 200);
-      await db.delete(salesFunnelTable).where(and2(
-        eq2(salesFunnelTable.snapshotDate, snapshotDate),
-        sql2`lopid = ANY(ARRAY[${sql2.join(batch.map((id) => sql2`${id}`), sql2`, `)}])`
+      await db.delete(salesFunnelTable).where(and(
+        eq(salesFunnelTable.snapshotDate, snapshotDate),
+        sql`lopid = ANY(ARRAY[${sql.join(batch.map((id) => sql`${id}`), sql`, `)}])`
       ));
     }
   }
@@ -104370,7 +102164,7 @@ async function importFunnel(rows, sourceUrl, period, snapshotDate, _fileName) {
   return { imported: toInsert.length, importId: importRecord.id, period: period || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7) };
 }
 async function importActivity(rows, sourceUrl, period, snapshotDate, _fileName) {
-  const { salesActivityTable: salesActivityTable5 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const { salesActivityTable: salesActivityTable4 } = await Promise.resolve().then(() => (init_src(), src_exports));
   const cleaned = cleanActivityRows(rows);
   const [importRecord] = await db.insert(dataImportsTable).values({
     type: "activity",
@@ -104438,8 +102232,8 @@ async function importActivity(rows, sourceUrl, period, snapshotDate, _fileName) 
       imp_arr
     ]);
   }
-  const [{ count: count2 }] = await db.select({ count: sql2`count(*)::int` }).from(salesActivityTable5).where(eq2(salesActivityTable5.importId, importRecord.id));
-  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq2(dataImportsTable.id, importRecord.id));
+  const [{ count: count2 }] = await db.select({ count: sql`count(*)::int` }).from(salesActivityTable4).where(eq(salesActivityTable4.importId, importRecord.id));
+  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq(dataImportsTable.id, importRecord.id));
   return { imported: count2, importId: importRecord.id, period: period || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7) };
 }
 async function runDriveImport(type, fileId, mimeType, fileName, apiKey, snapshotDate, preferredSheet) {
@@ -104457,7 +102251,7 @@ var init_importer = __esm({
   "src/features/gdrive/importer.ts"() {
     "use strict";
     init_src();
-    init_drizzle_orm2();
+    init_drizzle_orm();
     init_excel();
     GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
   }
@@ -104497,7 +102291,7 @@ var init_routes = __esm({
     import_express16 = __toESM(require_express2(), 1);
     init_src();
     init_auth();
-    init_drizzle_orm2();
+    init_drizzle_orm();
     init_excel();
     init_importer();
     init_scheduler();
@@ -104603,8 +102397,8 @@ var init_routes = __esm({
       const { type, limit: limitRaw } = req.query;
       const limit = Math.min(Number(limitRaw) || 50, 200);
       try {
-        let query = db.select().from(driveReadLogsTable).orderBy(desc2(driveReadLogsTable.checkedAt)).limit(limit);
-        const rows = await db.select().from(driveReadLogsTable).orderBy(desc2(driveReadLogsTable.checkedAt)).limit(limit);
+        let query = db.select().from(driveReadLogsTable).orderBy(desc(driveReadLogsTable.checkedAt)).limit(limit);
+        const rows = await db.select().from(driveReadLogsTable).orderBy(desc(driveReadLogsTable.checkedAt)).limit(limit);
         const filtered = type && type !== "all" ? rows.filter((r) => r.type === String(type)) : rows;
         res.json({ logs: filtered });
       } catch (e) {
@@ -104677,8 +102471,8 @@ function isSupportedFile2(name2, mimeType) {
   return name2.endsWith(".xlsx") || name2.endsWith(".xls") || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mimeType === "application/vnd.ms-excel" || mimeType === "application/vnd.google-apps.spreadsheet";
 }
 async function getLatestSnapshotDate(type) {
-  const { performanceDataTable: performanceDataTable2, salesFunnelTable: salesFunnelTable2, salesActivityTable: salesActivityTable5 } = await Promise.resolve().then(() => (init_src(), src_exports));
-  const { desc: desc3, max: max2 } = await Promise.resolve().then(() => (init_drizzle_orm2(), drizzle_orm_exports));
+  const { performanceDataTable: performanceDataTable2, salesFunnelTable: salesFunnelTable2, salesActivityTable: salesActivityTable4 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const { desc: desc2, max: max2 } = await Promise.resolve().then(() => (init_drizzle_orm(), drizzle_orm_exports));
   try {
     if (type === "performance") {
       const [row] = await db.select({ maxDate: max2(performanceDataTable2.snapshotDate) }).from(performanceDataTable2);
@@ -104687,8 +102481,8 @@ async function getLatestSnapshotDate(type) {
       const [row] = await db.select({ maxDate: max2(salesFunnelTable2.snapshotDate) }).from(salesFunnelTable2);
       return row?.maxDate ?? null;
     } else if (type === "activity") {
-      const { salesActivityTable: salesActivityTable6 } = await Promise.resolve().then(() => (init_src(), src_exports));
-      const [row] = await db.select({ maxDate: max2(salesActivityTable6.snapshotDate) }).from(salesActivityTable6);
+      const { salesActivityTable: salesActivityTable5 } = await Promise.resolve().then(() => (init_src(), src_exports));
+      const [row] = await db.select({ maxDate: max2(salesActivityTable5.snapshotDate) }).from(salesActivityTable5);
       return row?.maxDate ?? null;
     }
   } catch {
@@ -104790,7 +102584,7 @@ async function checkDriveFolderAndLog(type, settings, triggeredBy) {
       detail: { filesFound: excelFiles.map((f) => f.name), period: result.period }
     };
     const [saved] = await db.insert(driveReadLogsTable).values(log).returning();
-    await db.update(appSettingsTable).set({ gDriveLastCheckAt: /* @__PURE__ */ new Date() }).where(eq2(appSettingsTable.id, settings.id));
+    await db.update(appSettingsTable).set({ gDriveLastCheckAt: /* @__PURE__ */ new Date() }).where(eq(appSettingsTable.id, settings.id));
     return saved;
   } catch (e) {
     const log = {
@@ -104821,7 +102615,7 @@ async function tick2() {
         logger.error({ type, err: e }, "GDrive check error for type");
       }
     }
-    await db.update(appSettingsTable).set({ gDriveLastCheckAt: /* @__PURE__ */ new Date() }).where(eq2(appSettingsTable.id, settings.id));
+    await db.update(appSettingsTable).set({ gDriveLastCheckAt: /* @__PURE__ */ new Date() }).where(eq(appSettingsTable.id, settings.id));
   } catch (err) {
     logger.error({ err }, "GDrive scheduled check failed");
   }
@@ -104856,8 +102650,8 @@ var init_scheduler = __esm({
   "src/features/gdrive/scheduler.ts"() {
     "use strict";
     init_src();
-    init_logger3();
-    init_drizzle_orm2();
+    init_logger2();
+    init_drizzle_orm();
     schedulerTimer2 = null;
     DRIVE_TYPES = ["performance", "funnel", "activity", "target"];
     FOLDER_KEY_MAP = {
@@ -105740,11 +103534,11 @@ function datetimeRegex(args) {
   regex = `${regex}(${opts.join("|")})`;
   return new RegExp(`^${regex}$`);
 }
-function isValidIP(ip, version4) {
-  if ((version4 === "v4" || !version4) && ipv4Regex.test(ip)) {
+function isValidIP(ip, version3) {
+  if ((version3 === "v4" || !version3) && ipv4Regex.test(ip)) {
     return true;
   }
-  if ((version4 === "v6" || !version4) && ipv6Regex.test(ip)) {
+  if ((version3 === "v6" || !version3) && ipv6Regex.test(ip)) {
     return true;
   }
   return false;
@@ -105771,11 +103565,11 @@ function isValidJWT(jwt2, alg) {
     return false;
   }
 }
-function isValidCidr(ip, version4) {
-  if ((version4 === "v4" || !version4) && ipv4CidrRegex.test(ip)) {
+function isValidCidr(ip, version3) {
+  if ((version3 === "v4" || !version3) && ipv4CidrRegex.test(ip)) {
     return true;
   }
-  if ((version4 === "v6" || !version4) && ipv6CidrRegex.test(ip)) {
+  if ((version3 === "v6" || !version3) && ipv6CidrRegex.test(ip)) {
     return true;
   }
   return false;
@@ -109254,20 +107048,20 @@ var routes_default = router;
 // src/features/auth/routes.ts
 var import_express2 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 import crypto3 from "crypto";
 
 // src/features/auth/otp.ts
 init_bcryptjs();
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 import crypto2 from "crypto";
 
 // src/features/telegram/service.ts
 init_src();
-init_drizzle_orm2();
-init_logger3();
+init_drizzle_orm();
+init_logger2();
 
 // src/shared/publicUrl.ts
 var _currentPublicBaseUrl = process.env["PUBLIC_BASE_URL"] || "http://localhost:8000";
@@ -109276,81 +107070,6 @@ function getPublicBaseUrl() {
 }
 function setPublicBaseUrl(url2) {
   _currentPublicBaseUrl = url2;
-}
-
-// src/features/telegram/ai.ts
-init_logger3();
-var _ai = null;
-function getAI() {
-  if (_ai) return _ai;
-  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  if (!baseUrl || !apiKey) return null;
-  _ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl } });
-  return _ai;
-}
-var DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-async function generatePerfFeedback(firstName, achCm, rankCm, totalAMs, monthName, year, fallback) {
-  const ai = getAI();
-  if (!ai) return fallback;
-  const prompt = [
-    `Kamu adalah BOT LESA VI, asisten AM di Telkom Witel Suramadu.`,
-    `AM bernama "${firstName}" punya performa berikut untuk periode ${monthName} ${year}:`,
-    `- Pencapaian Revenue CM (Current Month): ${achCm.toFixed(2)}%`,
-    `- Ranking CM: #${rankCm} dari ${totalAMs} AM Witel Suramadu`,
-    ``,
-    `Tulis feedback performansi yang:`,
-    `- Personal dan memotivasi sesuai posisi ranking dan pencapaiannya`,
-    `- Tidak generik atau terasa template`,
-    `- Bahasa Indonesia santai, akrab, pakai sapaan "kak"`,
-    `- Boleh selipkan pantun pendek atau humor sales yang relevan`,
-    `- Jangan mulai dengan "Halo" atau "Hai"`,
-    `- Maksimal 3 kalimat`
-  ].join("\n");
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { maxOutputTokens: 400 }
-    });
-    const text2 = response.text?.trim();
-    return text2 && text2.length >= 20 ? text2 : fallback;
-  } catch (err) {
-    logger.debug({ err }, "Gemini perf feedback error (non-fatal)");
-    return fallback;
-  }
-}
-async function chatWithGemini(userMessage, context) {
-  const ai = getAI();
-  if (!ai) return null;
-  const now = /* @__PURE__ */ new Date();
-  const dayName = DAYS_ID[now.getDay()];
-  const hour = now.getHours();
-  const lines = [
-    `Kamu adalah BOT LESA VI, asisten pintar sales AM di Telkom Witel Suramadu TREG 3.`,
-    `Hari ini hari ${dayName}, pukul ${hour}.00.`,
-    context.amName ? `Kamu sedang ngobrol dengan AM bernama ${context.amName}${context.divisi ? ` dari Divisi ${context.divisi}` : ""}.` : `Kamu sedang ngobrol dengan pengguna yang belum terhubung ke sistem.`,
-    ``,
-    `Panduan respons:`,
-    `- Singkat dan hangat, maksimal 4 kalimat.`,
-    `- Bahasa Indonesia santai tapi sopan, pakai sapaan "kak".`,
-    `- Boleh beri pantun atau humor ringan yang relevan dengan hari atau konteks.`,
-    `- Sesekali selipkan semangat untuk mengejar target, prospek baru, atau pergerakan LOP.`,
-    `- Jangan jawab hal di luar dunia sales/telekomunikasi/pekerjaan.`,
-    `- Format teks biasa, tidak perlu markdown berlebihan.`
-  ];
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      config: { systemInstruction: lines.join("\n"), maxOutputTokens: 200 }
-    });
-    const text2 = response.text?.trim();
-    return text2 || null;
-  } catch (err) {
-    logger.debug({ err }, "Gemini chat error (non-fatal)");
-    return null;
-  }
 }
 
 // src/features/telegram/service.ts
@@ -109369,38 +107088,26 @@ function formatSnapshotDate(snapshotDate, period, fallback = "-") {
   return raw;
 }
 async function getSnapshotAwarePerfs(year, month) {
-  const [latestImport] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "performance")).orderBy(desc2(dataImportsTable.createdAt)).limit(1);
+  const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
   if (latestImport) {
-    const fromLatest = await db.select().from(performanceDataTable).where(and2(
-      eq2(performanceDataTable.importId, latestImport.id),
-      eq2(performanceDataTable.tahun, year),
-      eq2(performanceDataTable.bulan, month)
+    const fromLatest = await db.select().from(performanceDataTable).where(and(
+      eq(performanceDataTable.importId, latestImport.id),
+      eq(performanceDataTable.tahun, year),
+      eq(performanceDataTable.bulan, month)
     ));
     if (fromLatest.length > 0) return fromLatest;
   }
-  return db.select().from(performanceDataTable).where(and2(eq2(performanceDataTable.tahun, year), eq2(performanceDataTable.bulan, month)));
+  return db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
 }
 async function getAvailablePerfPeriods(nik) {
   const rows = await db.selectDistinct({
     tahun: performanceDataTable.tahun,
     bulan: performanceDataTable.bulan
-  }).from(performanceDataTable).where(eq2(performanceDataTable.nik, nik));
+  }).from(performanceDataTable).where(eq(performanceDataTable.nik, nik));
   return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
-}
-function formatRupiah(val) {
-  if (val >= 1e12) return `Rp ${(val / 1e12).toFixed(2).replace(".", ",")} Triliun`;
-  if (val >= 1e9) return `Rp ${(val / 1e9).toFixed(2).replace(".", ",")} Miliar`;
-  if (val >= 1e6) return `Rp ${(val / 1e6).toFixed(2).replace(".", ",")} Juta`;
-  if (val === 0) return `Rp 0`;
-  return `Rp ${val.toLocaleString("id-ID")}`;
 }
 function fmtPct(val) {
   return val.toFixed(2).replace(".", ",") + "%";
-}
-function achLabel(ach) {
-  if (ach >= 100) return "(Tercapai)";
-  if (ach >= 80) return "(Mendekati)";
-  return "(Di bawah target)";
 }
 function greetingByTime() {
   const hourWib = ((/* @__PURE__ */ new Date()).getUTCHours() + 7) % 24;
@@ -109409,16 +107116,37 @@ function greetingByTime() {
   if (hourWib >= 15 && hourWib < 18) return "Selamat sore";
   return "Selamat malam";
 }
-function rankFeedback(firstName, rankCm, achCm) {
-  if (achCm >= 100) return `\u2705 Selamat kak ${firstName}! Target bulan ini sudah tercapai. Mantap sekali, pertahankan momentum ini di bulan depan!`;
-  if (rankCm === 1) return `\u{1F947} Luar biasa kak ${firstName}! Kamu jadi yang terbaik bulan ini di antara seluruh AM Witel Suramadu. Pertahankan terus ya!`;
-  if (rankCm <= 3) return `\u{1F948} Keren kak ${firstName}! Kamu masuk podium top 3 bulan ini. Tinggal sedikit lagi menuju puncak \u2014 tetap semangat!`;
-  if (rankCm <= 10) return `\u26A1 Good job kak ${firstName}! Kamu sudah di kelompok atas. Terus tingkatkan dan podium bukan hal yang mustahil buat kamu!`;
-  return `\u{1F4AA} Semangat kak ${firstName}! Masih ada waktu tersisa di bulan ini \u2014 yuk kejar targetnya!
-Jangan ragu koordinasi dengan tim kalau butuh support ya \u{1F64F}`;
+function fmtRev(val) {
+  if (val >= 1e9) return `Rp ${(val / 1e9).toFixed(2).replace(".", ",")} Miliar`;
+  if (val >= 1e6) return `Rp ${(val / 1e6).toFixed(2).replace(".", ",")} Juta`;
+  if (val >= 1e3) return `Rp ${(val / 1e3).toFixed(0)} Ribu`;
+  if (val === 0) return `Rp 0`;
+  return `Rp ${val.toLocaleString("id-ID")}`;
 }
-function getEmbedUrl() {
-  return `${getPublicBaseUrl()}/presentation`;
+function achStatus(ach) {
+  if (ach >= 100) return "\u{1F7E2} <b>Melewati Target</b>";
+  if (ach >= 80) return "\u{1F7E1} <b>Mendekati Target</b>";
+  if (ach > 0) return "\u{1F7E0} <b>Perlu Peningkatan</b>";
+  return "\u{1F534} <b>Belum Ada Revenue</b>";
+}
+function buildFeedback(firstName, achCm, achYtd, monthName) {
+  const cmLow = achCm < 80;
+  const ytdLow = achYtd < 80;
+  if (cmLow && ytdLow) {
+    return `\u{1F4AA} Semangat kak <b>${firstName}</b>! Performa <b>${monthName}</b> masih butuh peningkatan \u2014 capaian bulan berjalan masih di bawah target. Fokuskan pada aktivitas customer, pipeline, dan peluang closing. Koordinasikan kebutuhan support dengan tim ya \u{1F64F}`;
+  }
+  if (cmLow && !ytdLow) {
+    return `\u{1F525} Tetap semangat kak <b>${firstName}</b>! Capaian <b>${monthName}</b> masih perlu ditingkatkan, namun secara akumulasi YTD performansi masih positif. Fokus jaga momentum dan kejar target bulan berjalan \u{1F4AA}`;
+  }
+  if (!cmLow && ytdLow) {
+    return `\u{1F680} Progress bagus kak <b>${firstName}</b>! Performa <b>${monthName}</b> sudah menunjukkan peningkatan. Pertahankan tren positif ini agar bisa mengejar gap pencapaian YTD \u{1F64F}`;
+  }
+  return `\u{1F389} Mantap kak <b>${firstName}</b>! Performa <b>${monthName}</b> berhasil mencapai target, dan capaian YTD juga menunjukkan performansi yang kuat. Pertahankan konsistensi dan optimalkan peluang revenue berikutnya \u{1F4AA}`;
+}
+function getEmbedUrl(importId) {
+  const base = `${getPublicBaseUrl()}/presentation`;
+  if (importId) return `${base}?type=performance&id=${importId}`;
+  return base;
 }
 function getFunnelDetailUrl() {
   return `${getPublicBaseUrl()}/visualisasi/funnel`;
@@ -109441,120 +107169,243 @@ function countByStatus(lops) {
 }
 async function buildPerformanceMessage(nik, period) {
   const [year, month] = period.split("-").map(Number);
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.nik, nik));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
   const firstName = am.nama.split(" ")[0];
+  const monthName = MONTH_NAMES[month] || String(month);
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik).map((m) => m.nik)
+  );
   const allPerfs = await getSnapshotAwarePerfs(year, month);
-  const p = allPerfs.find((x) => x.nik === nik);
-  const totalAMs = allPerfs.length;
-  const sortedByCm = [...allPerfs].sort((a, b) => (b.achRate || 0) - (a.achRate || 0));
-  const rankCm = sortedByCm.findIndex((x) => x.nik === nik) + 1;
-  const sortedByYtd = [...allPerfs].sort((a, b) => (b.achRateYtd || 0) - (a.achRateYtd || 0));
-  const rankYtd = sortedByYtd.findIndex((x) => x.nik === nik) + 1;
-  const achCm = p?.achRate || 0;
-  const achYtd = p?.achRateYtd || 0;
-  const ytdPerfs = await db.select().from(performanceDataTable).where(and2(eq2(performanceDataTable.nik, nik), eq2(performanceDataTable.tahun, year)));
-  const ytdUpTo = ytdPerfs.filter((x) => x.bulan <= month);
-  function sumYtdAch(realKey, targetKey) {
-    const totalReal2 = ytdUpTo.reduce((s, x) => s + (x[realKey] || 0), 0);
-    const totalTarget = ytdUpTo.reduce((s, x) => s + (x[targetKey] || 0), 0);
-    return totalTarget > 0 ? totalReal2 / totalTarget * 100 : 0;
+  const activePerfs = allPerfs.filter((p2) => activeNikSet.has(p2.nik));
+  const byNik = /* @__PURE__ */ new Map();
+  for (const p2 of activePerfs) {
+    const existing = byNik.get(p2.nik);
+    if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+      byNik.set(p2.nik, p2);
+    }
   }
-  const achRegulerCm = (p?.targetReguler ?? 0) > 0 ? (p?.realReguler ?? 0) / p.targetReguler * 100 : 0;
-  const achSustainCm = (p?.targetSustain ?? 0) > 0 ? (p?.realSustain ?? 0) / p.targetSustain * 100 : 0;
-  const achScalingCm = (p?.targetScaling ?? 0) > 0 ? (p?.realScaling ?? 0) / p.targetScaling * 100 : 0;
-  const achNgtmaCm = (p?.targetNgtma ?? 0) > 0 ? (p?.realNgtma ?? 0) / p.targetNgtma * 100 : 0;
-  const achRegulerYtd = sumYtdAch("realReguler", "targetReguler");
-  const achSustainYtd = sumYtdAch("realSustain", "targetSustain");
-  const achScalingYtd = sumYtdAch("realScaling", "targetScaling");
-  const achNgtmaYtd = sumYtdAch("realNgtma", "targetNgtma");
-  const greeting = greetingByTime();
-  const totalReal = (p?.realReguler ?? 0) + (p?.realSustain ?? 0) + (p?.realScaling ?? 0) + (p?.realNgtma ?? 0);
-  const noRealData = !p || totalReal === 0;
-  const fallbackFeedback = rankFeedback(firstName, rankCm, achCm);
-  const feedback = noRealData ? null : await generatePerfFeedback(firstName, achCm, rankCm, totalAMs, MONTH_NAMES[month], year, fallbackFeedback);
-  let msg = `\u{1F4CA} *LAPORAN PERFORMANSI ACCOUNT MANAGER*
+  const uniquePerfs = [...byNik.values()];
+  const p = uniquePerfs.find((x) => x.nik === nik);
+  const totalAMs = uniquePerfs.length;
+  const sortedByCm = [...uniquePerfs].sort((a, b) => parseFloat(String(b.achRate ?? 0)) - parseFloat(String(a.achRate ?? 0)));
+  const rankCm = sortedByCm.findIndex((x) => x.nik === nik) + 1;
+  const sortedByYtd = [...uniquePerfs].sort((a, b) => parseFloat(String(b.achRateYtd ?? 0)) - parseFloat(String(a.achRateYtd ?? 0)));
+  const rankYtd = sortedByYtd.findIndex((x) => x.nik === nik) + 1;
+  const ytdPerfs = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.nik, nik), eq(performanceDataTable.tahun, year)));
+  const ytdUpTo = ytdPerfs.filter((x) => x.bulan <= month);
+  const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
+  const realRegulerCm = fmtNum(p?.realReguler);
+  const targetRegulerCm = fmtNum(p?.targetReguler);
+  const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realReguler), 0);
+  const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetReguler), 0);
+  const realSustainCm = fmtNum(p?.realSustain);
+  const targetSustainCm = fmtNum(p?.targetSustain);
+  const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realSustain), 0);
+  const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetSustain), 0);
+  const realScalingCm = fmtNum(p?.realScaling);
+  const targetScalingCm = fmtNum(p?.targetScaling);
+  const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realScaling), 0);
+  const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetScaling), 0);
+  const realNgtmaCm = fmtNum(p?.realNgtma);
+  const targetNgtmaCm = fmtNum(p?.targetNgtma);
+  const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realNgtma), 0);
+  const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetNgtma), 0);
+  const achRegulerCm = targetRegulerCm > 0 ? realRegulerCm / targetRegulerCm * 100 : 0;
+  const achRegulerYtd = targetRegulerYtd > 0 ? realRegulerYtd / targetRegulerYtd * 100 : 0;
+  const achSustainCm = targetSustainCm > 0 ? realSustainCm / targetSustainCm * 100 : 0;
+  const achSustainYtd = targetSustainYtd > 0 ? realSustainYtd / targetSustainYtd * 100 : 0;
+  const achScalingCm = targetScalingCm > 0 ? realScalingCm / targetScalingCm * 100 : 0;
+  const achScalingYtd = targetScalingYtd > 0 ? realScalingYtd / targetScalingYtd * 100 : 0;
+  const achNgtmaCm = targetNgtmaCm > 0 ? realNgtmaCm / targetNgtmaCm * 100 : 0;
+  const achNgtmaYtd = targetNgtmaYtd > 0 ? realNgtmaYtd / targetNgtmaYtd * 100 : 0;
+  const totalRealCm = realRegulerCm + realSustainCm + realScalingCm + realNgtmaCm;
+  const totalTargetCm = targetRegulerCm + targetSustainCm + targetScalingCm + targetNgtmaCm;
+  const achTotalCm = totalTargetCm > 0 ? totalRealCm / totalTargetCm * 100 : 0;
+  const totalRealYtd = realRegulerYtd + realSustainYtd + realScalingYtd + realNgtmaYtd;
+  const totalTargetYtd = targetRegulerYtd + targetSustainYtd + targetScalingYtd + targetNgtmaYtd;
+  const achTotalYtd = totalTargetYtd > 0 ? totalRealYtd / totalTargetYtd * 100 : 0;
+  const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+  const snapDate = formatSnapshotDate(latestImport?.snapshotDate ?? null, latestImport?.period ?? null, "-");
+  const noRealData = !p || totalRealCm === 0 && totalRealYtd === 0;
+  const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
+  let part1 = `<b>\u{1F4CA} LAPORAN PERFORMANSI ACCOUNT MANAGER</b>
 `;
-  msg += `LESA VI \u2014 Witel Suramadu
+  part1 += `<b>LESA VI \u2014 Witel Suramadu</b>
 
 `;
-  msg += `Halo kak *${firstName}*! \u{1F44B} ${greeting}
+  part1 += `Halo kak <b>${firstName}</b>! \u{1F44B}
 
 `;
-  msg += `Berikut rekap performansi kamu
-`;
-  msg += `untuk periode *${MONTH_NAMES[month]} ${year}*:
+  part1 += `Berikut rekap performansi kamu berdasarkan:
 
 `;
-  msg += `*A. Reguler Revenue*
+  part1 += `\u{1F4F8} <b>Snapshot:</b> ${snapDate}
 `;
-  msg += `\u251C *Real Revenue*   : ${formatRupiah(p?.realReguler ?? 0)}
+  part1 += `\u{1F4C5} <b>Periode Current Month:</b> ${monthName} ${year}
 `;
-  msg += `\u251C *Target Revenue* : ${formatRupiah(p?.targetReguler ?? 0)}
-`;
-  msg += `\u251C *Ach CM*         : ${fmtPct(achRegulerCm)} ${achLabel(achRegulerCm)}
-`;
-  msg += `\u251C *Ach YTD*        : ${fmtPct(achRegulerYtd)} ${achLabel(achRegulerYtd)}
-`;
-  msg += `\u2502   *Rank CM*      : #${rankCm} dari ${totalAMs}
-`;
-  msg += `\u2502   *Rank YTD*     : #${rankYtd} dari ${totalAMs}
+  part1 += `\u{1F4CA} <b>Periode YTD:</b> Januari - ${monthName} ${year}
 
 `;
-  msg += `*B. Sustain Revenue*
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 `;
-  msg += `\u251C *Real Revenue*   : ${formatRupiah(p?.realSustain ?? 0)}
+  part1 += `<b>\u{1F4CC} A. REGULER REVENUE</b>
 `;
-  msg += `\u251C *Target Sustain* : ${formatRupiah(p?.targetSustain ?? 0)}
-`;
-  msg += `\u251C *Ach CM*         : ${fmtPct(achSustainCm)} ${achLabel(achSustainCm)}
-`;
-  msg += `\u2514 *Ach YTD*        : ${fmtPct(achSustainYtd)} ${achLabel(achSustainYtd)}
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 
 `;
-  msg += `*C. Scaling Revenue*
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
 `;
-  msg += `\u251C *Real Revenue*   : ${formatRupiah(p?.realScaling ?? 0)}
+  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerCm)}</b>
 `;
-  msg += `\u251C *Target Scaling* : ${formatRupiah(p?.targetScaling ?? 0)}
+  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerCm)}</b>
 `;
-  msg += `\u251C *Ach CM*         : ${fmtPct(achScalingCm)} ${achLabel(achScalingCm)}
+  part1 += `\u251C Ach CM         : <b>${fmtPct(achRegulerCm)}</b>
 `;
-  msg += `\u2514 *Ach YTD*        : ${fmtPct(achScalingYtd)} ${achLabel(achScalingYtd)}
+  part1 += `\u2514 Status         : ${achStatus(achRegulerCm)}
 
 `;
-  msg += `*D. NGTMA Revenue*
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
 `;
-  msg += `\u251C *Real Revenue*   : ${formatRupiah(p?.realNgtma ?? 0)}
+  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerYtd)}</b>
 `;
-  msg += `\u251C *Target NGTMA*   : ${formatRupiah(p?.targetNgtma ?? 0)}
+  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerYtd)}</b>
 `;
-  msg += `\u251C *Ach CM*         : ${fmtPct(achNgtmaCm)} ${achLabel(achNgtmaCm)}
+  part1 += `\u251C Ach YTD        : <b>${fmtPct(achRegulerYtd)}</b>
 `;
-  msg += `\u2514 *Ach YTD*        : ${fmtPct(achNgtmaYtd)} ${achLabel(achNgtmaYtd)}
+  part1 += `\u2514 Status         : ${achStatus(achRegulerYtd)}
 
 `;
-  msg += `\u{1F4AC} *Feedback Performansi:*
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} B. SUSTAIN REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainCm)}</b>
+`;
+  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achSustainCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achSustainCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainYtd)}</b>
+`;
+  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achSustainYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achSustainYtd)}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} C. SCALING REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingCm)}</b>
+`;
+  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achScalingCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achScalingCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingYtd)}</b>
+`;
+  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achScalingYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achScalingYtd)}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} D. NGTMA REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaCm)}</b>
+`;
+  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achNgtmaCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achNgtmaCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaYtd)}</b>
+`;
+  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achNgtmaYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achNgtmaYtd)}`;
+  let part2 = `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part2 += `<b>\u{1F4C8} RINGKASAN PERFORMANSI</b>
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part2 += `<b>\u2460 Current Month \u2014 ${monthName} ${year}</b>
+`;
+  part2 += `Capaian: <b>${fmtPct(achTotalCm)}</b> \xB7 Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>
+
+`;
+  part2 += `<b>\u2461 Year To Date \u2014 Januari s/d ${monthName} ${year}</b>
+`;
+  part2 += `Capaian: <b>${fmtPct(achTotalYtd)}</b> \xB7 Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>
+
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part2 += `<b>\u{1F4AC} FEEDBACK PERFORMANSI</b>
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 
 `;
   if (noRealData) {
-    msg += `_Mohon maaf kak, sepertinya data revenue kamu untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya \u2014 kami akan segera menginformasikan jika data sudah tersedia. \u{1F64F}_
-
-`;
+    part2 += `Mohon maaf kak, data revenue untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya \u2014 kami akan segera menginformasikan jika data sudah tersedia. \u{1F64F}`;
   } else {
-    msg += `${feedback}
-
-`;
+    part2 += feedback ?? "";
   }
-  msg += `\u{1F4CE} Untuk melihat performa lengkap kamu dan benchmarking dengan AM lain, silahkan akses link berikut:
-`;
-  msg += `${getEmbedUrl()}`;
-  return msg;
+  const embedUrl = getEmbedUrl(latestImport?.id);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:menu" }],
+      [{ text: "\u{1F3C6} Papan Peringkat", callback_data: "perf:peringkat" }],
+      [{ text: "\u{1F4CE} Lihat Dashboard", callback_data: "perf:dashboard" }],
+      [{ text: "\u{1F3E0} Kembali ke Menu", callback_data: "nav:main" }]
+    ]
+  };
+  return { parts: [part1, part2], keyboard };
 }
 async function buildFunnelMessage(nik) {
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.nik, nik));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
-  const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "funnel")).orderBy(desc2(dataImportsTable.createdAt)).limit(10);
+  const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt)).limit(10);
   if (funnelImportsRaw.length === 0) return null;
   const funnelImports = [...funnelImportsRaw].sort((a, b) => {
     const aDate = a.snapshotDate;
@@ -109569,7 +107420,7 @@ async function buildFunnelMessage(nik) {
   const latestImport = funnelImports[0];
   const prevImport = funnelImports.length >= 2 ? funnelImports[1] : null;
   const relevantImportIds = [latestImport.id, ...prevImport ? [prevImport.id] : []];
-  const allLopsRaw = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.nikAm, nik));
+  const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, nik));
   const REPORT_YEAR = (/* @__PURE__ */ new Date()).getFullYear().toString();
   const allLops = allLopsRaw.filter(
     (l) => relevantImportIds.includes(l.importId) && l.reportDate?.startsWith(REPORT_YEAR)
@@ -109789,9 +107640,9 @@ async function buildActivityReport(nik, monthKey) {
     const now = /* @__PURE__ */ new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.nik, nik));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
-  const [targetSnap] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.createdAt)).limit(1);
+  const [targetSnap] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
   let allNikActs = [];
   let snapYear = (/* @__PURE__ */ new Date()).getFullYear();
   let snapMonth = (/* @__PURE__ */ new Date()).getMonth() + 1;
@@ -109820,7 +107671,7 @@ async function buildActivityReport(nik, monthKey) {
   const labelYear = monthKey ? parseInt(monthKey.slice(0, 4)) : snapYear;
   const labelSnapshot = `${MONTH_NAMES3[labelMonth]} ${labelYear}`;
   if (targetSnap) {
-    const allActs = await db.select().from(salesActivityTable2).where(eq2(salesActivityTable2.importId, targetSnap.id));
+    const allActs = await db.select().from(salesActivityTable).where(eq(salesActivityTable.importId, targetSnap.id));
     allNikActs = allActs.filter((a) => a.nik === nik);
     const seen = /* @__PURE__ */ new Set();
     allNikActs = allNikActs.filter((a) => {
@@ -109863,6 +107714,7 @@ async function buildActivityReport(nik, monthKey) {
 ${divider}
 \u{1F464} *${am.nama}*
 \u{1F4C6} Periode : *${labelSnapshot}*
+\u{1F4E6} Snapshot: *#${targetSnap?.id ?? "?"}*
 ${divider}
 \u{1F4CA} *RINGKASAN AKTIVITAS*
 
@@ -109939,9 +107791,13 @@ async function buildActivityMessage(nik, _period) {
 }
 async function buildTelegramMessages(nik, period, options) {
   const messages = [];
+  let perfKeyboard;
   if (options.includePerformance) {
-    const m = await buildPerformanceMessage(nik, period);
-    if (m) messages.push(m);
+    const result = await buildPerformanceMessage(nik, period);
+    if (result) {
+      messages.push(...result.parts);
+      perfKeyboard = result.keyboard;
+    }
   }
   if (options.includeFunnel) {
     const m = await buildFunnelMessage(nik);
@@ -109951,7 +107807,7 @@ async function buildTelegramMessages(nik, period, options) {
     const msgs = await buildActivityMessage(nik, period);
     messages.push(...msgs);
   }
-  return messages;
+  return { messages, perfKeyboard };
 }
 async function sendToTelegram(botToken, chatId, message, replyMarkup) {
   const url2 = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -110009,7 +107865,7 @@ async function sendReminderToAllAMs(period, options, targetNiks) {
       continue;
     }
     try {
-      const messages = await buildTelegramMessages(am.nik, period, options);
+      const { messages, perfKeyboard } = await buildTelegramMessages(am.nik, period, options);
       if (!messages.length) {
         skipped++;
         details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
@@ -110017,7 +107873,17 @@ async function sendReminderToAllAMs(period, options, targetNiks) {
       }
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await new Promise((r) => setTimeout(r, 500));
-        await sendToTelegram(settings.telegramBotToken, am.telegramChatId, messages[i]);
+        await sendToTelegramHtml(settings.telegramBotToken, am.telegramChatId, messages[i]);
+      }
+      if (perfKeyboard) {
+        await new Promise((r) => setTimeout(r, 500));
+        const firstName = am.nama.split(" ")[0];
+        await sendToTelegramHtml(
+          settings.telegramBotToken,
+          am.telegramChatId,
+          `Mau apa lagi kak <b>${firstName}</b>? \u{1F60A}`,
+          perfKeyboard
+        );
       }
       sent++;
       details.push({ nik: am.nik, namaAm: am.nama, status: "sent" });
@@ -110068,9 +107934,9 @@ function generateChallengeId() {
 async function requestOtp(userId, req) {
   const now = /* @__PURE__ */ new Date();
   const recentChallenges = await db.select().from(otpChallengesTable).where(
-    and2(
-      eq2(otpChallengesTable.userId, userId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.userId, userId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   ).orderBy(otpChallengesTable.createdAt).limit(1);
   if (recentChallenges.length > 0) {
@@ -110083,7 +107949,7 @@ async function requestOtp(userId, req) {
       };
     }
   }
-  const [user] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, userId));
+  const [user] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, userId));
   if (!user) throw new Error("User tidak ditemukan.");
   if (!user.telegramChatId) {
     throw new Error("Telegram belum terhubung. Hubungi petugas untuk menghubungkan akun Telegram terlebih dahulu.");
@@ -110093,9 +107959,9 @@ async function requestOtp(userId, req) {
   const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1e3);
   const otpHash = await bcryptjs_default.hash(otp, 10);
   await db.update(otpChallengesTable).set({ status: "REVOKED" }).where(
-    and2(
-      eq2(otpChallengesTable.userId, userId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.userId, userId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   );
   await db.insert(otpChallengesTable).values({
@@ -110147,36 +108013,36 @@ async function verifyOtp(challengeId, otp, req) {
     return { success: false, error: "Session verifikasi sudah kedaluarsa. Silakan login kembali." };
   }
   const [challenge] = await db.select().from(otpChallengesTable).where(
-    and2(
-      eq2(otpChallengesTable.challengeId, challengeId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.challengeId, challengeId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   );
   if (!challenge) {
-    const [blockedChallenge] = await db.select().from(otpChallengesTable).where(eq2(otpChallengesTable.challengeId, challengeId));
+    const [blockedChallenge] = await db.select().from(otpChallengesTable).where(eq(otpChallengesTable.challengeId, challengeId));
     if (blockedChallenge && blockedChallenge.status === "BLOCKED") {
       return { success: false, error: "Terlalu banyak percobaan salah. Tunggu beberapa menit sebelum mencoba lagi.", locked: true };
     }
     return { success: false, error: "Challenge tidak valid atau sudah kedaluarsa. Silakan mulai proses login dari awal." };
   }
   if (challenge.expiresAt < /* @__PURE__ */ new Date()) {
-    await db.update(otpChallengesTable).set({ status: "EXPIRED" }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ status: "EXPIRED" }).where(eq(otpChallengesTable.id, challenge.id));
     return { success: false, error: "Kode verifikasi sudah kedaluwarsa. Silakan minta kode baru." };
   }
   if (challenge.attemptCount >= MAX_ATTEMPTS) {
-    await db.update(otpChallengesTable).set({ status: "BLOCKED" }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ status: "BLOCKED" }).where(eq(otpChallengesTable.id, challenge.id));
     return { success: false, error: "Terlalu banyak percobaan salah. Tunggu beberapa menit sebelum mencoba lagi.", locked: true };
   }
   const valid = await bcryptjs_default.compare(otp, challenge.otpHash);
   if (!valid) {
-    await db.update(otpChallengesTable).set({ attemptCount: challenge.attemptCount + 1 }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ attemptCount: challenge.attemptCount + 1 }).where(eq(otpChallengesTable.id, challenge.id));
     const remaining = MAX_ATTEMPTS - challenge.attemptCount - 1;
     if (remaining <= 0) {
       return { success: false, error: "Kode verifikasi salah. Terlalu banyak percobaan. Tunggu beberapa menit sebelum mencoba lagi.", locked: true };
     }
     return { success: false, error: `Kode verifikasi tidak sesuai. Sisa percobaan: ${remaining}.` };
   }
-  await db.update(otpChallengesTable).set({ status: "VERIFIED", verifiedAt: /* @__PURE__ */ new Date() }).where(eq2(otpChallengesTable.id, challenge.id));
+  await db.update(otpChallengesTable).set({ status: "VERIFIED", verifiedAt: /* @__PURE__ */ new Date() }).where(eq(otpChallengesTable.id, challenge.id));
   session2.userId = session2.pendingUserId;
   session2.userEmail = session2.pendingEmail;
   session2.userRole = session2.pendingRole;
@@ -110206,9 +108072,9 @@ async function resendOtp(req) {
 async function requestOtpPresentation(userId) {
   const now = /* @__PURE__ */ new Date();
   const recentChallenges = await db.select().from(otpChallengesTable).where(
-    and2(
-      eq2(otpChallengesTable.userId, userId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.userId, userId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   ).orderBy(otpChallengesTable.createdAt).limit(1);
   if (recentChallenges.length > 0) {
@@ -110221,7 +108087,7 @@ async function requestOtpPresentation(userId) {
       };
     }
   }
-  const [user] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, userId));
+  const [user] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, userId));
   if (!user) throw new Error("User tidak ditemukan.");
   if (!user.telegramChatId) {
     throw new Error("Telegram belum terhubung.");
@@ -110231,9 +108097,9 @@ async function requestOtpPresentation(userId) {
   const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1e3);
   const otpHash = await bcryptjs_default.hash(otp, 10);
   await db.update(otpChallengesTable).set({ status: "REVOKED" }).where(
-    and2(
-      eq2(otpChallengesTable.userId, userId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.userId, userId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   );
   await db.insert(otpChallengesTable).values({
@@ -110267,13 +108133,13 @@ Jika Anda tidak meminta kode ini, abaikan pesan ini.`;
 }
 async function verifyOtpPresentation(challengeId, otp, userId) {
   const [challenge] = await db.select().from(otpChallengesTable).where(
-    and2(
-      eq2(otpChallengesTable.challengeId, challengeId),
-      eq2(otpChallengesTable.status, "PENDING")
+    and(
+      eq(otpChallengesTable.challengeId, challengeId),
+      eq(otpChallengesTable.status, "PENDING")
     )
   );
   if (!challenge) {
-    const [blockedChallenge] = await db.select().from(otpChallengesTable).where(eq2(otpChallengesTable.challengeId, challengeId));
+    const [blockedChallenge] = await db.select().from(otpChallengesTable).where(eq(otpChallengesTable.challengeId, challengeId));
     if (blockedChallenge && blockedChallenge.status === "BLOCKED") {
       return { success: false, error: "Terlalu banyak percobaan salah. Tunggu beberapa menit sebelum mencoba lagi.", locked: true };
     }
@@ -110283,25 +108149,25 @@ async function verifyOtpPresentation(challengeId, otp, userId) {
     return { success: false, error: "User tidak valid. Silakan login ulang." };
   }
   if (challenge.expiresAt < /* @__PURE__ */ new Date()) {
-    await db.update(otpChallengesTable).set({ status: "EXPIRED" }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ status: "EXPIRED" }).where(eq(otpChallengesTable.id, challenge.id));
     return { success: false, error: "Kode verifikasi sudah kedaluwarsa." };
   }
   if (challenge.attemptCount >= MAX_ATTEMPTS) {
-    await db.update(otpChallengesTable).set({ status: "BLOCKED" }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ status: "BLOCKED" }).where(eq(otpChallengesTable.id, challenge.id));
     return { success: false, error: "Terlalu banyak percobaan salah.", locked: true };
   }
   const valid = await bcryptjs_default.compare(otp, challenge.otpHash);
   if (!valid) {
-    await db.update(otpChallengesTable).set({ attemptCount: challenge.attemptCount + 1 }).where(eq2(otpChallengesTable.id, challenge.id));
+    await db.update(otpChallengesTable).set({ attemptCount: challenge.attemptCount + 1 }).where(eq(otpChallengesTable.id, challenge.id));
     const remaining = MAX_ATTEMPTS - challenge.attemptCount - 1;
     if (remaining <= 0) {
       return { success: false, error: "Terlalu banyak percobaan salah.", locked: true };
     }
     return { success: false, error: `Kode verifikasi tidak sesuai. Sisa percobaan: ${remaining}.` };
   }
-  await db.update(otpChallengesTable).set({ status: "VERIFIED", verifiedAt: /* @__PURE__ */ new Date() }).where(eq2(otpChallengesTable.id, challenge.id));
+  await db.update(otpChallengesTable).set({ status: "VERIFIED", verifiedAt: /* @__PURE__ */ new Date() }).where(eq(otpChallengesTable.id, challenge.id));
   const resolvedUserId = userId ?? challenge.userId;
-  const [user] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, resolvedUserId));
+  const [user] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, resolvedUserId));
   return {
     success: true,
     userId: user?.id ?? resolvedUserId,
@@ -110321,7 +108187,7 @@ async function getPendingUserInfo(req) {
     userId = session2.pendingUserId;
   }
   if (!userId) return null;
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, userId));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, userId));
   if (!am) return null;
   return {
     userId: am.id,
@@ -110335,7 +108201,7 @@ async function getPendingUserInfo(req) {
 }
 
 // src/features/auth/routes.ts
-init_logger3();
+init_logger2();
 var dashboardAuthRouter = (0, import_express2.Router)();
 dashboardAuthRouter.post("/login", async (req, res) => {
   const { email: email3, password } = req.body;
@@ -110345,9 +108211,9 @@ dashboardAuthRouter.post("/login", async (req, res) => {
   }
   const identifier = String(email3).trim();
   const [user] = await db.select().from(accountManagersTable).where(
-    or2(
-      eq2(accountManagersTable.email, identifier),
-      eq2(accountManagersTable.nik, identifier)
+    or(
+      eq(accountManagersTable.email, identifier),
+      eq(accountManagersTable.nik, identifier)
     )
   );
   if (!user || !user.passwordHash) {
@@ -110576,7 +108442,7 @@ dashboardAuthRouter.get("/officers", async (req, res) => {
     telegramDisplayName: accountManagersTable.telegramDisplayName,
     telegramConnected: accountManagersTable.telegramChatId
   }).from(accountManagersTable).where(
-    inArray2(accountManagersTable.role, ["ADMIN", "MANAGER", "OFFICER"])
+    inArray(accountManagersTable.role, ["ADMIN", "MANAGER", "OFFICER"])
   ).orderBy(accountManagersTable.nama);
   const withTelegram = officers.filter((o) => o.telegramConnected);
   res.json(withTelegram);
@@ -110588,7 +108454,7 @@ presentationAuthRouter.post("/request-otp", async (req, res) => {
     res.status(400).json({ error: "NIK wajib diisi" });
     return;
   }
-  const [user] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.nik, String(nik).trim()));
+  const [user] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, String(nik).trim()));
   if (!user) {
     await logAuthEvent({
       eventType: "LOGIN_ATTEMPT",
@@ -110693,13 +108559,13 @@ presentationAuthRouter.post("/session", async (req, res) => {
     res.status(401).json({ error: "Session tidak ditemukan. Silakan login ulang." });
     return;
   }
-  const [presSession] = await db.select().from(presentationSessionsTable).where(eq2(presentationSessionsTable.token, presentationToken));
+  const [presSession] = await db.select().from(presentationSessionsTable).where(eq(presentationSessionsTable.token, presentationToken));
   if (!presSession) {
     res.status(401).json({ error: "Session tidak valid atau sudah kedaluwarsa. Silakan login ulang." });
     return;
   }
   if (new Date(presSession.expiresAt).getTime() < Date.now()) {
-    await db.delete(presentationSessionsTable).where(eq2(presentationSessionsTable.token, presentationToken));
+    await db.delete(presentationSessionsTable).where(eq(presentationSessionsTable.token, presentationToken));
     res.status(401).json({ error: "Session sudah kedaluwarsa. Silakan login ulang." });
     return;
   }
@@ -110729,7 +108595,7 @@ presentationAuthRouter.post("/resend-otp", async (req, res) => {
 presentationAuthRouter.delete("/session", async (req, res) => {
   const { presentationToken } = req.body;
   if (presentationToken) {
-    await db.delete(presentationSessionsTable).where(eq2(presentationSessionsTable.token, presentationToken));
+    await db.delete(presentationSessionsTable).where(eq(presentationSessionsTable.token, presentationToken));
   }
   res.json({ success: true });
 });
@@ -110738,12 +108604,12 @@ var routes_default2 = presentationAuthRouter;
 // src/features/am/publicRoutes.ts
 var import_express3 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 var router2 = (0, import_express3.Router)();
 router2.get("/am/:slug", async (req, res) => {
   const raw = Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug;
   const { nik } = req.query;
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.slug, raw));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.slug, raw));
   if (!am) {
     res.status(404).json({ error: "AM tidak ditemukan" });
     return;
@@ -110755,10 +108621,10 @@ router2.get("/am/:slug", async (req, res) => {
   const now = /* @__PURE__ */ new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const perfs = await db.select().from(performanceDataTable).where(eq2(performanceDataTable.nik, am.nik));
+  const perfs = await db.select().from(performanceDataTable).where(eq(performanceDataTable.nik, am.nik));
   const latestPerf = perfs.find((p) => p.tahun === year && p.bulan === month) || perfs[perfs.length - 1];
-  const lops = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.nikAm, am.nik));
-  const acts = await db.select().from(salesActivityTable2).where(eq2(salesActivityTable2.nik, am.nik));
+  const lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, am.nik));
+  const acts = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, am.nik));
   const monthActs = acts.filter((a) => a.activityEndDate?.startsWith(`${year}-${String(month).padStart(2, "0")}`));
   res.json({
     nik: am.nik,
@@ -110803,7 +108669,7 @@ var publicRoutes_default = router2;
 // src/features/performance/publicRoutes.ts
 var import_express4 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 
 // src/shared/divisi.ts
 function expandDivisi(d) {
@@ -110832,35 +108698,35 @@ router3.get("/performance", async (req, res) => {
   if (importId) {
     snapshotId = parseInt(String(importId));
   } else {
-    const latest = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "performance")).orderBy(desc2(dataImportsTable.id)).limit(1);
+    const latest = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.id)).limit(1);
     snapshotId = latest[0]?.id ?? null;
   }
   if (!snapshotId) {
     res.json([]);
     return;
   }
-  const activeAms = await db.select({ nik: accountManagersTable.nik }).from(accountManagersTable).where(and2(eq2(accountManagersTable.aktif, true), inArray2(accountManagersTable.role, ["ACCOUNT_MANAGER", "AM"])));
+  const activeAms = await db.select({ nik: accountManagersTable.nik }).from(accountManagersTable).where(and(eq(accountManagersTable.aktif, true), inArray(accountManagersTable.role, ["ACCOUNT_MANAGER", "AM"])));
   const activeNikSet = new Set(activeAms.map((a) => a.nik).filter(Boolean));
-  const conditions = [eq2(performanceDataTable.importId, snapshotId)];
+  const conditions = [eq(performanceDataTable.importId, snapshotId)];
   if (divisi && String(divisi) !== "all") {
     const d = String(divisi);
     const expanded = expandDivisiPerforma(d);
     if (d === "DPS" || d === "DSS") {
-      conditions.push(eq2(performanceDataTable.divisiCc, d));
+      conditions.push(eq(performanceDataTable.divisiCc, d));
     } else {
       if (expanded.length === 1) {
-        conditions.push(eq2(performanceDataTable.divisi, expanded[0]));
+        conditions.push(eq(performanceDataTable.divisi, expanded[0]));
       } else {
         conditions.push(
-          or2(
-            inArray2(performanceDataTable.divisiCc, ["DPS", "DSS"]),
-            eq2(performanceDataTable.divisi, "DES")
+          or(
+            inArray(performanceDataTable.divisiCc, ["DPS", "DSS"]),
+            eq(performanceDataTable.divisi, "DES")
           )
         );
       }
     }
   }
-  const data = await db.select().from(performanceDataTable).where(and2(...conditions));
+  const data = await db.select().from(performanceDataTable).where(and(...conditions));
   const filtered = data.filter((d) => d.nik && activeNikSet.has(d.nik));
   res.json(filtered.map((d) => ({
     ...d,
@@ -110894,13 +108760,13 @@ router3.get("/import-history", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Frame-Options", "ALLOWALL");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  const history = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "performance")).orderBy(desc2(dataImportsTable.id));
+  const history = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.id));
   res.json(history.map((h) => ({ ...h, createdAt: h.createdAt.toISOString() })));
 });
 router3.get("/am", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  const ams = await db.select({ nik: accountManagersTable.nik, nama: accountManagersTable.nama, divisi: accountManagersTable.divisi, role: accountManagersTable.role }).from(accountManagersTable).where(eq2(accountManagersTable.aktif, true)).orderBy(accountManagersTable.nama);
+  const ams = await db.select({ nik: accountManagersTable.nik, nama: accountManagersTable.nama, divisi: accountManagersTable.divisi, role: accountManagersTable.role }).from(accountManagersTable).where(eq(accountManagersTable.aktif, true)).orderBy(accountManagersTable.nama);
   res.json(ams);
 });
 var publicRoutes_default2 = router3;
@@ -110908,7 +108774,7 @@ var publicRoutes_default2 = router3;
 // src/features/funnel/publicRoutes.ts
 var import_express5 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 var router4 = (0, import_express5.Router)();
 var PUBLIC_HEADERS = {
   "Cache-Control": "no-store",
@@ -110917,7 +108783,7 @@ var PUBLIC_HEADERS = {
 };
 router4.get("/funnel/snapshots", async (req, res) => {
   Object.entries(PUBLIC_HEADERS).forEach(([k, v]) => res.setHeader(k, v));
-  const imports = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "funnel"));
+  const imports = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel"));
   const sorted = [...imports].sort((a, b) => {
     const da = a.snapshotDate || a.createdAt?.toISOString() || "";
     const db2 = b.snapshotDate || b.createdAt?.toISOString() || "";
@@ -111048,10 +108914,10 @@ router4.get("/funnel", async (req, res) => {
   }));
   let targetHoVal = 0, targetFullHoVal = 0;
   const targetByDivisi = {};
-  const allTargets = await db.select().from(salesFunnelTargetTable).orderBy(desc2(salesFunnelTargetTable.tahun), desc2(salesFunnelTargetTable.bulan));
+  const allTargets = await db.select().from(salesFunnelTargetTable).orderBy(desc(salesFunnelTargetTable.tahun), desc(salesFunnelTargetTable.bulan));
   if (allTargets.length > 0) {
     const selectedYear = tahun ? Number(tahun) : null;
-    const importPeriod = import_id2 ? (await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
+    const importPeriod = import_id2 ? (await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
     const importYear = importPeriod ? Number(importPeriod.slice(0, 4)) : null;
     const importMonth = importPeriod ? Number(importPeriod.slice(5, 7)) : null;
     const lookupYear = selectedYear || importYear;
@@ -111090,7 +108956,7 @@ router4.get("/funnel", async (req, res) => {
     const importPeriod = import_id2 ? null : null;
     return (/* @__PURE__ */ new Date()).getFullYear();
   })();
-  const amTargetRows = await db.select().from(amFunnelTargetTable).where(eq2(amFunnelTargetTable.tahun, amTargetYear));
+  const amTargetRows = await db.select().from(amFunnelTargetTable).where(eq(amFunnelTargetTable.tahun, amTargetYear));
   const amTargets = {};
   for (const r of amTargetRows) amTargets[r.nikAm] = { id: r.id, targetValue: r.targetValue, targetValueDss: r.targetValueDss ?? null, targetValueDps: r.targetValueDps ?? null, tahun: r.tahun };
   res.json({
@@ -111139,14 +109005,14 @@ var publicRoutes_default3 = router4;
 // src/features/activity/publicRoutes.ts
 var import_express6 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 var router5 = (0, import_express6.Router)();
 function isKpiLabel(label) {
   if (!label) return false;
   return !label.toLowerCase().includes("tanpa");
 }
 router5.get("/activity/snapshots", async (_req, res) => {
-  const snaps = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.id));
+  const snaps = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.id));
   res.json(snaps.map((s) => ({
     id: s.id,
     period: s.period,
@@ -111159,10 +109025,10 @@ router5.get("/activity/snapshots", async (_req, res) => {
 router5.get("/activity", async (req, res) => {
   const { year, month, divisi, import_id: import_id2 } = req.query;
   const [allActs, ams, settingsArr, activityImports] = await Promise.all([
-    db.select().from(salesActivityTable2),
+    db.select().from(salesActivityTable),
     db.select().from(accountManagersTable),
     db.select({ kpiActivityDefault: appSettingsTable.kpiActivityDefault }).from(appSettingsTable).limit(1),
-    db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq2(dataImportsTable.type, "activity"))
+    db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"))
   ]);
   const kpiDefault = settingsArr[0]?.kpiActivityDefault ?? 30;
   console.log("[activity] allActs sample:", allActs.slice(0, 3).map((a) => a.activityEndDate));
@@ -111294,7 +109160,7 @@ healthSubRouter.use(routes_default);
 // src/features/am/routes.ts
 var import_express9 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 init_excel();
 var router7 = (0, import_express9.Router)();
@@ -111360,7 +109226,7 @@ router7.patch("/:id/aktif", requireAuth, async (req, res) => {
     res.status(400).json({ error: "Field aktif wajib berupa boolean" });
     return;
   }
-  const [am] = await db.update(accountManagersTable).set({ aktif }).where(eq2(accountManagersTable.id, id)).returning();
+  const [am] = await db.update(accountManagersTable).set({ aktif }).where(eq(accountManagersTable.id, id)).returning();
   if (!am) {
     res.status(404).json({ error: "Anggota tidak ditemukan" });
     return;
@@ -111370,7 +109236,7 @@ router7.patch("/:id/aktif", requireAuth, async (req, res) => {
 router7.get("/:id", requireAuth, async (req, res) => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, id));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, id));
   if (!am) {
     res.status(404).json({ error: "Anggota tidak ditemukan" });
     return;
@@ -111396,7 +109262,7 @@ router7.patch("/:id", requireAuth, async (req, res) => {
   if (telegramDisplayName !== void 0) updates.telegramDisplayName = telegramDisplayName || null;
   if (kpiActivity !== void 0) updates.kpiActivity = kpiActivity;
   if (email3 !== void 0) updates.email = email3 || null;
-  const [am] = await db.update(accountManagersTable).set(updates).where(eq2(accountManagersTable.id, id)).returning();
+  const [am] = await db.update(accountManagersTable).set(updates).where(eq(accountManagersTable.id, id)).returning();
   if (!am) {
     res.status(404).json({ error: "Anggota tidak ditemukan" });
     return;
@@ -111406,7 +109272,7 @@ router7.patch("/:id", requireAuth, async (req, res) => {
 router7.delete("/:id", requireAuth, async (req, res) => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
-  await db.delete(accountManagersTable).where(eq2(accountManagersTable.id, id));
+  await db.delete(accountManagersTable).where(eq(accountManagersTable.id, id));
   res.sendStatus(204);
 });
 var routes_default3 = router7;
@@ -111414,7 +109280,7 @@ var routes_default3 = router7;
 // src/features/import/routes.ts
 var import_express10 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 init_excel();
 async function autoRegisterNewAms(entries, source) {
@@ -111466,7 +109332,7 @@ async function resolveRows(body) {
   throw new Error("URL SharePoint atau file Excel diperlukan");
 }
 router8.get("/history", requireAuth, async (req, res) => {
-  const records = await db.select().from(dataImportsTable).orderBy(desc2(dataImportsTable.createdAt)).limit(50);
+  const records = await db.select().from(dataImportsTable).orderBy(desc(dataImportsTable.createdAt)).limit(50);
   res.json(records.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
 });
 router8.post("/funnel", requireAuth, async (req, res) => {
@@ -111497,7 +109363,7 @@ router8.post("/funnel", requireAuth, async (req, res) => {
     cleaned.filter((r) => r.nikAm).map((r) => ({ nik: r.nikAm, nama: r.namaAm || r.nikAm, divisi: r.divisi || "DPS", witel: r.witel || "SURAMADU" })),
     "import_funnel"
   );
-  const [existingFunnel] = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.type, "funnel"), eq2(dataImportsTable.period, importPeriod)));
+  const [existingFunnel] = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.type, "funnel"), eq(dataImportsTable.period, importPeriod)));
   if (existingFunnel && !req.body.forceOverwrite) {
     res.status(409).json({
       conflict: true,
@@ -111510,8 +109376,8 @@ router8.post("/funnel", requireAuth, async (req, res) => {
     return;
   }
   if (existingFunnel && req.body.forceOverwrite) {
-    await db.delete(salesFunnelTable).where(eq2(salesFunnelTable.importId, existingFunnel.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingFunnel.id));
+    await db.delete(salesFunnelTable).where(eq(salesFunnelTable.importId, existingFunnel.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingFunnel.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "funnel",
@@ -111532,7 +109398,7 @@ router8.post("/funnel", requireAuth, async (req, res) => {
     }));
     await db.insert(salesFunnelTable).values(batch);
   }
-  await db.execute(sql2`
+  await db.execute(sql`
     UPDATE sales_funnel
     SET tahun_anggaran = COALESCE(
       CASE WHEN snapshot_date IS NOT NULL AND snapshot_date ~ '^[0-9]{4}'
@@ -111549,7 +109415,7 @@ router8.post("/funnel", requireAuth, async (req, res) => {
   const masterNameByNik = new Map(allMasterAms.map((m) => [m.nik, m.nama]));
   const nullNameRows = cleaned.filter((r) => !r.namaAm && r.nikAm && masterNameByNik.has(r.nikAm));
   for (const row of nullNameRows) {
-    await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and2(eq2(salesFunnelTable.importId, imp.id), eq2(salesFunnelTable.nikAm, row.nikAm)));
+    await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and(eq(salesFunnelTable.importId, imp.id), eq(salesFunnelTable.nikAm, row.nikAm)));
   }
   const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p) => p && p !== "\u2013"))];
   for (let i = 0; i < uniqueCustomers.length; i += 100) {
@@ -111594,7 +109460,7 @@ router8.post("/activity", requireAuth, async (req, res) => {
     return;
   }
   const importPeriod = req.body.period || detectPeriod(rows, sourceUrl || void 0);
-  const [existingAct] = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.type, "activity"), eq2(dataImportsTable.period, importPeriod)));
+  const [existingAct] = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.type, "activity"), eq(dataImportsTable.period, importPeriod)));
   if (existingAct && !req.body.forceOverwrite) {
     res.status(409).json({
       conflict: true,
@@ -111607,8 +109473,8 @@ router8.post("/activity", requireAuth, async (req, res) => {
     return;
   }
   if (existingAct && req.body.forceOverwrite) {
-    await db.delete(salesActivityTable2).where(eq2(salesActivityTable2.importId, existingAct.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingAct.id));
+    await db.delete(salesActivityTable).where(eq(salesActivityTable.importId, existingAct.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingAct.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "activity",
@@ -111657,8 +109523,8 @@ router8.post("/activity", requireAuth, async (req, res) => {
       imp_arr
     ]);
   }
-  const [{ count: count2 }] = await db.select({ count: sql2`count(*)::int` }).from(salesActivityTable2).where(eq2(salesActivityTable2.importId, imp.id));
-  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq2(dataImportsTable.id, imp.id));
+  const [{ count: count2 }] = await db.select({ count: sql`count(*)::int` }).from(salesActivityTable).where(eq(salesActivityTable.importId, imp.id));
+  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq(dataImportsTable.id, imp.id));
   const newActAmCount = await autoRegisterNewAms(
     cleaned.filter((r) => r.nik).map((r) => ({ nik: r.nik, nama: r.fullname || r.nik, divisi: r.divisi || "DPS", witel: "SURAMADU" })),
     "import_activity"
@@ -111763,7 +109629,7 @@ router8.post("/performance", requireAuth, async (req, res) => {
     bulan = parseInt(PERIODE.slice(4, 6), 10) || (/* @__PURE__ */ new Date()).getMonth() + 1;
   }
   const importPeriod = PERIODE;
-  const masterAms = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.aktif, true));
+  const masterAms = await db.select().from(accountManagersTable).where(eq(accountManagersTable.aktif, true));
   const nikToName = new Map(masterAms.map((a) => [a.nik, a.nama]));
   const nikToDivisi = new Map(masterAms.map((a) => [a.nik, a.divisi]));
   const records = filtered.map((r) => {
@@ -111853,11 +109719,11 @@ router8.post("/performance", requireAuth, async (req, res) => {
   }
   console.log("[DEBUG] validRecords:", validRecords.length, "| filtered:", filtered.length);
   const snapshotDateNorm = snapshotDate ? snapshotDate.slice(0, 10) : null;
-  const [existingPerf] = snapshotDateNorm ? await db.select().from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "performance"),
-    eq2(dataImportsTable.period, importPeriod),
-    eq2(dataImportsTable.snapshotDate, snapshotDateNorm)
-  )) : await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.type, "performance"), eq2(dataImportsTable.period, importPeriod)));
+  const [existingPerf] = snapshotDateNorm ? await db.select().from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "performance"),
+    eq(dataImportsTable.period, importPeriod),
+    eq(dataImportsTable.snapshotDate, snapshotDateNorm)
+  )) : await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.type, "performance"), eq(dataImportsTable.period, importPeriod)));
   if (existingPerf && !forceOverwrite) {
     res.status(409).json({
       conflict: true,
@@ -111870,8 +109736,8 @@ router8.post("/performance", requireAuth, async (req, res) => {
     return;
   }
   if (existingPerf && forceOverwrite) {
-    await db.delete(performanceDataTable).where(eq2(performanceDataTable.importId, existingPerf.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingPerf.id));
+    await db.delete(performanceDataTable).where(eq(performanceDataTable.importId, existingPerf.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingPerf.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "performance",
@@ -111912,7 +109778,7 @@ router8.get("/:id", requireAuth, async (req, res) => {
     res.status(400).json({ error: "ID tidak valid" });
     return;
   }
-  const [imp] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, id));
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, id));
   if (!imp) {
     res.status(404).json({ error: "Import tidak ditemukan" });
     return;
@@ -111925,7 +109791,7 @@ router8.get("/:id/data", requireAuth, async (req, res) => {
     res.status(400).json({ error: "ID tidak valid" });
     return;
   }
-  const [imp] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, id));
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, id));
   if (!imp) {
     res.status(404).json({ error: "Import tidak ditemukan" });
     return;
@@ -111933,13 +109799,13 @@ router8.get("/:id/data", requireAuth, async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
     if (imp.type === "funnel") {
-      const rows = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.importId, id));
+      const rows = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.importId, id));
       res.json({ type: imp.type, rows: rows.map((r) => ({ ...r, createdAt: r.createdAt?.toISOString() })) });
     } else if (imp.type === "activity") {
-      const rows = await db.select().from(salesActivityTable2).where(eq2(salesActivityTable2.importId, id));
+      const rows = await db.select().from(salesActivityTable).where(eq(salesActivityTable.importId, id));
       res.json({ type: imp.type, rows: rows.map((r) => ({ ...r, createdAt: r.createdAt?.toISOString() })) });
     } else if (imp.type === "performance") {
-      const rows = await db.select().from(performanceDataTable).where(eq2(performanceDataTable.importId, id));
+      const rows = await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, id));
       res.json({ type: imp.type, rows: rows.map((r) => ({ ...r, createdAt: r.createdAt?.toISOString() })) });
     } else {
       res.json({ type: imp.type, rows: [] });
@@ -111965,7 +109831,7 @@ router8.post("/powerbi-funnel", requireAuth, async (req, res) => {
   const wb = XLSX3.readFile(csvPath);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rawRows = XLSX3.utils.sheet_to_json(ws, { defval: null });
-  const masterAms = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.aktif, true));
+  const masterAms = await db.select().from(accountManagersTable).where(eq(accountManagersTable.aktif, true));
   const nameToNik = /* @__PURE__ */ new Map();
   const nikToDivisi = /* @__PURE__ */ new Map();
   for (const m of masterAms) {
@@ -112046,19 +109912,19 @@ router8.delete("/:id", requireAuth, async (req, res) => {
     res.status(400).json({ error: "ID tidak valid" });
     return;
   }
-  const [imp] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, id));
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, id));
   if (!imp) {
     res.status(404).json({ error: "Import tidak ditemukan" });
     return;
   }
   if (imp.type === "funnel") {
-    await db.delete(salesFunnelTable).where(eq2(salesFunnelTable.importId, id));
+    await db.delete(salesFunnelTable).where(eq(salesFunnelTable.importId, id));
   } else if (imp.type === "activity") {
-    await db.delete(salesActivityTable2).where(eq2(salesActivityTable2.importId, id));
+    await db.delete(salesActivityTable).where(eq(salesActivityTable.importId, id));
   } else if (imp.type === "performance") {
-    await db.delete(performanceDataTable).where(eq2(performanceDataTable.importId, id));
+    await db.delete(performanceDataTable).where(eq(performanceDataTable.importId, id));
   }
-  await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, id));
+  await db.delete(dataImportsTable).where(eq(dataImportsTable.id, id));
   res.json({ success: true, message: `Import #${id} (${imp.type}) dan ${imp.rowsImported} baris datanya berhasil dihapus` });
 });
 router8.patch("/:importId/rows/:rowId", requireAuth, async (req, res) => {
@@ -112095,7 +109961,7 @@ router8.patch("/:importId/rows/:rowId", requireAuth, async (req, res) => {
     activityNotes: null,
     snapshotDate: null
   };
-  const [imp] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, importId)).limit(1);
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId)).limit(1);
   if (!imp) {
     res.status(404).json({ error: "Import tidak ditemukan" });
     return;
@@ -112105,12 +109971,12 @@ router8.patch("/:importId/rows/:rowId", requireAuth, async (req, res) => {
       res.status(400).json({ error: "Field tidak dapat diedit" });
       return;
     }
-    const [existing] = await db.select({ id: salesActivityTable2.id }).from(salesActivityTable2).where(and2(eq2(salesActivityTable2.id, rowId), eq2(salesActivityTable2.importId, importId))).limit(1);
+    const [existing] = await db.select({ id: salesActivityTable.id }).from(salesActivityTable).where(and(eq(salesActivityTable.id, rowId), eq(salesActivityTable.importId, importId))).limit(1);
     if (!existing) {
       res.status(404).json({ error: "Baris tidak ditemukan" });
       return;
     }
-    await db.update(salesActivityTable2).set({ [field]: value }).where(and2(eq2(salesActivityTable2.id, rowId), eq2(salesActivityTable2.importId, importId)));
+    await db.update(salesActivityTable).set({ [field]: value }).where(and(eq(salesActivityTable.id, rowId), eq(salesActivityTable.importId, importId)));
     res.json({ success: true });
   } else {
     res.status(400).json({ error: `Edit tidak didukung untuk tipe ${imp.type}` });
@@ -112187,7 +110053,7 @@ router8.post("/internal/performance", async (req, res) => {
     bulan = parseInt(PERIODE.slice(4, 6), 10) || (/* @__PURE__ */ new Date()).getMonth() + 1;
   }
   const importPeriod = `${tahun}${String(bulan).padStart(2, "0")}`;
-  const masterAms = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.aktif, true));
+  const masterAms = await db.select().from(accountManagersTable).where(eq(accountManagersTable.aktif, true));
   const nikToName = new Map(masterAms.map((a) => [a.nik, a.nama]));
   const nikToDivisi = new Map(masterAms.map((a) => [a.nik, a.divisi]));
   const records = filtered.map((r) => {
@@ -112270,17 +110136,17 @@ router8.post("/internal/performance", async (req, res) => {
       snapshotDate: snapshotDate || null
     };
   });
-  const [existingPerf] = snapshotDate ? await db.select().from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "performance"),
-    eq2(dataImportsTable.period, importPeriod),
-    eq2(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10))
-  )) : await db.select().from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "performance"),
-    eq2(dataImportsTable.period, importPeriod)
+  const [existingPerf] = snapshotDate ? await db.select().from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "performance"),
+    eq(dataImportsTable.period, importPeriod),
+    eq(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10))
+  )) : await db.select().from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "performance"),
+    eq(dataImportsTable.period, importPeriod)
   ));
   if (existingPerf) {
-    await db.delete(performanceDataTable).where(eq2(performanceDataTable.importId, existingPerf.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingPerf.id));
+    await db.delete(performanceDataTable).where(eq(performanceDataTable.importId, existingPerf.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingPerf.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "performance",
@@ -112320,8 +110186,8 @@ var routes_default4 = router8;
 // src/features/import/internal.ts
 var import_express11 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
-init_logger3();
+init_drizzle_orm();
+init_logger2();
 init_excel();
 var XLSX2 = __toESM(require_xlsx(), 1);
 var router9 = (0, import_express11.Router)();
@@ -112400,7 +110266,7 @@ router9.post("/import-performance", async (req, res) => {
     bulan = parseInt(PERIODE.slice(4, 6), 10) || (/* @__PURE__ */ new Date()).getMonth() + 1;
   }
   const importPeriod = `${tahun}${String(bulan).padStart(2, "0")}`;
-  const masterAms = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.aktif, true));
+  const masterAms = await db.select().from(accountManagersTable).where(eq(accountManagersTable.aktif, true));
   const nikToName = new Map(masterAms.map((a) => [a.nik, a.nama]));
   const nikToDivisi = new Map(masterAms.map((a) => [a.nik, a.divisi]));
   const records = filtered.map((r) => {
@@ -112483,13 +110349,13 @@ router9.post("/import-performance", async (req, res) => {
       snapshotDate: snapshotDate || null
     };
   });
-  const [existingPerf] = snapshotDate ? await db.select().from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "performance"),
-    eq2(dataImportsTable.period, importPeriod),
-    eq2(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10))
-  )) : await db.select().from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "performance"),
-    eq2(dataImportsTable.period, importPeriod)
+  const [existingPerf] = snapshotDate ? await db.select().from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "performance"),
+    eq(dataImportsTable.period, importPeriod),
+    eq(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10))
+  )) : await db.select().from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "performance"),
+    eq(dataImportsTable.period, importPeriod)
   ));
   if (existingPerf && !forceOverwrite) {
     res.status(409).json({
@@ -112503,8 +110369,8 @@ router9.post("/import-performance", async (req, res) => {
     return;
   }
   if (existingPerf && forceOverwrite) {
-    await db.delete(performanceDataTable).where(eq2(performanceDataTable.importId, existingPerf.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingPerf.id));
+    await db.delete(performanceDataTable).where(eq(performanceDataTable.importId, existingPerf.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingPerf.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "performance",
@@ -112605,13 +110471,13 @@ router9.post("/import-funnel", async (req, res) => {
   }
   const importPeriod = bodyPeriod || `${tahun}${String(bulan).padStart(2, "0")}`;
   const existingConditions = [
-    eq2(dataImportsTable.type, "funnel"),
-    eq2(dataImportsTable.period, importPeriod)
+    eq(dataImportsTable.type, "funnel"),
+    eq(dataImportsTable.period, importPeriod)
   ];
   if (snapshotDate) {
-    existingConditions.push(eq2(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10)));
+    existingConditions.push(eq(dataImportsTable.snapshotDate, snapshotDate.slice(0, 10)));
   }
-  const [existingFunnel] = await db.select().from(dataImportsTable).where(and2(...existingConditions));
+  const [existingFunnel] = await db.select().from(dataImportsTable).where(and(...existingConditions));
   if (existingFunnel && !forceOverwrite) {
     res.status(409).json({
       conflict: true,
@@ -112624,8 +110490,8 @@ router9.post("/import-funnel", async (req, res) => {
     return;
   }
   if (existingFunnel && forceOverwrite) {
-    await db.delete(salesFunnelTable).where(eq2(salesFunnelTable.importId, existingFunnel.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingFunnel.id));
+    await db.delete(salesFunnelTable).where(eq(salesFunnelTable.importId, existingFunnel.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingFunnel.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "funnel",
@@ -112646,7 +110512,7 @@ router9.post("/import-funnel", async (req, res) => {
     }));
     await db.insert(salesFunnelTable).values(batch);
   }
-  await db.execute(sql2`
+  await db.execute(sql`
     UPDATE sales_funnel
     SET tahun_anggaran = COALESCE(
       CASE WHEN snapshot_date IS NOT NULL AND snapshot_date ~ '^[0-9]{4}'
@@ -112663,7 +110529,7 @@ router9.post("/import-funnel", async (req, res) => {
   const masterNameByNik = new Map(allMasterAms.map((m) => [m.nik, m.nama]));
   const nullNameRows = cleaned.filter((r) => !r.namaAm && r.nikAm && masterNameByNik.has(r.nikAm));
   for (const row of nullNameRows) {
-    await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and2(eq2(salesFunnelTable.importId, imp.id), eq2(salesFunnelTable.nikAm, row.nikAm)));
+    await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and(eq(salesFunnelTable.importId, imp.id), eq(salesFunnelTable.nikAm, row.nikAm)));
   }
   const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p) => p && p !== "\u2013"))];
   for (let i = 0; i < uniqueCustomers.length; i += 100) {
@@ -112752,7 +110618,7 @@ router9.post("/import-activity", async (req, res) => {
     bulan = snap.getMonth() + 1;
   }
   const importPeriod = bodyPeriod || `${tahun}${String(bulan).padStart(2, "0")}`;
-  const [existingAct] = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.type, "activity"), eq2(dataImportsTable.period, importPeriod)));
+  const [existingAct] = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.type, "activity"), eq(dataImportsTable.period, importPeriod)));
   if (existingAct && !forceOverwrite) {
     res.status(409).json({
       conflict: true,
@@ -112765,8 +110631,8 @@ router9.post("/import-activity", async (req, res) => {
     return;
   }
   if (existingAct && forceOverwrite) {
-    await db.delete(salesActivityTable2).where(eq2(salesActivityTable2.importId, existingAct.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, existingAct.id));
+    await db.delete(salesActivityTable).where(eq(salesActivityTable.importId, existingAct.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, existingAct.id));
   }
   const [imp] = await db.insert(dataImportsTable).values({
     type: "activity",
@@ -112793,11 +110659,11 @@ router9.post("/import-activity", async (req, res) => {
       snapshotDate: snapshotDate || null,
       importId: imp.id
     }));
-    await db.insert(salesActivityTable2).values(batch);
+    await db.insert(salesActivityTable).values(batch);
   }
   logger.info({ importId: imp.id }, "Internal activity import: DB insert complete");
   const count2 = cleaned.length;
-  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq2(dataImportsTable.id, imp.id));
+  await db.update(dataImportsTable).set({ rowsImported: count2 }).where(eq(dataImportsTable.id, imp.id));
   const newActAmCount = await autoRegisterNewAms(
     cleaned.filter((r) => r.nik).map((r) => ({ nik: r.nik, nama: r.fullname || r.nik, divisi: r.divisi || "DPS", witel: "SURAMADU" })),
     "import_activity_telegram"
@@ -112822,7 +110688,7 @@ var internal_default = router9;
 // src/features/performance/routes.ts
 var import_express12 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 var router10 = (0, import_express12.Router)();
 router10.get("/", requireAuth, async (req, res) => {
@@ -112831,29 +110697,29 @@ router10.get("/", requireAuth, async (req, res) => {
   const allAms = await db.select().from(accountManagersTable);
   const registeredNiks = allAms.filter((a) => a.aktif && a.role === "AM" && a.nik).map((a) => a.nik);
   const conditions = [];
-  if (registeredNiks.length > 0) conditions.push(inArray2(performanceDataTable.nik, registeredNiks));
-  if (year) conditions.push(eq2(performanceDataTable.tahun, parseInt(String(year))));
-  if (month) conditions.push(eq2(performanceDataTable.bulan, parseInt(String(month))));
+  if (registeredNiks.length > 0) conditions.push(inArray(performanceDataTable.nik, registeredNiks));
+  if (year) conditions.push(eq(performanceDataTable.tahun, parseInt(String(year))));
+  if (month) conditions.push(eq(performanceDataTable.bulan, parseInt(String(month))));
   if (divisi && String(divisi) !== "all") {
     const d = String(divisi);
     if (d === "DPS" || d === "DSS") {
-      conditions.push(eq2(performanceDataTable.divisiCc, d));
+      conditions.push(eq(performanceDataTable.divisiCc, d));
     } else {
       const expanded = expandDivisiPerforma(d);
-      conditions.push(inArray2(performanceDataTable.divisi, expanded));
+      conditions.push(inArray(performanceDataTable.divisi, expanded));
     }
   }
-  if (importId) conditions.push(eq2(performanceDataTable.importId, parseInt(String(importId))));
-  const data = conditions.length > 0 ? await db.select().from(performanceDataTable).where(and2(...conditions)) : await db.select().from(performanceDataTable);
+  if (importId) conditions.push(eq(performanceDataTable.importId, parseInt(String(importId))));
+  const data = conditions.length > 0 ? await db.select().from(performanceDataTable).where(and(...conditions)) : await db.select().from(performanceDataTable);
   res.json(data.map((d) => ({ ...d, divisi_cc: d.divisiCc, createdAt: d.createdAt.toISOString() })));
 });
 router10.get("/:nik", requireAuth, async (req, res) => {
   const raw = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
   const { year, month } = req.query;
-  const conditions = [eq2(performanceDataTable.nik, raw)];
-  if (year) conditions.push(eq2(performanceDataTable.tahun, parseInt(String(year))));
-  if (month) conditions.push(eq2(performanceDataTable.bulan, parseInt(String(month))));
-  const summaries = await db.select().from(performanceDataTable).where(and2(...conditions));
+  const conditions = [eq(performanceDataTable.nik, raw)];
+  if (year) conditions.push(eq(performanceDataTable.tahun, parseInt(String(year))));
+  if (month) conditions.push(eq(performanceDataTable.bulan, parseInt(String(month))));
+  const summaries = await db.select().from(performanceDataTable).where(and(...conditions));
   if (summaries.length === 0) {
     res.status(404).json({ error: "Data tidak ditemukan" });
     return;
@@ -112871,11 +110737,11 @@ var routes_default5 = router10;
 // src/features/funnel/routes.ts
 var import_express13 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 var router11 = (0, import_express13.Router)();
 router11.get("/snapshots", requireAuth, async (req, res) => {
-  const imports = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "funnel")).orderBy(desc2(dataImportsTable.createdAt));
+  const imports = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt));
   res.json(imports.map((imp) => ({
     id: imp.id,
     period: imp.period,
@@ -112885,7 +110751,7 @@ router11.get("/snapshots", requireAuth, async (req, res) => {
   })));
 });
 router11.get("/targets", requireAuth, async (req, res) => {
-  const targets = await db.select().from(salesFunnelTargetTable).orderBy(desc2(salesFunnelTargetTable.tahun));
+  const targets = await db.select().from(salesFunnelTargetTable).orderBy(desc(salesFunnelTargetTable.tahun));
   res.json(targets);
 });
 router11.post("/targets", requireAuth, async (req, res) => {
@@ -112894,13 +110760,13 @@ router11.post("/targets", requireAuth, async (req, res) => {
     res.status(400).json({ error: "tahun is required" });
     return;
   }
-  const existing = await db.select().from(salesFunnelTargetTable).where(and2(
-    eq2(salesFunnelTargetTable.tahun, Number(tahun)),
-    ...divisi ? [eq2(salesFunnelTargetTable.divisi, String(divisi))] : []
+  const existing = await db.select().from(salesFunnelTargetTable).where(and(
+    eq(salesFunnelTargetTable.tahun, Number(tahun)),
+    ...divisi ? [eq(salesFunnelTargetTable.divisi, String(divisi))] : []
   ));
   if (existing.length > 0) {
-    await db.update(salesFunnelTargetTable).set({ targetHo: Number(targetHo) || 0, targetFullHo: Number(targetFullHo) || 0 }).where(eq2(salesFunnelTargetTable.id, existing[0].id));
-    const updated = await db.select().from(salesFunnelTargetTable).where(eq2(salesFunnelTargetTable.id, existing[0].id));
+    await db.update(salesFunnelTargetTable).set({ targetHo: Number(targetHo) || 0, targetFullHo: Number(targetFullHo) || 0 }).where(eq(salesFunnelTargetTable.id, existing[0].id));
+    const updated = await db.select().from(salesFunnelTargetTable).where(eq(salesFunnelTargetTable.id, existing[0].id));
     res.json(updated[0]);
   } else {
     const [inserted] = await db.insert(salesFunnelTargetTable).values({
@@ -112914,12 +110780,12 @@ router11.post("/targets", requireAuth, async (req, res) => {
   }
 });
 router11.delete("/targets/:id", requireAuth, async (req, res) => {
-  await db.delete(salesFunnelTargetTable).where(eq2(salesFunnelTargetTable.id, Number(req.params.id)));
+  await db.delete(salesFunnelTargetTable).where(eq(salesFunnelTargetTable.id, Number(req.params.id)));
   res.json({ ok: true });
 });
 router11.get("/am-targets", requireAuth, async (req, res) => {
   const { tahun } = req.query;
-  let rows = await db.select().from(amFunnelTargetTable).orderBy(desc2(amFunnelTargetTable.tahun));
+  let rows = await db.select().from(amFunnelTargetTable).orderBy(desc(amFunnelTargetTable.tahun));
   if (tahun) rows = rows.filter((r) => r.tahun === Number(tahun));
   res.json(rows);
 });
@@ -112929,9 +110795,9 @@ router11.post("/am-targets", requireAuth, async (req, res) => {
     res.status(400).json({ error: "nikAm dan tahun wajib diisi" });
     return;
   }
-  const existing = await db.select().from(amFunnelTargetTable).where(and2(eq2(amFunnelTargetTable.nikAm, String(nikAm)), eq2(amFunnelTargetTable.tahun, Number(tahun))));
+  const existing = await db.select().from(amFunnelTargetTable).where(and(eq(amFunnelTargetTable.nikAm, String(nikAm)), eq(amFunnelTargetTable.tahun, Number(tahun))));
   if (existing.length > 0) {
-    const [updated] = await db.update(amFunnelTargetTable).set({ targetValue: Number(targetValue) || 0, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(amFunnelTargetTable.id, existing[0].id)).returning();
+    const [updated] = await db.update(amFunnelTargetTable).set({ targetValue: Number(targetValue) || 0, updatedAt: /* @__PURE__ */ new Date() }).where(eq(amFunnelTargetTable.id, existing[0].id)).returning();
     res.json(updated);
   } else {
     const [inserted] = await db.insert(amFunnelTargetTable).values({ nikAm: String(nikAm), tahun: Number(tahun), targetValue: Number(targetValue) || 0 }).returning();
@@ -112939,7 +110805,7 @@ router11.post("/am-targets", requireAuth, async (req, res) => {
   }
 });
 router11.delete("/am-targets/:id", requireAuth, async (req, res) => {
-  await db.delete(amFunnelTargetTable).where(eq2(amFunnelTargetTable.id, Number(req.params.id)));
+  await db.delete(amFunnelTargetTable).where(eq(amFunnelTargetTable.id, Number(req.params.id)));
   res.json({ ok: true });
 });
 router11.get("/", requireAuth, async (req, res) => {
@@ -113036,10 +110902,10 @@ router11.get("/", requireAuth, async (req, res) => {
   }));
   let targetHoVal = 0, targetFullHoVal = 0;
   const targetByDivisi = {};
-  const allTargets = await db.select().from(salesFunnelTargetTable).orderBy(desc2(salesFunnelTargetTable.tahun));
+  const allTargets = await db.select().from(salesFunnelTargetTable).orderBy(desc(salesFunnelTargetTable.tahun));
   if (allTargets.length > 0) {
     const selectedYear2 = tahun ? Number(tahun) : null;
-    const importPeriod = import_id2 ? (await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
+    const importPeriod = import_id2 ? (await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
     const importYear = importPeriod ? Number(importPeriod.slice(0, 4)) : null;
     const lookupYear = selectedYear2 || importYear;
     const divisiFilter = divisi ? String(divisi) : null;
@@ -113070,9 +110936,9 @@ router11.get("/", requireAuth, async (req, res) => {
   }
   const shortage = targetFullHoVal > 0 ? targetFullHoVal - totalNilai : 0;
   const selectedYear = tahun ? Number(tahun) : null;
-  const importPeriodForAm = import_id2 ? (await db.select().from(dataImportsTable).where(eq2(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
+  const importPeriodForAm = import_id2 ? (await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, Number(import_id2))))[0]?.period : null;
   const lookupYearForAm = selectedYear || (importPeriodForAm ? Number(importPeriodForAm.slice(0, 4)) : (/* @__PURE__ */ new Date()).getFullYear());
-  const amTargetRows = await db.select().from(amFunnelTargetTable).where(eq2(amFunnelTargetTable.tahun, lookupYearForAm));
+  const amTargetRows = await db.select().from(amFunnelTargetTable).where(eq(amFunnelTargetTable.tahun, lookupYearForAm));
   const amTargets = {};
   for (const r of amTargetRows) amTargets[r.nikAm] = { id: r.id, targetValue: r.targetValue, tahun: r.tahun };
   res.json({
@@ -113117,7 +110983,7 @@ router11.get("/", requireAuth, async (req, res) => {
   });
 });
 router11.get("/data-quality", requireAuth, async (req, res) => {
-  const statsRows = await db.execute(sql2`
+  const statsRows = await db.execute(sql`
     SELECT
       COUNT(*)::int                                                    AS total_lop,
       COUNT(CASE WHEN divisi='DPS' THEN 1 END)::int                   AS dps_lop,
@@ -113130,7 +110996,7 @@ router11.get("/data-quality", requireAuth, async (req, res) => {
     FROM sales_funnel
   `);
   const stats = statsRows[0] ?? statsRows.rows?.[0] ?? {};
-  const masterRows = await db.execute(sql2`
+  const masterRows = await db.execute(sql`
     SELECT COUNT(*)::int AS active_am FROM account_managers WHERE aktif = true
   `);
   const masterStats = masterRows[0] ?? masterRows.rows?.[0] ?? {};
@@ -113158,7 +111024,7 @@ router11.get("/data-quality", requireAuth, async (req, res) => {
 });
 router11.get("/:nik", requireAuth, async (req, res) => {
   const raw = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
-  const lops = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.nikAm, raw));
+  const lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, raw));
   const totalLop = lops.length;
   const totalNilai = lops.reduce((s, l) => s + (l.nilaiProyek || 0), 0);
   const namaAm = lops[0]?.namaAm || "";
@@ -113217,7 +111083,7 @@ router11.patch("/master-am/:nik", requireAuth, async (req, res) => {
   if (divisi !== void 0) updates.divisi = divisi;
   if (jabatan !== void 0) updates.jabatan = jabatan;
   if (aktif !== void 0) updates.aktif = Boolean(aktif);
-  const [row] = await db.update(accountManagersTable).set(updates).where(eq2(accountManagersTable.nik, req.params.nik)).returning();
+  const [row] = await db.update(accountManagersTable).set(updates).where(eq(accountManagersTable.nik, req.params.nik)).returning();
   if (!row) {
     res.status(404).json({ error: "NIK tidak ditemukan" });
     return;
@@ -113225,7 +111091,7 @@ router11.patch("/master-am/:nik", requireAuth, async (req, res) => {
   res.json(row);
 });
 router11.delete("/master-am/:nik", requireAuth, async (req, res) => {
-  await db.delete(accountManagersTable).where(eq2(accountManagersTable.nik, req.params.nik));
+  await db.delete(accountManagersTable).where(eq(accountManagersTable.nik, req.params.nik));
   res.json({ ok: true });
 });
 var routes_default6 = router11;
@@ -113234,14 +111100,14 @@ var routes_default6 = router11;
 var import_express14 = __toESM(require_express2(), 1);
 init_src();
 init_auth();
-init_drizzle_orm2();
+init_drizzle_orm();
 var router12 = (0, import_express14.Router)();
 function isKpiLabel2(label) {
   if (!label) return false;
   return !label.toLowerCase().includes("tanpa");
 }
 router12.get("/snapshots", requireAuth, async (req, res) => {
-  const snaps = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.id));
+  const snaps = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.id));
   res.json(snaps.map((s) => ({
     id: s.id,
     period: s.period,
@@ -113254,10 +111120,10 @@ router12.get("/snapshots", requireAuth, async (req, res) => {
 router12.get("/", requireAuth, async (req, res) => {
   const { year, month, divisi, import_id: import_id2 } = req.query;
   const [allActs, ams, settingsArr, activityImports] = await Promise.all([
-    db.select().from(salesActivityTable2),
+    db.select().from(salesActivityTable),
     db.select().from(accountManagersTable),
     db.select({ kpiActivityDefault: appSettingsTable.kpiActivityDefault }).from(appSettingsTable).limit(1),
-    db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq2(dataImportsTable.type, "activity"))
+    db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"))
   ]);
   const kpiDefault = settingsArr[0]?.kpiActivityDefault ?? 30;
   const registeredAms = ams.filter((a) => a.aktif && ["ACCOUNT_MANAGER", "AM"].includes(a.role));
@@ -113335,7 +111201,7 @@ router12.get("/", requireAuth, async (req, res) => {
 router12.get("/:nik", requireAuth, async (req, res) => {
   const raw = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
   const { year, month } = req.query;
-  let acts = await db.select().from(salesActivityTable2);
+  let acts = await db.select().from(salesActivityTable);
   acts = acts.filter((a) => a.nik === raw);
   if (year && month) {
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
@@ -113364,21 +111230,21 @@ var routes_default7 = router12;
 // src/features/telegram/routes.ts
 var import_express15 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 
 // src/shared/permissions.ts
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 async function checkPermission(userId, permissionCode) {
-  const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, userId));
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, userId));
   if (!am?.roleId) return false;
-  const [perm] = await db.select().from(permissionsTable).where(eq2(permissionsTable.code, permissionCode));
+  const [perm] = await db.select().from(permissionsTable).where(eq(permissionsTable.code, permissionCode));
   if (!perm) return false;
   const [rp] = await db.select().from(rolePermissionsTable).where(
-    and2(
-      eq2(rolePermissionsTable.roleId, am.roleId),
-      eq2(rolePermissionsTable.permissionId, perm.id)
+    and(
+      eq(rolePermissionsTable.roleId, am.roleId),
+      eq(rolePermissionsTable.permissionId, perm.id)
     )
   );
   return !!rp;
@@ -113386,8 +111252,55 @@ async function checkPermission(userId, permissionCode) {
 
 // src/features/telegram/poller.ts
 init_src();
-init_drizzle_orm2();
-init_logger3();
+init_drizzle_orm();
+
+// src/features/telegram/ai.ts
+init_logger2();
+var _ai = null;
+function getAI() {
+  if (_ai) return _ai;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!baseUrl || !apiKey) return null;
+  _ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl } });
+  return _ai;
+}
+var DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+async function chatWithGemini(userMessage, context) {
+  const ai = getAI();
+  if (!ai) return null;
+  const now = /* @__PURE__ */ new Date();
+  const dayName = DAYS_ID[now.getDay()];
+  const hour = now.getHours();
+  const lines = [
+    `Kamu adalah BOT LESA VI, asisten pintar sales AM di Telkom Witel Suramadu TREG 3.`,
+    `Hari ini hari ${dayName}, pukul ${hour}.00.`,
+    context.amName ? `Kamu sedang ngobrol dengan AM bernama ${context.amName}${context.divisi ? ` dari Divisi ${context.divisi}` : ""}.` : `Kamu sedang ngobrol dengan pengguna yang belum terhubung ke sistem.`,
+    ``,
+    `Panduan respons:`,
+    `- Singkat dan hangat, maksimal 4 kalimat.`,
+    `- Bahasa Indonesia santai tapi sopan, pakai sapaan "kak".`,
+    `- Boleh beri pantun atau humor ringan yang relevan dengan hari atau konteks.`,
+    `- Sesekali selipkan semangat untuk mengejar target, prospek baru, atau pergerakan LOP.`,
+    `- Jangan jawab hal di luar dunia sales/telekomunikasi/pekerjaan.`,
+    `- Format teks biasa, tidak perlu markdown berlebihan.`
+  ];
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      config: { systemInstruction: lines.join("\n"), maxOutputTokens: 200 }
+    });
+    const text2 = response.text?.trim();
+    return text2 || null;
+  } catch (err) {
+    logger.debug({ err }, "Gemini chat error (non-fatal)");
+    return null;
+  }
+}
+
+// src/features/telegram/poller.ts
+init_logger2();
 init_bcryptjs();
 var ROLE_LABELS = {
   ADMIN: "ADMIN",
@@ -113647,14 +111560,6 @@ function getMainKeyboard(role) {
   if (role === "ACCOUNT_MANAGER") return MAIN_KEYBOARD_AM;
   return MAIN_KEYBOARD_EMPTY;
 }
-var PERF_NAV_KEYBOARD = {
-  inline_keyboard: [
-    [
-      { text: "\u25C0\uFE0F Pilih Bulan Lain", callback_data: "perf:menu" },
-      { text: "\u{1F3E0} Menu Utama", callback_data: "nav:main" }
-    ]
-  ]
-};
 var FUNNEL_SUB_KEYBOARD = {
   inline_keyboard: [
     [
@@ -113700,6 +111605,7 @@ var VERIF_CODE_KEYBOARD = {
   ]
 };
 var activityPageState = /* @__PURE__ */ new Map();
+var perfRankState = /* @__PURE__ */ new Map();
 function buildActivityNavKeyboard(currentPage, totalPages, hasMultiplePages) {
   const rows = [];
   if (hasMultiplePages) {
@@ -113710,6 +111616,7 @@ function buildActivityNavKeyboard(currentPage, totalPages, hasMultiplePages) {
     rows.push(navRow);
   }
   rows.push([{ text: "\u{1F5D3} Pilih Bulan", callback_data: "activity:period_menu" }]);
+  rows.push([{ text: "\u25C0\uFE0F Kembali ke Menu", callback_data: "nav:main" }]);
   return { inline_keyboard: rows };
 }
 var ACTIVITY_MORE_KEYBOARD = {
@@ -113753,7 +111660,7 @@ async function buildSnapshotListMsg(dataType) {
     rowsImported: dataImportsTable.rowsImported,
     sourceUrl: dataImportsTable.sourceUrl,
     createdAt: dataImportsTable.createdAt
-  }).from(dataImportsTable).where(eq2(dataImportsTable.type, dbType)).orderBy(desc2(dataImportsTable.id));
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, dbType)).orderBy(desc(dataImportsTable.id));
   const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
   if (rows.length === 0) {
     return {
@@ -113913,62 +111820,62 @@ async function pollOnce() {
         logger.info({ updateId: update.update_id, cbData: cb.data, from: cb.from?.first_name, msgChatId: cb.message?.chat?.id }, "INCOMING CALLBACK");
       }
       if (update.callback_query) {
+        const cb = update.callback_query;
+        const cbChatId = String(cb.message?.chat?.id || cb.from?.id || "");
+        const cbData = (cb.data || "").trim();
         try {
-          const cb = update.callback_query;
-          const cbChatId2 = String(cb.message?.chat?.id || cb.from?.id || "");
-          const cbData2 = (cb.data || "").trim();
           await answerCallbackQuery(token, cb.id);
-          if (!cbChatId2) continue;
-          if (cbData2 === VERIF_CODE_UUID) {
+          if (!cbChatId) continue;
+          if (cbData === VERIF_CODE_UUID) {
             const codeMsg = buildVerifCodeMessage();
-            await sendToTelegram(token, cbChatId2, codeMsg.text, codeMsg.keyboard).catch(() => {
+            await sendToTelegram(token, cbChatId, codeMsg.text, codeMsg.keyboard).catch(() => {
             });
             continue;
           }
-          if (cbData2 === VERIF_LINK_UUID) {
+          if (cbData === VERIF_LINK_UUID) {
             const linkMsg = await buildVerifLinkMessage();
-            await sendToTelegram(token, cbChatId2, linkMsg.text, linkMsg.keyboard).catch(() => {
+            await sendToTelegram(token, cbChatId, linkMsg.text, linkMsg.keyboard).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "verif:back") {
-            const [linkedAm2] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, cbChatId2));
+          if (cbData === "verif:back") {
+            const [linkedAm2] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, cbChatId));
             if (linkedAm2) {
               if (linkedAm2.role === "ACCOUNT_MANAGER") {
                 const p1 = await buildWelcomeAMP1(linkedAm2.nama);
                 const p2 = buildWelcomeAMP2();
-                await sendToTelegram(token, cbChatId2, p1).catch(() => {
+                await sendToTelegram(token, cbChatId, p1).catch(() => {
                 });
                 await new Promise((r) => setTimeout(r, 300));
-                await sendToTelegram(token, cbChatId2, p2.text, p2.keyboard).catch(() => {
+                await sendToTelegram(token, cbChatId, p2.text, p2.keyboard).catch(() => {
                 });
               } else {
                 const text3 = await buildWelcomeAdmin(linkedAm2.nama, linkedAm2.role);
-                await sendToTelegram(token, cbChatId2, text3, getMainKeyboard(linkedAm2.role)).catch(() => {
+                await sendToTelegram(token, cbChatId, text3, getMainKeyboard(linkedAm2.role)).catch(() => {
                 });
               }
             } else {
               const welcome = await buildWelcomeUnlinked(cb.message?.chat?.first_name || cb.from?.first_name || "Kak");
-              await sendToTelegram(token, cbChatId2, welcome.text, welcome.keyboard).catch(() => {
+              await sendToTelegram(token, cbChatId, welcome.text, welcome.keyboard).catch(() => {
               });
             }
             continue;
           }
           const cbFromId = Number(cb.from?.id) || 0;
-          const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramUserId, cbFromId));
-          const linkedAmByChatId = linkedAm ? null : await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, cbChatId2)).then((r) => r[0]);
+          const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramUserId, cbFromId));
+          const linkedAmByChatId = linkedAm ? null : await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, cbChatId)).then((r) => r[0]);
           const resolvedAm = linkedAm || linkedAmByChatId;
           if (!resolvedAm) {
-            await sendToTelegram(token, cbChatId2, `\u274C Akun kamu belum terhubung. Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi.`).catch(() => {
+            await sendToTelegram(token, cbChatId, `\u274C Akun kamu belum terhubung. Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi.`).catch(() => {
             });
             continue;
           }
           const amFirstName = resolvedAm.nama.split(" ")[0];
-          if (cbData2 === "/funneling") {
+          if (cbData === "/funneling") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4CB} *Sales Funneling \u2014 LESA VI*
 
 Halo kak *${firstName2}*! \u{1F44B}
@@ -113988,11 +111895,11 @@ Grafik dan visualisasi data funneling untuk analisis lebih mendalam.`,
             });
             continue;
           }
-          if (cbData2 === "/activity") {
+          if (cbData === "/activity") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4C5} *Sales Activity \u2014 LESA VI*
 
 Halo kak *${firstName2}*! \u{1F44B}
@@ -114007,49 +111914,303 @@ Untuk lebih detailnya, kakak juga bisa lihat pada *Dashboard LESAVI* untuk visua
             });
             continue;
           }
-          if (cbData2 === "/performansi") {
-            const now = /* @__PURE__ */ new Date();
-            const displayMonth = `${MONTH_NAMES2[now.getMonth() + 1]} ${now.getFullYear()}`;
-            const pickerKeyboard = {
+          if (cbData === "/performansi") {
+            const keyboard = {
               inline_keyboard: [
-                [{ text: `\u{1F4C5} Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],
-                [{ text: "\u{1F5D3} Pilih Bulan Lain", callback_data: "perf:menu" }]
+                [{ text: "\u{1F4CB} Laporan Terkini", callback_data: "perf:laporan" }],
+                [{ text: "\u{1F3C6} Papan Peringkat", callback_data: "perf:peringkat" }],
+                [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:menu" }],
+                [{ text: "\u{1F3E0} Kembali ke Menu", callback_data: "nav:main" }]
               ]
             };
             await sendToTelegram(
               token,
-              cbChatId2,
-              `\u{1F4CA} *Performansi Revenue*
+              cbChatId,
+              `\u{1F4CA} *Revenue AM Performance \u2014 LESA VI*
 
-Mau lihat rekap performansi bulan apa, kak *${amFirstName}*?`,
-              pickerKeyboard
+Halo kak *${amFirstName}*! \u{1F44B}
+
+Fitur ini menyediakan informasi terkait pencapaian revenue kamu dan perbandingan dengan AM lainnya, mencakup periode berjalan (CM) dan Year To Date (YTD).
+
+Silakan pilih menu di bawah untuk melihat detailnya.`,
+              keyboard
             ).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "perf:current") {
+          if (cbData === "perf:laporan") {
             const period = currentPeriod();
-            const msgs = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
-            for (const m of msgs) await sendToTelegram(token, cbChatId2, m).catch(() => {
-            });
-            if (!msgs.length) {
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            if (!result.messages.length) {
               const now = /* @__PURE__ */ new Date();
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `_Data performansi untuk *${MONTH_NAMES2[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
               ).catch(() => {
               });
             } else {
-              await sendToTelegram(token, cbChatId2, `Butuh apa lagi kak *${amFirstName}*? \u{1F60A}`, PERF_NAV_KEYBOARD).catch(() => {
+              for (let i = 0; i < result.messages.length; i++) {
+                await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {
+                });
+                if (i < result.messages.length - 1) await new Promise((r) => setTimeout(r, 300));
+              }
+              await new Promise((r) => setTimeout(r, 300));
+              await sendToTelegramHtml(
+                token,
+                cbChatId,
+                `Mau apa lagi kak <b>${amFirstName}</b>? \u{1F60A}`,
+                result.perfKeyboard
+              ).catch(() => {
               });
             }
             continue;
           }
-          if (cbData2 === "perf:menu") {
+          if (cbData === "perf:peringkat") {
+            perfRankState.delete(cbChatId);
             const periods = await getAvailablePerfPeriods(resolvedAm.nik);
             if (!periods.length) {
-              await sendToTelegram(token, cbChatId2, `\u274C Belum ada data performansi tersimpan untuk akun kamu kak *${amFirstName}*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Belum ada data performansi tersimpan kak *${amFirstName}*.`).catch(() => {
+              });
+              continue;
+            }
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const buttons = periods.map((p) => ({
+              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
+              callback_data: `perf:rankbulan:${p.tahun}-${String(p.bulan).padStart(2, "0")}`
+            }));
+            const rows = [];
+            for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            rows.push([{ text: "\u{1F519} Kembali", callback_data: "perf:menu" }]);
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F3C6} *PAPAN PERINGKAT \u2014 Pilih Bulan*
+
+Halo kak *${amFirstName}*! \u{1F44B}
+
+Silakan pilih bulan untuk melihat papan peringkat:
+\u2022 *Peringkat CM* \u2014 berdasarkan achievement bulan berjalan
+\u2022 *Peringkat YTD* \u2014 berdasarkan achievement Year-to-Date`,
+              { inline_keyboard: rows }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData.startsWith("perf:rankbulan:")) {
+            const period = cbData.slice("perf:rankbulan:".length);
+            if (!/^\d{4}-\d{2}$/.test(period)) {
+              continue;
+            }
+            perfRankState.set(cbChatId, period);
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const [y, m] = period.split("-").map(Number);
+            const monthLabel = `${SHORT_MONTHS[m]} ${y}`;
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F3C6} *PAPAN PERINGKAT \u2014 Pilih Divisi*
+
+\u{1F4C5} Periode: *${monthLabel}*
+
+Silakan pilih divisi untuk papan peringkat:
+
+\u{1F4CB} *Peringkat LESA* \u2014 seluruh AM DPS + DSS
+\u{1F4CB} *Peringkat DPS* \u2014 AM divisi DPS saja
+\u{1F4CB} *Peringkat DSS* \u2014 AM divisi DSS saja`,
+              {
+                inline_keyboard: [
+                  [{ text: "\u{1F4CB} Peringkat LESA (DPS+DSS)", callback_data: "perf:rankdivisi:LESA" }],
+                  [{ text: "\u{1F4CB} Peringkat DPS", callback_data: "perf:rankdivisi:DPS" }],
+                  [{ text: "\u{1F4CB} Peringkat DSS", callback_data: "perf:rankdivisi:DSS" }],
+                  [{ text: "\u25C0\uFE0F Ganti Bulan", callback_data: "perf:peringkat" }]
+                ]
+              }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData.startsWith("perf:rankdivisi:")) {
+            const divisi = cbData.slice("perf:rankdivisi:".length);
+            const period = perfRankState.get(cbChatId);
+            if (!period || !["LESA", "DPS", "DSS"].includes(divisi)) {
+              await sendToTelegram(
+                token,
+                cbChatId,
+                `Sesi papan peringkat sudah expired kak. Silakan mulai lagi dari menu Peringkat.`,
+                { inline_keyboard: [[{ text: "\u{1F3C6} Mulai Papan Peringkat", callback_data: "perf:peringkat" }]] }
+              ).catch(() => {
+              });
+              continue;
+            }
+            const [year, month] = period.split("-").map(Number);
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const monthLabel = `${SHORT_MONTHS[month]} ${year}`;
+            const masterAms = await db.select().from(accountManagersTable);
+            const activeAms = masterAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
+            const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+            let allPerfsRaw = [];
+            if (latestImport) {
+              allPerfsRaw = await db.select().from(performanceDataTable).where(and(
+                eq(performanceDataTable.importId, latestImport.id),
+                eq(performanceDataTable.tahun, year),
+                eq(performanceDataTable.bulan, month)
+              ));
+              if (!allPerfsRaw.length) {
+                allPerfsRaw = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
+              }
+            } else {
+              allPerfsRaw = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
+            }
+            const byNik = /* @__PURE__ */ new Map();
+            for (const p of allPerfsRaw) {
+              const existing = byNik.get(p.nik);
+              if (!existing || parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+                byNik.set(p.nik, p);
+              }
+            }
+            const uniquePerfs = [...byNik.values()];
+            const matchesDivisi2 = (recordDivisiCc, recordDivisi) => {
+              if (divisi === "LESA") {
+                if (recordDivisiCc === "DPS" || recordDivisiCc === "DSS" || recordDivisiCc === "DGS") return true;
+                if (recordDivisi === "DPS" || recordDivisi === "DSS" || recordDivisi === "DES" || recordDivisi === "DGS") return true;
+                return false;
+              }
+              if (recordDivisiCc === divisi) return true;
+              return recordDivisi === divisi;
+            };
+            const allYtdRaw = latestImport ? await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, latestImport.id)) : await db.select().from(performanceDataTable).where(eq(performanceDataTable.tahun, year));
+            const ytdByNik = /* @__PURE__ */ new Map();
+            for (const p of allYtdRaw) {
+              if (p.bulan > month) continue;
+              const existing = ytdByNik.get(p.nik);
+              if (!existing || parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+                ytdByNik.set(p.nik, p);
+              }
+            }
+            const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
+            const fmtPct2 = (v) => `${Math.round(v * 100) / 100}`.replace(".", ",") + "%";
+            const fmtRev2 = (v) => {
+              if (v >= 1e9) return `Rp${(v / 1e9).toFixed(2)}M`;
+              if (v >= 1e6) return `Rp${(v / 1e6).toFixed(2)}Jt`;
+              if (v >= 1e3) return `Rp${(v / 1e3).toFixed(0)}Rb`;
+              return `Rp${v.toFixed(0)}`;
+            };
+            const MEDALS = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+            const amRanks = [];
+            for (const am of activeAms) {
+              const cmPerf = uniquePerfs.find((p) => p.nik === am.nik);
+              if (!cmPerf) continue;
+              if (!matchesDivisi2(cmPerf.divisiCc, cmPerf.divisi)) continue;
+              const cmTarget = fmtNum(cmPerf.targetReguler) + fmtNum(cmPerf.targetSustain) + fmtNum(cmPerf.targetScaling) + fmtNum(cmPerf.targetNgtma);
+              const cmReal = fmtNum(cmPerf.realReguler) + fmtNum(cmPerf.realSustain) + fmtNum(cmPerf.realScaling) + fmtNum(cmPerf.realNgtma);
+              const cmAch = cmTarget > 0 ? cmReal / cmTarget * 100 : 0;
+              const ytdPerfs = allYtdRaw.filter((p) => p.nik === am.nik && p.bulan <= month);
+              const ytdTarget = ytdPerfs.reduce((s, p) => s + fmtNum(p.targetReguler) + fmtNum(p.targetSustain) + fmtNum(p.targetScaling) + fmtNum(p.targetNgtma), 0);
+              const ytdReal = ytdPerfs.reduce((s, p) => s + fmtNum(p.realReguler) + fmtNum(p.realSustain) + fmtNum(p.realScaling) + fmtNum(p.realNgtma), 0);
+              const ytdAch = ytdTarget > 0 ? ytdReal / ytdTarget * 100 : 0;
+              amRanks.push({ nik: am.nik, nama: am.nama, cmAch, cmReal, cmTarget, ytdAch, ytdReal, ytdTarget });
+            }
+            const sortedCm = [...amRanks].sort((a, b) => b.cmAch - a.cmAch);
+            const sortedYtd = [...amRanks].sort((a, b) => b.ytdAch - a.ytdAch);
+            const divisiLabel = divisi === "LESA" ? "LESA (DPS + DSS)" : divisi;
+            const showTop = (rows, sorted, label, key) => {
+              let msg2 = `\u{1F3C6} *PAPAN PERINGKAT \u2014 ${label}*
+
+`;
+              msg2 += `\u{1F4C5} Periode : *${monthLabel}*
+`;
+              msg2 += `\u{1F4CB} Divisi  : *${divisiLabel}*
+`;
+              msg2 += `\u{1F4D1} KPI     : Achievement Rate (CM / YTD)
+
+`;
+              const top10 = sorted.slice(0, 10);
+              for (let i = 0; i < top10.length; i++) {
+                const a = top10[i];
+                const medal = MEDALS[i] || `${i + 1}.`;
+                const badge = a.nik === resolvedAm.nik ? " \u{1F448}" : "";
+                msg2 += `${medal} *${a.nama}*${badge}
+`;
+                msg2 += `Ach: *${fmtPct2(a[key + "Ach"])}* \xB7 Revenue: *${fmtRev2(a[key + "Real"])}*
+
+`;
+              }
+              const myIdx = sorted.findIndex((a) => a.nik === resolvedAm.nik);
+              if (myIdx >= 0) {
+                const myA = sorted[myIdx];
+                const isShown = top10.some((a) => a.nik === resolvedAm.nik);
+                if (!isShown) {
+                  msg2 += `\u{1F4CC} *${amFirstName}* \xB7 Ach: *${fmtPct2(myA[key + "Ach"])}* \xB7 Revenue: *${fmtRev2(myA[key + "Real"])}* (#${myIdx + 1}/${sorted.length})
+`;
+                } else {
+                  msg2 += `\u{1F4CC} Posisi kak: *#${myIdx + 1}* dari *${sorted.length} AM*
+`;
+                }
+              }
+              return msg2;
+            };
+            await sendToTelegram(
+              token,
+              cbChatId,
+              showTop(amRanks, sortedCm, "PERINGKAT CM (Current Month)", "cm"),
+              {
+                inline_keyboard: [
+                  [{ text: "\u25C0\uFE0F Ganti Divisi", callback_data: "perf:rankbulan:" + period }],
+                  [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:peringkat" }],
+                  [{ text: "\u{1F3E0} Menu Utama", callback_data: "nav:main" }]
+                ]
+              }
+            ).catch(() => {
+            });
+            await new Promise((r) => setTimeout(r, 500));
+            await sendToTelegram(
+              token,
+              cbChatId,
+              showTop(amRanks, sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
+              {
+                inline_keyboard: [
+                  [{ text: "\u{1F4CB} Laporan Terkini", callback_data: "perf:laporan" }],
+                  [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:peringkat" }],
+                  [{ text: "\u{1F3E0} Menu Utama", callback_data: "nav:main" }]
+                ]
+              }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData === "perf:current") {
+            const period = currentPeriod();
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            if (!result.messages.length) {
+              const now = /* @__PURE__ */ new Date();
+              await sendToTelegram(
+                token,
+                cbChatId,
+                `_Data performansi untuk *${MONTH_NAMES2[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
+              ).catch(() => {
+              });
+            } else {
+              for (let i = 0; i < result.messages.length; i++) {
+                await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {
+                });
+                if (i < result.messages.length - 1) await new Promise((r) => setTimeout(r, 300));
+              }
+              await new Promise((r) => setTimeout(r, 300));
+              await sendToTelegramHtml(
+                token,
+                cbChatId,
+                `Mau apa lagi kak <b>${amFirstName}</b>? \u{1F60A}`,
+                result.perfKeyboard
+              ).catch(() => {
+              });
+            }
+            continue;
+          }
+          if (cbData === "perf:menu") {
+            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            if (!periods.length) {
+              await sendToTelegram(token, cbChatId, `\u274C Belum ada data performansi tersimpan untuk akun kamu kak *${amFirstName}*.`).catch(() => {
               });
               continue;
             }
@@ -114060,9 +112221,10 @@ Mau lihat rekap performansi bulan apa, kak *${amFirstName}*?`,
             }));
             const rows = [];
             for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            rows.push([{ text: "\u{1F519} Kembali ke Menu", callback_data: "nav:main" }]);
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F5D3} *Pilih Periode Performansi*
 
 Silakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
@@ -114071,32 +112233,56 @@ Silakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
             });
             continue;
           }
-          if (cbData2.startsWith("perf:")) {
-            const periodStr = cbData2.slice(5);
+          if (cbData.startsWith("perf:")) {
+            const periodStr = cbData.slice(5);
             if (/^\d{4}-\d{2}$/.test(periodStr)) {
-              const msgs = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
-              for (const m of msgs) await sendToTelegram(token, cbChatId2, m).catch(() => {
-              });
-              if (!msgs.length) {
+              const result = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
+              if (!result.messages.length) {
                 const [yr, mo] = periodStr.split("-").map(Number);
                 await sendToTelegram(
                   token,
-                  cbChatId2,
+                  cbChatId,
                   `_Data performansi untuk *${MONTH_NAMES2[mo]} ${yr}* tidak ditemukan kak *${amFirstName}*._`
                 ).catch(() => {
                 });
               } else {
-                await sendToTelegram(token, cbChatId2, `Butuh apa lagi kak *${amFirstName}*? \u{1F60A}`, PERF_NAV_KEYBOARD).catch(() => {
+                for (let i = 0; i < result.messages.length; i++) {
+                  await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {
+                  });
+                }
+                await sendToTelegramHtml(
+                  token,
+                  cbChatId,
+                  `Mau apa lagi kak <b>${amFirstName}</b>? \u{1F60A}`,
+                  result.perfKeyboard
+                ).catch(() => {
                 });
               }
             }
             continue;
           }
-          if (cbData2 === "/prognosa") {
+          if (cbData === "perf:dashboard") {
+            const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+            const base = getPublicBaseUrl();
+            const dashUrl = latestImport?.id ? `${base}/presentation?type=performance&id=${latestImport.id}` : `${base}/presentation`;
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F4CE} *Dashboard LESAVI*
+
+Kak bisa lihat visualisasi data performansi dan laporan lengkap di dashboard LESAVI:
+
+${dashUrl}`,
+              { inline_keyboard: [[{ text: "\u{1F4CA} Buka Dashboard", url: dashUrl }], [{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData === "/prognosa") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4CA} *Prognosa FY*
 
 Halo kak *${firstName2}*! \u{1F44B}
@@ -114111,7 +112297,7 @@ Ditunggu ya kak! \u{1F680}`,
             });
             continue;
           }
-          if (cbData2 === "funnel:laporan") {
+          if (cbData === "funnel:laporan") {
             let isValidLop2 = function(l) {
               if (!l) return false;
               const rdYear = l.reportDate?.slice(0, 4);
@@ -114129,9 +112315,9 @@ Ditunggu ya kak! \u{1F680}`,
             var isValidLop = isValidLop2;
             const firstName2 = resolvedAm.nama.split(" ")[0];
             const reportYear = (/* @__PURE__ */ new Date()).getFullYear().toString();
-            const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "funnel")).orderBy(desc2(dataImportsTable.createdAt)).limit(10);
+            const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt)).limit(10);
             if (funnelImportsRaw.length === 0) {
-              await sendToTelegram(token, cbChatId2, `Belum ada data Sales Funneling tersedia kak *${firstName2}*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Belum ada data Sales Funneling tersedia kak *${firstName2}*.`).catch(() => {
               });
               continue;
             }
@@ -114141,7 +112327,7 @@ Ditunggu ya kak! \u{1F680}`,
             const activeNikSet = new Set(
               activeAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik).map((m) => m.nik)
             );
-            const allLopsRaw = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.nikAm, resolvedAm.nik));
+            const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, resolvedAm.nik));
             const lopLatest = /* @__PURE__ */ new Map();
             for (const l of allLopsRaw) {
               const existing = lopLatest.get(l.lopid);
@@ -114189,6 +112375,8 @@ Ditunggu ya kak! \u{1F680}`,
 `;
             msg1 += `\u{1F4C5} Report Date : *${latestSnapYear} (semua bulan)*
 `;
+            msg1 += `\u{1F4CB} Snapshot    : *#${latestImport.id}*
+`;
             msg1 += `\u{1F4D1} Jenis Kontrak : GTMA & Own Channel
 `;
             msg1 += `\u{1F9EE} Perhitungan : Nilai Kontrak per Tahun
@@ -114222,21 +112410,25 @@ Ditunggu ya kak! \u{1F680}`,
 `;
               msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "\u25B2" : "\u25BC"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})
 `;
-              msg1 += `_Snapshot sebelumnya: ${prevSnapLabel}_`;
+              msg1 += `_Snapshot sebelumnya: #${prevImport.id} (${prevSnapLabel})_`;
             }
-            await sendToTelegram(token, cbChatId2, msg1).catch(() => {
+            await sendToTelegram(token, cbChatId, msg1).catch(() => {
             });
             if (prevLops.length > 0) {
               const prevMap = new Map(prevLops.map((l) => [l.lopid, l]));
               const stagnan = [];
               const bergerak = [];
+              const baru = [];
               for (const lop of latestLops) {
                 const prev = prevMap.get(lop.lopid);
-                if (!prev) continue;
+                if (!prev) {
+                  baru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: lop.statusF || "-" });
+                  continue;
+                }
                 const sb = lop.statusF || "";
                 const sl = prev.statusF || "";
                 if (sb === sl) {
-                  if (sb !== "F5") stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
+                  stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
                 } else {
                   bergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", lama: sl, baru: sb });
                 }
@@ -114245,18 +112437,86 @@ Ditunggu ya kak! \u{1F680}`,
               let msg2 = `\u{1F4C8} *ANALISIS PERKEMBANGAN LOP*
 
 `;
-              msg2 += `Perbandingan berdasarkan snapshot terbaru dengan snapshot sebelumnya:
-`;
-              msg2 += `\u{1F4C5} Snapshot sebelumnya: *${prevSnapLabel}*
+              msg2 += `Benchmark: Snapshot #${latestImport.id} (terbaru) vs #${prevImport.id} (${prevSnapLabel})
 
 `;
-              if (stagnan.length > 0) {
-                msg2 += `\u26A0\uFE0F *LOP Belum Bergerak (${stagnan.length})*
+              if (bergerak.length > 0) {
+                msg2 += `\u2705 *LOP Sudah Bergerak (${bergerak.length})*
 `;
-                msg2 += `LOP dengan status yang masih sama dibandingkan snapshot sebelumnya:
+                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:
 
 `;
-                const show = stagnan.slice(0, 10);
+                for (const l of bergerak) {
+                  msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
+`;
+                  msg2 += `  *${l.lama}* \u2192 *${l.baru}*
+
+`;
+                }
+                msg2 += `
+`;
+              }
+              if (baru.length > 0) {
+                msg2 += `\u{1F195} *LOP Baru Muncul (${baru.length})*
+`;
+                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):
+
+`;
+                for (const l of baru) {
+                  msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
+`;
+                  msg2 += `  Status saat ini: *${l.status}*
+
+`;
+                }
+                msg2 += `
+`;
+              }
+              const stagnanF5 = stagnan.filter((l) => l.status === "F5");
+              const stagnanNon = stagnan.filter((l) => l.status !== "F5");
+              const totalTercakup = bergerak.length + baru.length + stagnanNon.length + stagnanF5.length;
+              msg2 += `_Total: ${totalTercakup} LOP tercakup dalam analisis_
+
+`;
+              if (bergerak.length > 0) {
+                msg2 += `\u2705 *LOP Sudah Bergerak (${bergerak.length})*
+`;
+                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:
+
+`;
+                for (const l of bergerak) {
+                  msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
+`;
+                  msg2 += `  *${l.lama}* \u2192 *${l.baru}*
+
+`;
+                }
+                msg2 += `
+`;
+              }
+              if (baru.length > 0) {
+                msg2 += `\u{1F195} *LOP Baru Muncul (${baru.length})*
+`;
+                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):
+
+`;
+                for (const l of baru) {
+                  msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
+`;
+                  msg2 += `  Status saat ini: *${l.status}*
+
+`;
+                }
+                msg2 += `
+`;
+              }
+              if (stagnanNon.length > 0) {
+                msg2 += `\u26A0\uFE0F *LOP Belum Bergerak (${stagnanNon.length})*
+`;
+                msg2 += `Status masih sama dibanding snapshot #${prevImport.id}:
+
+`;
+                const show = stagnanNon.slice(0, 10);
                 for (const l of show) {
                   msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
 `;
@@ -114264,25 +112524,28 @@ Ditunggu ya kak! \u{1F680}`,
 
 `;
                 }
-                if (stagnan.length > 10) msg2 += `...dan *${stagnan.length - 10}* LOP lainnya belum bergerak
+                if (stagnanNon.length > 10) msg2 += `...dan *${stagnanNon.length - 10}* LOP lainnya belum bergerak
 
 `;
               }
-              if (bergerak.length > 0) {
-                msg2 += `\u2705 *LOP Sudah Bergerak (${bergerak.length})*
+              if (stagnanF5.length > 0) {
+                msg2 += `\u{1F3C6} *LOP F5 / Win (${stagnanF5.length})*
 `;
-                msg2 += `LOP yang mengalami perubahan status dibandingkan snapshot sebelumnya:
+                msg2 += `LOP yang sudah menang dan status tetap *F5* sejak *${prevSnapLabel}* (#${prevImport.id}):
 
 `;
-                const show = bergerak.slice(0, 5);
-                for (const l of show) {
+                for (const l of stagnanF5) {
                   msg2 += `\u2022 *${l.lopid}* \u2014 ${l.pelanggan}
 `;
-                  msg2 += `  Bergerak dari *${l.lama}* \u2192 *${l.baru}*
-
-`;
                 }
-                if (bergerak.length > 5) msg2 += `...dan *${bergerak.length - 5}* LOP lainnya
+                msg2 += `
+`;
+              }
+              if (bergerak.length === 0 && baru.length === 0 && stagnanNon.length === 0) {
+                msg2 += `\u2705 *LOP Sudah Bergerak (0)*
+`;
+                msg2 += `Tidak ada LOP yang berubah status dari snapshot #${prevImport.id} ke #${latestImport.id}.
+
 `;
               }
               msg2 += `
@@ -114292,19 +112555,19 @@ Ditunggu ya kak! \u{1F680}`,
 
 `;
               msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
-              const stagnanKeyboard = stagnan.length > 10 ? { inline_keyboard: [[{ text: `\u{1F50D} Lihat Semua ${stagnan.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] } : void 0;
-              await sendToTelegram(token, cbChatId2, msg2, stagnanKeyboard).catch(() => {
+              const stagnanKeyboard = stagnanNon.length > 10 ? { inline_keyboard: [[{ text: `\u{1F50D} Lihat Semua ${stagnanNon.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] } : void 0;
+              await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {
               });
             }
-            await sendToTelegram(token, cbChatId2, `Mau apa lagi kak *${firstName2}*? \u{1F60A}`, FUNNEL_SUB_KEYBOARD).catch(() => {
+            await sendToTelegram(token, cbChatId, `Mau apa lagi kak *${firstName2}*? \u{1F60A}`, FUNNEL_SUB_KEYBOARD).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "funnel:peringkat") {
+          if (cbData === "funnel:peringkat") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
-            const funnelImports = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "funnel")).orderBy(desc2(dataImportsTable.createdAt)).limit(2);
+            const funnelImports = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt)).limit(2);
             if (funnelImports.length === 0) {
-              await sendToTelegram(token, cbChatId2, `Belum ada data Sales Funneling kak *${firstName2}*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Belum ada data Sales Funneling kak *${firstName2}*.`).catch(() => {
               });
               continue;
             }
@@ -114315,7 +112578,7 @@ Ditunggu ya kak! \u{1F680}`,
             const activeAms = masterAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
             const activeNikSet = new Set(activeAms.map((m) => m.nik));
             const amNameByNik = new Map(activeAms.map((m) => [m.nik, m.nama]));
-            const allLops = await db.select().from(salesFunnelTable).where(eq2(salesFunnelTable.importId, latestImport.id));
+            const allLops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.importId, latestImport.id));
             const lopMap = /* @__PURE__ */ new Map();
             for (const l of allLops) {
               const existing = lopMap.get(l.lopid);
@@ -114384,19 +112647,19 @@ Ditunggu ya kak! \u{1F680}`,
             }
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               msg2,
               { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali ke Sales Funneling", callback_data: "/funneling" }]] }
             ).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "funnel:visualisasi") {
+          if (cbData === "funnel:visualisasi") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             const base = getPublicBaseUrl();
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4CA} *Visualisasi Data Sales Funneling*
 
 Halo kak *${firstName2}*! \u{1F44B}
@@ -114410,15 +112673,15 @@ ${base}/visualisasi/funnel`,
             });
             continue;
           }
-          if (cbData2 === "activity:laporan") {
+          if (cbData === "activity:laporan") {
             try {
               const period = currentPeriod();
               const report = await buildActivityReport(resolvedAm.nik);
-              logger.info({ cbChatId: cbChatId2, nik: resolvedAm.nik, totalActs: report?.totalActivities, pages: report?.totalPages }, "activity:laporan");
+              logger.info({ cbChatId, nik: resolvedAm.nik, totalActs: report?.totalActivities, pages: report?.totalPages }, "activity:laporan");
               if (!report || report.totalActivities === 0) {
                 await sendToTelegram(
                   token,
-                  cbChatId2,
+                  cbChatId,
                   `\u{1F4C5} *SALES ACTIVITY \u2014 LESA VI*
 
 Halo kak *${amFirstName}*! \u{1F44B}
@@ -114428,11 +112691,11 @@ Belum ada data Sales Activity untuk periode ini kak.
 Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
                 ).catch(() => {
                 });
-                await sendToTelegram(token, cbChatId2, `Mau apa lagi kak *${amFirstName}*? \u{1F60A}`, ACTIVITY_MORE_KEYBOARD).catch(() => {
+                await sendToTelegram(token, cbChatId, `Mau apa lagi kak *${amFirstName}*? \u{1F60A}`, ACTIVITY_MORE_KEYBOARD).catch(() => {
                 });
                 continue;
               }
-              activityPageState.set(cbChatId2, {
+              activityPageState.set(cbChatId, {
                 period,
                 summary: report.summary,
                 details: report.details,
@@ -114440,30 +112703,30 @@ Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
                 currentPage: 0,
                 nik: resolvedAm.nik
               });
-              await sendToTelegram(token, cbChatId2, report.summary).catch(() => {
+              await sendToTelegram(token, cbChatId, report.summary).catch(() => {
               });
               const hasMultiplePages = report.totalPages > 1;
               const navKb = buildActivityNavKeyboard(0, report.totalPages, hasMultiplePages);
-              await sendToTelegram(token, cbChatId2, report.details[0], navKb).catch(() => {
+              await sendToTelegram(token, cbChatId, report.details[0], navKb).catch(() => {
               });
             } catch (err) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              logger.error({ cbChatId: cbChatId2, err: errMsg }, "activity:laporan error");
+              logger.error({ cbChatId, err: errMsg }, "activity:laporan error");
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `Terjadi error saat memuat laporan: ${errMsg}`
               ).catch(() => {
               });
             }
             continue;
           }
-          if (cbData2 === "activity:prev" || cbData2 === "activity:next") {
-            const state = activityPageState.get(cbChatId2);
+          if (cbData === "activity:prev" || cbData === "activity:next") {
+            const state = activityPageState.get(cbChatId);
             if (!state) {
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `Sesi laporan sudah expired kak. Silakan minta laporan terbaru dulu ya \u{1F447}`,
                 { inline_keyboard: [[{ text: "\u{1F4CB} Minta Laporan Baru", callback_data: "activity:laporan" }]] }
               ).catch(() => {
@@ -114471,29 +112734,29 @@ Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
               continue;
             }
             let nextPage = state.currentPage;
-            if (cbData2 === "activity:prev") nextPage = Math.max(0, state.currentPage - 1);
-            if (cbData2 === "activity:next") nextPage = Math.min(state.totalPages - 1, state.currentPage + 1);
+            if (cbData === "activity:prev") nextPage = Math.max(0, state.currentPage - 1);
+            if (cbData === "activity:next") nextPage = Math.min(state.totalPages - 1, state.currentPage + 1);
             state.currentPage = nextPage;
-            activityPageState.set(cbChatId2, state);
+            activityPageState.set(cbChatId, state);
             const hasMultiplePages = state.totalPages > 1;
             const navKb = buildActivityNavKeyboard(nextPage, state.totalPages, hasMultiplePages);
-            await sendToTelegram(token, cbChatId2, state.details[nextPage], navKb).catch(() => {
+            await sendToTelegram(token, cbChatId, state.details[nextPage], navKb).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "activity:period_menu") {
-            activityPageState.delete(cbChatId2);
-            const [targetSnap] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.createdAt)).limit(1);
+          if (cbData === "activity:period_menu") {
+            activityPageState.delete(cbChatId);
+            const [targetSnap] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
             if (!targetSnap) {
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `Belum ada data Sales Activity tersimpan kak *${amFirstName}*.`
               ).catch(() => {
               });
               continue;
             }
-            const allActs = await db.select({ activityEndDate: salesActivityTable.activityEndDate }).from(salesActivityTable).where(eq2(salesActivityTable.importId, targetSnap.id));
+            const allActs = await db.select({ activityEndDate: salesActivityTable.activityEndDate }).from(salesActivityTable).where(eq(salesActivityTable.importId, targetSnap.id));
             const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
             const seenMonths = /* @__PURE__ */ new Set();
             const monthRows = [];
@@ -114511,7 +112774,7 @@ Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
             if (monthRows.length === 0) {
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `Belum ada data aktivitas tersimpan kak *${amFirstName}*.`
               ).catch(() => {
               });
@@ -114522,10 +112785,32 @@ Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
               { text: `\u{1F4C5} ${mr.label}`, callback_data: `activity:month:${mr.y}${String(mr.m).padStart(2, "0")}` }
             ]);
             keyboardRows.push([{ text: "\u25C0\uFE0F Kembali ke Menu", callback_data: "nav:main" }]);
+            const MONTHS3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            let snapYear = 0, snapMonth = 0;
+            if (targetSnap.snapshotDate) {
+              const d = new Date(targetSnap.snapshotDate);
+              snapYear = d.getFullYear();
+              snapMonth = d.getMonth() + 1;
+            } else if (targetSnap.period) {
+              const p = targetSnap.period;
+              if (/^\d{6}$/.test(p)) {
+                snapYear = parseInt(p.slice(0, 4));
+                snapMonth = parseInt(p.slice(4, 6));
+              } else if (/^\d{4}-\d{2}$/.test(p)) {
+                snapYear = parseInt(p.slice(0, 4));
+                snapMonth = parseInt(p.slice(5, 7));
+              } else if (/^\d{8}$/.test(p)) {
+                snapYear = parseInt(p.slice(0, 4));
+                snapMonth = parseInt(p.slice(4, 6));
+              }
+            }
+            const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F5D3} *Pilih Bulan Sales Activity*
+
+\u{1F4E6} Snapshot #${targetSnap.id} \u2014 *${snapshotLabel}*
 
 Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
               { inline_keyboard: keyboardRows }
@@ -114533,8 +112818,8 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
             });
             continue;
           }
-          if (cbData2.startsWith("activity:month:")) {
-            const monthKey = cbData2.split(":")[2];
+          if (cbData.startsWith("activity:month:")) {
+            const monthKey = cbData.split(":")[2];
             if (!monthKey || monthKey.length !== 6) {
               continue;
             }
@@ -114542,9 +112827,9 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
             const m = parseInt(monthKey.slice(4, 6));
             const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
             const monthLabel = `${MONTH_SHORT[m]} ${y}`;
-            const [targetSnap] = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.createdAt)).limit(1);
+            const [targetSnap] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
             if (!targetSnap) {
-              await sendToTelegram(token, cbChatId2, `Data snapshot tidak ditemukan kak *${amFirstName}*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Data snapshot tidak ditemukan kak *${amFirstName}*.`).catch(() => {
               });
               continue;
             }
@@ -114569,18 +112854,18 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
               }
             }
             const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
-            await sendToTelegram(token, cbChatId2, `\u23F3 Memuat laporan periode ${monthLabel}...`).catch(() => {
+            await sendToTelegram(token, cbChatId, `\u23F3 Memuat laporan periode ${monthLabel}...`).catch(() => {
             });
             if (!report || report.totalActivities === 0) {
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `Belum ada data Sales Activity untuk ${monthLabel} kak *${amFirstName}*.`
               ).catch(() => {
               });
               continue;
             }
-            activityPageState.set(cbChatId2, {
+            activityPageState.set(cbChatId, {
               period: monthKey,
               summary: report.summary,
               details: report.details,
@@ -114588,33 +112873,36 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
               currentPage: 0,
               nik: resolvedAm.nik
             });
-            await sendToTelegram(token, cbChatId2, report.summary).catch(() => {
+            await sendToTelegram(token, cbChatId, report.summary).catch(() => {
             });
             const hasMultiplePages = report.totalPages > 1;
             const navKb = buildActivityNavKeyboard(0, report.totalPages, hasMultiplePages);
-            await sendToTelegram(token, cbChatId2, report.details[0], navKb).catch(() => {
+            await sendToTelegram(token, cbChatId, report.details[0], navKb).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "activity:noop") {
+          if (cbData === "activity:noop") {
             await answerCallbackQuery(token, cb.id).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "activity:peringkat") {
+          if (cbData === "activity:peringkat") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             const masterAms = await db.select().from(accountManagersTable);
             const activeAms = masterAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
             const kpiDefault = 25;
-            const latestImports = await db.select().from(dataImportsTable).where(eq2(dataImportsTable.type, "activity")).orderBy(desc2(dataImportsTable.createdAt)).limit(1);
+            const latestImports = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
             let snapshotLabel = currentPeriod();
+            let filterYearMonth = "";
             let allActs = [];
             if (latestImports.length > 0) {
               const latestImport = latestImports[0];
-              allActs = await db.select().from(salesActivityTable).where(eq2(salesActivityTable.importId, latestImport.id));
+              allActs = await db.select().from(salesActivityTable).where(eq(salesActivityTable.importId, latestImport.id));
               if (latestImport.snapshotDate) {
                 const d = new Date(latestImport.snapshotDate);
                 snapshotLabel = `${MONTH_NAMES2[d.getMonth() + 1]} ${d.getFullYear()}`;
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                filterYearMonth = `${d.getFullYear()}-${mm}`;
               } else if (latestImport.period) {
                 const p = latestImport.period;
                 const MONTH_SHORT2 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -114622,10 +112910,12 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
                   const y = parseInt(p.slice(0, 4));
                   const m = parseInt(p.slice(4, 6));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                  filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
                 } else if (/^\d{4}-\d{2}$/.test(p)) {
                   const y = parseInt(p.slice(0, 4));
                   const m = parseInt(p.slice(5, 7));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                  filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
                 }
               }
             }
@@ -114636,6 +112926,9 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
               seen.add(key);
               return true;
             });
+            if (filterYearMonth) {
+              allActs = allActs.filter((a) => a.activityEndDate?.startsWith(filterYearMonth));
+            }
             const amStats = [];
             for (const am of activeAms) {
               const amAllActs = allActs.filter((a) => a.nik === am.nik);
@@ -114675,16 +112968,16 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
 `;
               }
             }
-            await sendToTelegram(token, cbChatId2, msg2, ACTIVITY_SUB_KEYBOARD).catch(() => {
+            await sendToTelegram(token, cbChatId, msg2, ACTIVITY_SUB_KEYBOARD).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "activity:visualisasi") {
+          if (cbData === "activity:visualisasi") {
             const firstName2 = resolvedAm.nama.split(" ")[0];
             const base = getPublicBaseUrl();
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4CA} *Visualisasi Data Sales Activity*
 
 Halo kak *${firstName2}*! \u{1F44B}
@@ -114698,18 +112991,18 @@ ${base}/visualisasi/activity`,
             });
             continue;
           }
-          if (cbData2 === "/logout") {
-            logger.info({ cbChatId: cbChatId2, cbFromId, resolvedAmId: resolvedAm?.id, nama: resolvedAm?.nama }, "/logout handler reached");
+          if (cbData === "/logout") {
+            logger.info({ cbChatId, cbFromId, resolvedAmId: resolvedAm?.id, nama: resolvedAm?.nama }, "/logout handler reached");
             if (!resolvedAm) {
-              await sendToTelegram(token, cbChatId2, `Kamu belum terhubung ke sistem manapun kak.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Kamu belum terhubung ke sistem manapun kak.`).catch(() => {
               });
               continue;
             }
-            await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq2(accountManagersTable.id, resolvedAm.id));
-            logger.info({ cbChatId: cbChatId2, resolvedAmId: resolvedAm.id, nama: resolvedAm.nama, nik: resolvedAm.nik }, "DB updated \u2014 AM telegram fields cleared");
+            await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq(accountManagersTable.id, resolvedAm.id));
+            logger.info({ cbChatId, resolvedAmId: resolvedAm.id, nama: resolvedAm.nama, nik: resolvedAm.nik }, "DB updated \u2014 AM telegram fields cleared");
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F513} *Koneksi akun berhasil diputuskan*
 
 Terima kasih telah menggunakan *LESA VI*.
@@ -114720,41 +113013,41 @@ Untuk menggunakan kembali fitur bot, silakan tautkan akun kamu terlebih dahulu.`
               { inline_keyboard: [[{ text: "\u{1F517} Tautkan Akun", callback_data: VERIF_LINK_UUID }]] }
             ).catch(() => {
             });
-            lastWelcomeSent.delete(cbChatId2);
+            lastWelcomeSent.delete(cbChatId);
             continue;
           }
-          if (cbData2 === "nav:main") {
+          if (cbData === "nav:main") {
             if (resolvedAm) {
               if (resolvedAm.role === "ACCOUNT_MANAGER") {
                 const p1 = await buildWelcomeAMP1(resolvedAm.nama);
                 const p2 = buildWelcomeAMP2();
-                await sendToTelegram(token, cbChatId2, p1).catch(() => {
+                await sendToTelegram(token, cbChatId, p1).catch(() => {
                 });
                 await new Promise((r) => setTimeout(r, 300));
-                await sendToTelegram(token, cbChatId2, p2.text, p2.keyboard).catch(() => {
+                await sendToTelegram(token, cbChatId, p2.text, p2.keyboard).catch(() => {
                 });
               } else {
                 const text3 = await buildWelcomeAdmin(resolvedAm.nama, resolvedAm.role);
-                await sendToTelegram(token, cbChatId2, text3, getMainKeyboard(resolvedAm.role)).catch(() => {
+                await sendToTelegram(token, cbChatId, text3, getMainKeyboard(resolvedAm.role)).catch(() => {
                 });
               }
             } else {
-              await sendToTelegram(token, cbChatId2, `Ketik /start untuk memulai.`, MAIN_KEYBOARD_EMPTY).catch(() => {
+              await sendToTelegram(token, cbChatId, `Ketik /start untuk memulai.`, MAIN_KEYBOARD_EMPTY).catch(() => {
               });
             }
             continue;
           }
-          if (cbData2 === "/list") {
+          if (cbData === "/list") {
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
-              await sendToTelegram(token, cbChatId2, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
               });
               continue;
             }
             const amFirstName2 = resolvedAm.nama.split(" ")[0];
-            snapshotState.delete(cbChatId2);
+            snapshotState.delete(cbChatId);
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4CB} *List Data Snapshot*
 
 Pilih tipe data yang ingin dilihat kak *${amFirstName2}*:`,
@@ -114763,42 +113056,42 @@ Pilih tipe data yang ingin dilihat kak *${amFirstName2}*:`,
             });
             continue;
           }
-          if (cbData2 === "snap:back_to_list") {
-            const state = snapshotState.get(cbChatId2);
+          if (cbData === "snap:back_to_list") {
+            const state = snapshotState.get(cbChatId);
             if (!state) {
-              await sendToTelegram(token, cbChatId2, `Silakan mulai dari menu *List Data Snapshot* kak.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
+              await sendToTelegram(token, cbChatId, `Silakan mulai dari menu *List Data Snapshot* kak.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
               });
               continue;
             }
             const { text: text3, keyboard } = await buildSnapshotListMsg(state.dataType);
             state.step = "choose_snapshot";
-            snapshotState.set(cbChatId2, state);
-            await sendToTelegram(token, cbChatId2, text3, keyboard).catch(() => {
+            snapshotState.set(cbChatId, state);
+            await sendToTelegram(token, cbChatId, text3, keyboard).catch(() => {
             });
             continue;
           }
-          if (["snap:perf", "snap:funnel", "snap:activity"].includes(cbData2)) {
-            const dataType = cbData2 === "snap:perf" ? "performance" : cbData2 === "snap:funnel" ? "funnel" : "activity";
+          if (["snap:perf", "snap:funnel", "snap:activity"].includes(cbData)) {
+            const dataType = cbData === "snap:perf" ? "performance" : cbData === "snap:funnel" ? "funnel" : "activity";
             try {
               const { text: text3, keyboard, rows } = await buildSnapshotListMsg(dataType);
-              snapshotState.set(cbChatId2, { step: "choose_snapshot", dataType, snapshots: rows, selectedIndex: 0 });
-              await sendToTelegram(token, cbChatId2, text3, keyboard).catch(() => {
+              snapshotState.set(cbChatId, { step: "choose_snapshot", dataType, snapshots: rows, selectedIndex: 0 });
+              await sendToTelegram(token, cbChatId, text3, keyboard).catch(() => {
               });
             } catch (e) {
-              logger.error({ err: e, dataType, cbData: cbData2 }, "snap:buildSnapshotListMsg failed");
+              logger.error({ err: e, dataType, cbData }, "snap:buildSnapshotListMsg failed");
             }
             continue;
           }
-          if (cbData2.startsWith("snap:select:")) {
-            const parts = cbData2.split(":");
+          if (cbData.startsWith("snap:select:")) {
+            const parts = cbData.split(":");
             const dataType = parts[2];
             const snapId = parseInt(parts[3], 10);
             if (isNaN(snapId)) {
               continue;
             }
-            const snaps = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.id, snapId), eq2(dataImportsTable.type, dataType))).limit(1);
+            const snaps = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
             if (!snaps.length) {
-              await sendToTelegram(token, cbChatId2, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
               });
               continue;
             }
@@ -114826,20 +113119,20 @@ Silakan pilih aksi di bawah ya kak \u{1F447}`;
                 ]
               ]
             };
-            await sendToTelegram(token, cbChatId2, msg2, keyboard).catch(() => {
+            await sendToTelegram(token, cbChatId, msg2, keyboard).catch(() => {
             });
             continue;
           }
-          if (cbData2.startsWith("snap:delete:")) {
-            const parts = cbData2.split(":");
+          if (cbData.startsWith("snap:delete:")) {
+            const parts = cbData.split(":");
             const dataType = parts[2];
             const snapId = parseInt(parts[3], 10);
             if (isNaN(snapId)) {
               continue;
             }
-            const snap = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.id, snapId), eq2(dataImportsTable.type, dataType))).limit(1);
+            const snap = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
             if (!snap.length) {
-              await sendToTelegram(token, cbChatId2, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
               });
               continue;
             }
@@ -114854,7 +113147,7 @@ Silakan pilih aksi di bawah ya kak \u{1F447}`;
             };
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u26A0\uFE0F *Konfirmasi Hapus Data*
 
 Yakin ingin menghapus snapshot?
@@ -114868,31 +113161,31 @@ Data yang dihapus tidak dapat dikembalikan.`,
             });
             continue;
           }
-          if (cbData2.startsWith("snap:confirm_delete:")) {
-            const parts = cbData2.split(":");
+          if (cbData.startsWith("snap:confirm_delete:")) {
+            const parts = cbData.split(":");
             const dataType = parts[2];
             const snapId = parseInt(parts[3], 10);
             if (isNaN(snapId)) {
               continue;
             }
-            const snap = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.id, snapId), eq2(dataImportsTable.type, dataType))).limit(1);
+            const snap = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.id, snapId), eq(dataImportsTable.type, dataType))).limit(1);
             if (!snap.length) {
-              await sendToTelegram(token, cbChatId2, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {
               });
               continue;
             }
-            await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, snapId));
-            await sendToTelegram(token, cbChatId2, `\u2705 Snapshot berhasil dihapus.`).catch(() => {
+            await db.delete(dataImportsTable).where(eq(dataImportsTable.id, snapId));
+            await sendToTelegram(token, cbChatId, `\u2705 Snapshot berhasil dihapus.`).catch(() => {
             });
             continue;
           }
-          if (cbData2 === "/import") {
+          if (cbData === "/import") {
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
-              await sendToTelegram(token, cbChatId2, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
               });
               continue;
             }
-            importState.set(cbChatId2, { step: "idle", importType: "funnel", period: "" });
+            importState.set(cbChatId, { step: "idle", importType: "funnel", period: "" });
             const IMPORT_TYPE_KEYBOARD = {
               inline_keyboard: [
                 [{ text: "\u{1F4CA} Import Performance", callback_data: "import:type:performance" }],
@@ -114903,7 +113196,7 @@ Data yang dihapus tidak dapat dikembalikan.`,
             };
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4E5} *Import Data*
 
 Pilih tipe data yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*:`,
@@ -114912,11 +113205,11 @@ Pilih tipe data yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*:`,
             });
             continue;
           }
-          if (cbData2 === "/website") {
+          if (cbData === "/website") {
             const domain2 = getPublicBaseUrl();
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F310} *Akses Website*
 
 Klik link berikut untuk membuka dashboard:
@@ -114927,17 +113220,17 @@ ${domain2}`,
             });
             continue;
           }
-          if (cbData2.startsWith("import:type:")) {
-            const type = cbData2.split(":")[2];
+          if (cbData.startsWith("import:type:")) {
+            const type = cbData.split(":")[2];
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
-              await sendToTelegram(token, cbChatId2, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
               });
               continue;
             }
             const state = { step: "waiting_file", importType: type, period: "" };
-            importState.set(cbChatId2, state);
-            funnelFileData.delete(cbChatId2);
-            activityFileData.delete(cbChatId2);
+            importState.set(cbChatId, state);
+            funnelFileData.delete(cbChatId);
+            activityFileData.delete(cbChatId);
             const typeLabel = type === "performance" ? "Performance" : type === "funnel" ? "Sales Funnel" : "Sales Activity";
             const IMPORT_FILE_KEYBOARD = {
               inline_keyboard: [
@@ -114947,7 +113240,7 @@ ${domain2}`,
             };
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u{1F4E5} *Import ${typeLabel}*
 
 Kirim file *Excel (.xlsx)* atau *CSV* yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*.
@@ -114958,42 +113251,42 @@ Pastikan nama file mengandung periode data (format: *DDMMYYYY* atau *YYYYMMDD*) 
             });
             continue;
           }
-          if (cbData2 === "import:confirm") {
-            console.log(`[DEBUG] import:confirm received! cbChatId=${cbChatId2}, updateId=${update.update_id}`);
+          if (cbData === "import:confirm") {
+            console.log(`[DEBUG] import:confirm received! cbChatId=${cbChatId}, updateId=${update.update_id}`);
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
-              await sendToTelegram(token, cbChatId2, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
               });
               continue;
             }
-            const state = importState.get(cbChatId2);
+            const state = importState.get(cbChatId);
             if (!state) {
               console.error(`[IMPORT DEBUG] importState keys: ${JSON.stringify([...importState.keys()])}`);
-              await sendToTelegram(token, cbChatId2, `\u274C Sesi import tidak ditemukan (state=null). ChatID: ${cbChatId2}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Sesi import tidak ditemukan (state=null). ChatID: ${cbChatId}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
               continue;
             }
             if (state.step !== "waiting_confirm") {
               console.error(`[IMPORT DEBUG] state found but step=${state.step}, expected=waiting_confirm`);
-              await sendToTelegram(token, cbChatId2, `\u274C Sesi import tidak ditemukan. Step: ${state.step}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Sesi import tidak ditemukan. Step: ${state.step}. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
               continue;
             }
             const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
-            const fileData = fileKey.get(cbChatId2);
+            const fileData = fileKey.get(cbChatId);
             if (!fileData) {
-              await sendToTelegram(token, cbChatId2, `\u274C File tidak ditemukan. Silakan upload ulang.`, getMainKeyboard(resolvedAm.role)).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C File tidak ditemukan. Silakan upload ulang.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
               continue;
             }
             const typeLabel = state.importType === "performance" ? "Performance" : state.importType === "funnel" ? "Sales Funnel" : "Sales Activity";
             const dbType = state.importType === "performance" ? "performance" : state.importType === "funnel" ? "funnel" : "activity";
             const importPeriod = state.period || "";
-            const [existingSnap] = await db.select().from(dataImportsTable).where(and2(eq2(dataImportsTable.type, dbType), eq2(dataImportsTable.period, importPeriod)));
+            const [existingSnap] = await db.select().from(dataImportsTable).where(and(eq(dataImportsTable.type, dbType), eq(dataImportsTable.period, importPeriod)));
             if (existingSnap) {
               const existingDate = existingSnap.createdAt ? new Date(existingSnap.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
               const existingRows = existingSnap.rowsImported ?? 0;
               state.step = "waiting_overwrite_confirm";
-              importState.set(cbChatId2, state);
+              importState.set(cbChatId, state);
               const OVERWRITE_KEYBOARD = {
                 inline_keyboard: [
                   [{ text: "\u2705 Ya, Timpa Snapshot Lama", callback_data: "import:overwrite" }],
@@ -115002,7 +113295,7 @@ Pastikan nama file mengandung periode data (format: *DDMMYYYY* atau *YYYYMMDD*) 
               };
               await sendToTelegram(
                 token,
-                cbChatId2,
+                cbChatId,
                 `\u26A0\uFE0F *Snapshot Sudah Ada*
 
 Untuk tipe *${typeLabel}* periode *${importPeriod}*, sudah ada snapshot yang diimport sebelumnya:
@@ -115018,38 +113311,38 @@ Lanjutkan timpa snapshot lama kak *${resolvedAm.nama.split(" ")[0]}*? \u{1F447}`
               });
               return;
             }
-            await doProcessImport(token, cbChatId2, state, fileData, resolvedAm);
+            await doProcessImport(token, cbChatId, state, fileData, resolvedAm);
             continue;
           }
-          if (cbData2 === "import:overwrite") {
+          if (cbData === "import:overwrite") {
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
-              await sendToTelegram(token, cbChatId2, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {
               });
               continue;
             }
-            const state = importState.get(cbChatId2);
+            const state = importState.get(cbChatId);
             if (!state || state.step !== "waiting_overwrite_confirm") {
-              await sendToTelegram(token, cbChatId2, `\u274C Sesi import tidak ditemukan. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C Sesi import tidak ditemukan. Silakan mulai ulang dari menu *Impor Data*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
               continue;
             }
             const fileKey = state.importType === "activity" ? activityFileData : funnelFileData;
-            const fileData = fileKey.get(cbChatId2);
+            const fileData = fileKey.get(cbChatId);
             if (!fileData) {
-              await sendToTelegram(token, cbChatId2, `\u274C File tidak ditemukan.`, getMainKeyboard(resolvedAm.role)).catch(() => {
+              await sendToTelegram(token, cbChatId, `\u274C File tidak ditemukan.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
               continue;
             }
-            await doProcessImport(token, cbChatId2, state, fileData, resolvedAm, true);
+            await doProcessImport(token, cbChatId, state, fileData, resolvedAm, true);
             continue;
           }
-          if (cbData2 === "import:cancel") {
-            importState.delete(cbChatId2);
-            funnelFileData.delete(cbChatId2);
-            activityFileData.delete(cbChatId2);
+          if (cbData === "import:cancel") {
+            importState.delete(cbChatId);
+            funnelFileData.delete(cbChatId);
+            activityFileData.delete(cbChatId);
             await sendToTelegram(
               token,
-              cbChatId2,
+              cbChatId,
               `\u274C *Import Dibatalkan*
 
 Import telah dibatalkan kak *${resolvedAm?.nama.split(" ")[0] || "Kak"}*.
@@ -115095,7 +113388,7 @@ Silakan mulai ulang kapan saja melalui menu *Impor Data*.`,
 _Sabarin sebentar ya kak_`
             ).catch(() => {
             });
-            const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+            const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
             const filename = doc.file_name || "file";
             const buffer = await downloadTelegramFile(token, doc.file_id);
             const base643 = buffer.toString("base64");
@@ -115165,25 +113458,25 @@ Lanjutkan import kak *${amFirstName}*? \u{1F447}`,
           nama: accountManagersTable.nama,
           nik: accountManagersTable.nik,
           role: accountManagersTable.role
-        }).from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        }).from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         const previousLinkedAm = previousLinked;
-        const activeCodes = await db.select().from(telegramAccessCodesTable).where(and2(
-          gt2(telegramAccessCodesTable.expiresAt, now),
-          eq2(telegramAccessCodesTable.status, "ACTIVE")
+        const activeCodes = await db.select().from(telegramAccessCodesTable).where(and(
+          gt(telegramAccessCodesTable.expiresAt, now),
+          eq(telegramAccessCodesTable.status, "ACTIVE")
         ));
         for (const ac of activeCodes) {
           const valid = await bcryptjs_default.compare(code, ac.codeHash);
           if (!valid) continue;
-          const [am] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, ac.userId));
+          const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, ac.userId));
           if (!am) continue;
           if (previousLinkedAm) {
-            await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq2(accountManagersTable.telegramChatId, chatId));
+            await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq(accountManagersTable.telegramChatId, chatId));
             const disMsg = buildDisconnectedMessage(previousLinkedAm.nama, previousLinkedAm.nik, previousLinkedAm.role);
             await sendToTelegram(token, chatId, disMsg).catch(() => {
             });
           }
-          await db.update(accountManagersTable).set({ telegramChatId: chatId, telegramLinkedAt: now, telegramLinkedByAccessCodeId: ac.id }).where(eq2(accountManagersTable.id, am.id));
-          await db.update(telegramAccessCodesTable).set({ usedAt: now, status: "USED" }).where(eq2(telegramAccessCodesTable.id, ac.id));
+          await db.update(accountManagersTable).set({ telegramChatId: chatId, telegramLinkedAt: now, telegramLinkedByAccessCodeId: ac.id }).where(eq(accountManagersTable.id, am.id));
+          await db.update(telegramAccessCodesTable).set({ usedAt: now, status: "USED" }).where(eq(telegramAccessCodesTable.id, ac.id));
           await upsertBotUser({ ...botUsersMap.get(chatId), lastMessage: `\u2705 Linked via ${source}` });
           await sendToTelegram(token, chatId, buildLinkedConfirm(am.nama, am.role), getMainKeyboard(am.role)).catch(() => {
           });
@@ -115204,7 +113497,7 @@ Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi baru.`).catch(
           await tryLinkByCode(deepLinkCode, "magic link");
           continue;
         }
-        const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         logger.info({ chatId, linkedAm_nama: linkedAm?.nama, linkedAm_nik: linkedAm?.nik }, "/start linkedAm check result");
         if (linkedAm) {
           logger.info({ chatId, nama: linkedAm.nama }, "SENDING LINKED WELCOME for linked account");
@@ -115249,13 +113542,13 @@ Bagikan ID ini ke admin LESA VI untuk menghubungkan akun kamu ke sistem.`
         continue;
       }
       if (text2 === "/logout") {
-        const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         if (!linkedAm) {
           await sendToTelegram(token, chatId, `Kamu belum terhubung ke sistem manapun kak.`).catch(() => {
           });
           continue;
         }
-        await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq2(accountManagersTable.id, linkedAm.id));
+        await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(eq(accountManagersTable.id, linkedAm.id));
         await sendToTelegram(
           token,
           chatId,
@@ -115271,7 +113564,7 @@ Jika ingin terhubung kembali, minta ADMIN, OFFICER, atau MANAGER untuk generate 
         continue;
       }
       if (["/activity", "/performansi"].includes(text2)) {
-        const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         if (!linkedAm) {
           await sendToTelegram(token, chatId, `\u274C Akun kamu belum terhubung. Minta ADMIN, OFFICER, atau MANAGER untuk generate Kode Verifikasi.`).catch(() => {
           });
@@ -115356,7 +113649,7 @@ Untuk lebih detailnya, kakak juga bisa lihat pada *Dashboard LESAVI* untuk visua
         continue;
       }
       if (text2 === "/list") {
-        const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         if (!linkedAm || linkedAm.role === "ACCOUNT_MANAGER") {
           await sendToTelegram(
             token,
@@ -115385,7 +113678,7 @@ Pilih tipe data yang ingin dilihat kak *${amFirstName}*:`,
         continue;
       }
       if (text2 && !text2.startsWith("/")) {
-        const [linkedAm] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.telegramChatId, chatId));
+        const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
         const aiReply = await chatWithGemini(text2, {
           amName: linkedAm?.nama,
           divisi: linkedAm?.divisi
@@ -115547,7 +113840,7 @@ router13.post("/send", requireAuth, async (req, res) => {
   if (!effectivePeriod && (includeFunnel || includeActivity)) {
     const snapId = funnelCurrSnapshotId || activitySnapshotId;
     if (snapId) {
-      const [snap] = await db.select({ period: dataImportsTable.period }).from(dataImportsTable).where(eq2(dataImportsTable.id, Number(snapId)));
+      const [snap] = await db.select({ period: dataImportsTable.period }).from(dataImportsTable).where(eq(dataImportsTable.id, Number(snapId)));
       effectivePeriod = snap?.period ?? "";
     }
   }
@@ -115563,7 +113856,7 @@ router13.post("/send", requireAuth, async (req, res) => {
   res.json(result);
 });
 router13.get("/logs", requireAuth, async (req, res) => {
-  const logs = await db.select().from(telegramLogsTable).orderBy(desc2(telegramLogsTable.createdAt)).limit(100);
+  const logs = await db.select().from(telegramLogsTable).orderBy(desc(telegramLogsTable.createdAt)).limit(100);
   res.json(logs.map((l) => ({ ...l, createdAt: l.createdAt.toISOString() })));
 });
 router13.post("/register-code", requireAuth, async (req, res) => {
@@ -115572,7 +113865,7 @@ router13.post("/register-code", requireAuth, async (req, res) => {
     res.status(400).json({ error: "amId diperlukan" });
     return;
   }
-  const [existing] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, amId));
+  const [existing] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, amId));
   if (!existing) {
     res.status(404).json({ error: "AM tidak ditemukan" });
     return;
@@ -115582,7 +113875,7 @@ router13.post("/register-code", requireAuth, async (req, res) => {
   await db.update(accountManagersTable).set({
     telegramCode: code,
     telegramCodeExpiry: expiresAt
-  }).where(eq2(accountManagersTable.id, amId));
+  }).where(eq(accountManagersTable.id, amId));
   res.json({ code, expiresAt: expiresAt.toISOString() });
 });
 router13.get("/updates", requireAuth, async (req, res) => {
@@ -115660,7 +113953,7 @@ router13.post("/link-am", requireAuth, async (req, res) => {
     res.status(400).json({ error: "amId dan chatId wajib diisi" });
     return;
   }
-  const [am] = await db.update(accountManagersTable).set({ telegramChatId: String(chatId), telegramCode: null, telegramCodeExpiry: null }).where(eq2(accountManagersTable.id, Number(amId))).returning();
+  const [am] = await db.update(accountManagersTable).set({ telegramChatId: String(chatId), telegramCode: null, telegramCodeExpiry: null }).where(eq(accountManagersTable.id, Number(amId))).returning();
   if (!am) {
     res.status(404).json({ error: "AM tidak ditemukan" });
     return;
@@ -115689,14 +113982,14 @@ router13.post("/bulk-generate-codes", requireAuth, async (req, res) => {
   const results = [];
   for (const am of unconnected) {
     const code = generateLVACode();
-    await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq2(accountManagersTable.id, am.id));
+    await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq(accountManagersTable.id, am.id));
     results.push({ nama: am.nama, nik: am.nik, divisi: am.divisi, code, expiresAt: expiresAt.toISOString() });
   }
   res.json({ results, total: results.length });
 });
 router13.delete("/unlink-am/:id", requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const [am] = await db.update(accountManagersTable).set({ telegramChatId: null }).where(eq2(accountManagersTable.id, id)).returning();
+  const [am] = await db.update(accountManagersTable).set({ telegramChatId: null }).where(eq(accountManagersTable.id, id)).returning();
   if (!am) {
     res.status(404).json({ error: "AM tidak ditemukan" });
     return;
@@ -115706,7 +113999,7 @@ router13.delete("/unlink-am/:id", requireAuth, async (req, res) => {
 router13.delete("/unlink-all", requireAuth, async (req, res) => {
   const { amIds } = req.body;
   if (Array.isArray(amIds) && amIds.length > 0) {
-    await db.update(accountManagersTable).set({ telegramChatId: null }).where(inArray2(accountManagersTable.id, amIds.map(Number)));
+    await db.update(accountManagersTable).set({ telegramChatId: null }).where(inArray(accountManagersTable.id, amIds.map(Number)));
   } else {
     await db.update(accountManagersTable).set({ telegramChatId: null });
   }
@@ -115719,7 +114012,7 @@ router13.post("/gen-link/:amId", requireAuth, async (req, res) => {
     res.status(400).json({ error: "amId tidak valid" });
     return;
   }
-  const [existing] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, amId));
+  const [existing] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, amId));
   if (!existing) {
     res.status(404).json({ error: "AM tidak ditemukan" });
     return;
@@ -115727,7 +114020,7 @@ router13.post("/gen-link/:amId", requireAuth, async (req, res) => {
   const currentUser = req.user;
   const code = generateLVACode();
   const expiresAt = makeExpiry(duration3);
-  await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq2(accountManagersTable.id, amId));
+  await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq(accountManagersTable.id, amId));
   const codeHash = await bcryptjs_default.hash(code, 10);
   await db.insert(telegramAccessCodesTable).values({
     userId: existing.id,
@@ -115768,7 +114061,7 @@ router13.post("/gen-links-bulk", requireAuth, async (req, res) => {
   const results = await Promise.all(nonDgsAms.map(async (am) => {
     const code = generateLVACode();
     const codeHash = await bcryptjs_default.hash(code, 10);
-    await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq2(accountManagersTable.id, am.id));
+    await db.update(accountManagersTable).set({ telegramCode: code, telegramCodeExpiry: expiresAt }).where(eq(accountManagersTable.id, am.id));
     await db.insert(telegramAccessCodesTable).values({
       userId: am.id,
       codeHash,
@@ -115797,7 +114090,7 @@ router13.post("/access-codes", requireAuth, async (req, res) => {
     res.status(400).json({ error: "userId diperlukan" });
     return;
   }
-  const [targetUser] = await db.select().from(accountManagersTable).where(eq2(accountManagersTable.id, Number(userId)));
+  const [targetUser] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.id, Number(userId)));
   if (!targetUser) {
     res.status(404).json({ error: "Pengguna tidak ditemukan" });
     return;
@@ -115855,13 +114148,13 @@ router13.get("/access-codes", requireAuth, async (req, res) => {
     usedAt: telegramAccessCodesTable.usedAt,
     status: telegramAccessCodesTable.status,
     createdAt: telegramAccessCodesTable.createdAt
-  }).from(telegramAccessCodesTable).where(and2(
-    gt2(telegramAccessCodesTable.expiresAt, now),
-    eq2(telegramAccessCodesTable.status, "ACTIVE")
-  )).orderBy(desc2(telegramAccessCodesTable.createdAt)).limit(50);
+  }).from(telegramAccessCodesTable).where(and(
+    gt(telegramAccessCodesTable.expiresAt, now),
+    eq(telegramAccessCodesTable.status, "ACTIVE")
+  )).orderBy(desc(telegramAccessCodesTable.createdAt)).limit(50);
   const codes = await query;
   const userIds = [...new Set(codes.map((c) => c.userId))];
-  const users = userIds.length > 0 ? await db.select({ id: accountManagersTable.id, nama: accountManagersTable.nama, nik: accountManagersTable.nik, role: accountManagersTable.role }).from(accountManagersTable).where(inArray2(accountManagersTable.id, userIds)) : [];
+  const users = userIds.length > 0 ? await db.select({ id: accountManagersTable.id, nama: accountManagersTable.nama, nik: accountManagersTable.nik, role: accountManagersTable.role }).from(accountManagersTable).where(inArray(accountManagersTable.id, userIds)) : [];
   const userById = new Map(users.map((u) => [u.id, u]));
   res.json(codes.map((c) => ({
     ...c,
@@ -115917,10 +114210,10 @@ router13.get("/bot-status", requireAuth, async (req, res) => {
   }
 });
 router13.post("/clear-all-links", requireAuth, async (req, res) => {
-  const linked = await db.select({ id: accountManagersTable.id }).from(accountManagersTable).where(isNotNull2(accountManagersTable.telegramChatId));
+  const linked = await db.select({ id: accountManagersTable.id }).from(accountManagersTable).where(isNotNull(accountManagersTable.telegramChatId));
   const clearedCount = linked.length;
-  await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(isNotNull2(accountManagersTable.telegramChatId));
-  await db.update(telegramAccessCodesTable).set({ status: "CANCELLED" }).where(inArray2(telegramAccessCodesTable.status, ["ACTIVE"]));
+  await db.update(accountManagersTable).set({ telegramChatId: null, telegramUserId: null, telegramUsername: null }).where(isNotNull(accountManagersTable.telegramChatId));
+  await db.update(telegramAccessCodesTable).set({ status: "CANCELLED" }).where(inArray(telegramAccessCodesTable.status, ["ACTIVE"]));
   res.json({ success: true, clearedCount });
 });
 var routes_default8 = router13;
@@ -115928,7 +114221,7 @@ var routes_default8 = router13;
 // src/features/settings/routes.ts
 var import_express17 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 
 // src/features/gsheets/scheduler.ts
@@ -115936,9 +114229,9 @@ init_src();
 
 // src/features/gsheets/sync.ts
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_excel();
-init_logger3();
+init_logger2();
 function extractSpreadsheetId(input) {
   if (!input) return input;
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -116033,7 +114326,7 @@ async function syncSelectedSheets(selections) {
       else result = await importPerformanceSheet(sheet.spreadsheetId || spreadsheetId, sheet, apiKey, dateInfo);
       results.push(result);
     }
-    await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: selections.length, results }) }).where(eq2(appSettingsTable.id, settings.id));
+    await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: selections.length, results }) }).where(eq(appSettingsTable.id, settings.id));
     return { syncedAt, sheetsFound: selections.length, results };
   } catch (err) {
     const error40 = err?.message || String(err);
@@ -116116,7 +114409,7 @@ async function importFunnelSheet(spreadsheetId, sheet, apiKey, dateInfo) {
         }))
       );
     }
-    await db.execute(sql2`
+    await db.execute(sql`
       UPDATE sales_funnel
       SET tahun_anggaran = COALESCE(
         CASE WHEN snapshot_date IS NOT NULL AND snapshot_date ~ '^[0-9]{4}'
@@ -116423,7 +114716,7 @@ async function runGSheetsSync() {
       if (result.status === "imported") existingByType[type]?.add(period);
       results.push(result);
     }
-    await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: sheets.length, results }) }).where(eq2(appSettingsTable.id, settings.id));
+    await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: sheets.length, results }) }).where(eq(appSettingsTable.id, settings.id));
     return { syncedAt, sheetsFound: sheets.length, results };
   } catch (err) {
     const error40 = err?.message || String(err);
@@ -116431,7 +114724,7 @@ async function runGSheetsSync() {
     try {
       const [settings] = await db.select().from(appSettingsTable);
       if (settings) {
-        await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: 0, results: [], error: error40 }) }).where(eq2(appSettingsTable.id, settings.id));
+        await db.update(appSettingsTable).set({ gSheetsLastSyncAt: /* @__PURE__ */ new Date(), gSheetsLastSyncResult: JSON.stringify({ syncedAt, sheetsFound: 0, results: [], error: error40 }) }).where(eq(appSettingsTable.id, settings.id));
       }
     } catch {
     }
@@ -116440,7 +114733,7 @@ async function runGSheetsSync() {
 }
 
 // src/features/gsheets/scheduler.ts
-init_logger3();
+init_logger2();
 var schedulerTimer = null;
 function nextRunTime(hourWib, intervalDays) {
   const now = /* @__PURE__ */ new Date();
@@ -116588,7 +114881,7 @@ router15.patch("/", requireAuth, async (req, res) => {
     }).returning();
   }
   if (kpiActivityDefault !== void 0 && kpiActivityDefault !== oldKpiDefault) {
-    await db.update(accountManagersTable).set({ kpiActivity: null }).where(eq2(accountManagersTable.kpiActivity, oldKpiDefault));
+    await db.update(accountManagersTable).set({ kpiActivity: null }).where(eq(accountManagersTable.kpiActivity, oldKpiDefault));
   }
   rescheduleGSheets();
   rescheduleGDrive();
@@ -116598,9 +114891,9 @@ router15.patch("/", requireAuth, async (req, res) => {
 router15.post("/reset-kpi-overrides", requireAuth, async (_req, res) => {
   const [settings] = await db.select({ kpiActivityDefault: appSettingsTable.kpiActivityDefault }).from(appSettingsTable).limit(1);
   const currentDefault = settings?.kpiActivityDefault ?? 30;
-  const ams = await db.select({ nik: accountManagersTable.nik, kpiActivity: accountManagersTable.kpiActivity }).from(accountManagersTable).where(isNotNull2(accountManagersTable.kpiActivity));
+  const ams = await db.select({ nik: accountManagersTable.nik, kpiActivity: accountManagersTable.kpiActivity }).from(accountManagersTable).where(isNotNull(accountManagersTable.kpiActivity));
   if (ams.length > 0) {
-    await db.update(accountManagersTable).set({ kpiActivity: null }).where(isNotNull2(accountManagersTable.kpiActivity));
+    await db.update(accountManagersTable).set({ kpiActivity: null }).where(isNotNull(accountManagersTable.kpiActivity));
   }
   res.json({ message: "KPI override per-AM berhasil direset ke default", kpiDefault: currentDefault, resetCount: ams.length });
 });
@@ -116665,12 +114958,12 @@ init_routes();
 // src/features/corporate/routes.ts
 var import_express19 = __toESM(require_express2(), 1);
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 init_auth();
 var router17 = (0, import_express19.Router)();
 router17.get("/", requireAuth, async (_req, res) => {
   try {
-    const result = await db.execute(sql2`
+    const result = await db.execute(sql`
       SELECT
         ce->>'pelanggan'  AS nama,
         ce->>'nip'        AS nipnas,
@@ -116711,7 +115004,7 @@ var routes_default12 = router17;
 
 // src/app.ts
 init_auth();
-init_logger3();
+init_logger2();
 init_src();
 import path2 from "path";
 import fs from "fs";
@@ -116811,16 +115104,16 @@ app.use("/api/corporate", dashboardSessionMw, requireAuth, requireManagerOrOffic
 var app_default = app;
 
 // src/index.ts
-init_logger3();
+init_logger2();
 init_auth();
 
 // src/shared/seed.ts
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 
 // src/seeds/seed-am-funnel-targets.ts
 init_src();
-init_drizzle_orm2();
+init_drizzle_orm();
 var AM_FUNNEL_TARGETS_2026 = [
   // Total, DSS, DPS per AM — from sheet "TGT AM LESA VI" kolom FY 2026
   { nikAm: "870022", tahun: 2026, targetValue: 30550846344, targetValueDss: 11909818462, targetValueDps: 18641027882 },
@@ -116853,7 +115146,7 @@ async function seedAmFunnelTargets(opts = {}) {
   }
   console.log(`  [am-funnel-targets] Seeding ${AM_FUNNEL_TARGETS_2026.length} target(s)...`);
   for (const t of AM_FUNNEL_TARGETS_2026) {
-    const existing = await db.select({ id: amFunnelTargetTable.id }).from(amFunnelTargetTable).where(and2(eq2(amFunnelTargetTable.nikAm, t.nikAm), eq2(amFunnelTargetTable.tahun, t.tahun))).limit(1);
+    const existing = await db.select({ id: amFunnelTargetTable.id }).from(amFunnelTargetTable).where(and(eq(amFunnelTargetTable.nikAm, t.nikAm), eq(amFunnelTargetTable.tahun, t.tahun))).limit(1);
     if (existing.length === 0 || opts.truncate) {
       await db.insert(amFunnelTargetTable).values(t);
       console.log(`    [am-funnel-targets] Inserted: NIK ${t.nikAm} tahun ${t.tahun}`);
@@ -116861,7 +115154,7 @@ async function seedAmFunnelTargets(opts = {}) {
       await db.update(amFunnelTargetTable).set({
         targetValue: t.targetValue,
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq2(amFunnelTargetTable.id, existing[0].id));
+      }).where(eq(amFunnelTargetTable.id, existing[0].id));
       console.log(`    [am-funnel-targets] Updated: NIK ${t.nikAm} tahun ${t.tahun}`);
     }
   }
@@ -116954,10 +115247,10 @@ async function ensureDefaultSeed() {
   const shouldClean = settingsForCleanup.length === 0 || !settingsForCleanup[0].nonAktifAmsCleaned;
   if (shouldClean) {
     await db.delete(accountManagersTable).where(
-      and2(eq2(accountManagersTable.aktif, false), eq2(accountManagersTable.role, "AM"))
+      and(eq(accountManagersTable.aktif, false), eq(accountManagersTable.role, "AM"))
     );
     if (settingsForCleanup.length > 0) {
-      await db.update(appSettingsTable).set({ nonAktifAmsCleaned: true }).where(eq2(appSettingsTable.id, settingsForCleanup[0].id));
+      await db.update(appSettingsTable).set({ nonAktifAmsCleaned: true }).where(eq(appSettingsTable.id, settingsForCleanup[0].id));
     }
   }
   for (const am of DEFAULT_AMS) {
@@ -116996,15 +115289,15 @@ async function ensureDefaultSeed() {
     if (!s.gDriveFolderActivity) patches.gDriveFolderActivity = DEFAULT_GDRIVE_FOLDERS.gDriveFolderActivity;
     if (!s.gDriveFolderTarget) patches.gDriveFolderTarget = DEFAULT_GDRIVE_FOLDERS.gDriveFolderTarget;
     if (Object.keys(patches).length > 0) {
-      await db.update(appSettingsTable).set(patches).where(eq2(appSettingsTable.id, current.id));
+      await db.update(appSettingsTable).set(patches).where(eq(appSettingsTable.id, current.id));
     }
   }
   for (const t of DEFAULT_FUNNEL_TARGETS) {
-    const existing = await db.select({ id: salesFunnelTargetTable.id }).from(salesFunnelTargetTable).where(and2(eq2(salesFunnelTargetTable.divisi, t.divisi), eq2(salesFunnelTargetTable.tahun, t.tahun))).limit(1);
+    const existing = await db.select({ id: salesFunnelTargetTable.id }).from(salesFunnelTargetTable).where(and(eq(salesFunnelTargetTable.divisi, t.divisi), eq(salesFunnelTargetTable.tahun, t.tahun))).limit(1);
     if (existing.length === 0) {
       await db.insert(salesFunnelTargetTable).values(t);
     } else {
-      await db.update(salesFunnelTargetTable).set({ targetFullHo: t.targetFullHo, targetHo: t.targetHo }).where(eq2(salesFunnelTargetTable.id, existing[0].id));
+      await db.update(salesFunnelTargetTable).set({ targetFullHo: t.targetFullHo, targetHo: t.targetHo }).where(eq(salesFunnelTargetTable.id, existing[0].id));
     }
   }
   await seedAmFunnelTargets();
@@ -117012,8 +115305,8 @@ async function ensureDefaultSeed() {
 
 // src/seeds/seed-funnel-apr22-json.ts
 init_src();
-init_drizzle_orm2();
-init_logger3();
+init_drizzle_orm();
+init_logger2();
 import { readFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -117042,9 +115335,9 @@ function findJsonFile() {
   return null;
 }
 async function seedFunnelApr22Json() {
-  const existing = await db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(and2(
-    eq2(dataImportsTable.type, "funnel"),
-    sql2`snapshot_date >= '2026-04-22'`
+  const existing = await db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(and(
+    eq(dataImportsTable.type, "funnel"),
+    sql`snapshot_date >= '2026-04-22'`
   )).limit(1);
   if (existing.length > 0) {
     logger.info({ id: existing[0].id, snapshotDate: existing[0].snapshotDate }, "[seed-funnel-apr22-json] Already have Apr22+ snapshot \u2014 skip");
@@ -117058,10 +115351,10 @@ async function seedFunnelApr22Json() {
   logger.info({ jsonPath }, "[seed-funnel-apr22-json] Reading JSON snapshot\u2026");
   const rows = JSON.parse(readFileSync(jsonPath, "utf-8"));
   logger.info({ rowCount: rows.length }, "[seed-funnel-apr22-json] JSON rows loaded \u2713");
-  const [old] = await db.select({ id: dataImportsTable.id }).from(dataImportsTable).where(and2(eq2(dataImportsTable.type, "funnel"), eq2(dataImportsTable.period, APR22_PERIOD))).limit(1);
+  const [old] = await db.select({ id: dataImportsTable.id }).from(dataImportsTable).where(and(eq(dataImportsTable.type, "funnel"), eq(dataImportsTable.period, APR22_PERIOD))).limit(1);
   if (old) {
-    await db.delete(salesFunnelTable).where(eq2(salesFunnelTable.importId, old.id));
-    await db.delete(dataImportsTable).where(eq2(dataImportsTable.id, old.id));
+    await db.delete(salesFunnelTable).where(eq(salesFunnelTable.importId, old.id));
+    await db.delete(dataImportsTable).where(eq(dataImportsTable.id, old.id));
     logger.info({ id: old.id }, "[seed-funnel-apr22-json] Deleted old 2026-04 import");
   }
   const [importRecord] = await db.insert(dataImportsTable).values({ type: "funnel", period: APR22_PERIOD, snapshotDate: APR22_SNAPSHOT, sourceUrl: "seed:funnel-apr22-snapshot.json" }).returning({ id: dataImportsTable.id });
@@ -117388,6 +115681,13 @@ router/index.js:
    * router
    * Copyright(c) 2013 Roman Shtylman
    * Copyright(c) 2014-2022 Douglas Christopher Wilson
+   * MIT Licensed
+   *)
+
+negotiator/lib/accept.js:
+  (*!
+   * negotiator
+   * Copyright(c) 2026 Blake Embrey
    * MIT Licensed
    *)
 

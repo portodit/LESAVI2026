@@ -2,7 +2,6 @@ import { db, appSettingsTable, accountManagersTable, performanceDataTable, sales
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl } from "../../shared/publicUrl";
-import { generatePerfFeedback } from "./ai";
 
 const MONTH_NAMES = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -10,12 +9,10 @@ function formatSnapshotDate(snapshotDate: string | null | undefined, period: str
   const raw = snapshotDate || period || "";
   if (!raw) return fallback;
   if (raw.length === 10) {
-    // YYYY-MM-DD
     const [y, m, d] = raw.split("-").map(Number);
     if (y && m && d) return `${d} ${MONTH_NAMES[m] || m} ${y}`;
   }
   if (raw.length === 7) {
-    // YYYY-MM
     const [y, m] = raw.split("-").map(Number);
     if (y && m) return `${MONTH_NAMES[m] || m} ${y}`;
   }
@@ -24,7 +21,6 @@ function formatSnapshotDate(snapshotDate: string | null | undefined, period: str
 
 // ── Snapshot-aware helpers ──────────────────────────────────────────────────
 
-// Get performance rows for a period: try latest snapshot first, fallback to all snapshots
 async function getSnapshotAwarePerfs(year: number, month: number) {
   const [latestImport] = await db.select()
     .from(dataImportsTable)
@@ -42,12 +38,10 @@ async function getSnapshotAwarePerfs(year: number, month: number) {
     if (fromLatest.length > 0) return fromLatest;
   }
 
-  // Fallback: any data for that period across all snapshots
   return db.select().from(performanceDataTable)
     .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
 }
 
-// Get distinct periods that have data for a given NIK, ordered newest first
 export async function getAvailablePerfPeriods(nik: string): Promise<{ tahun: number; bulan: number }[]> {
   const rows = await db.selectDistinct({
     tahun: performanceDataTable.tahun,
@@ -71,12 +65,6 @@ function fmtPct(val: number): string {
   return val.toFixed(2).replace(".", ",") + "%";
 }
 
-function achLabel(ach: number): string {
-  if (ach >= 100) return "(Tercapai)";
-  if (ach >= 80) return "(Mendekati)";
-  return "(Di bawah target)";
-}
-
 function greetingByTime(): string {
   const hourWib = (new Date().getUTCHours() + 7) % 24;
   if (hourWib >= 3 && hourWib < 11) return "Selamat pagi";
@@ -85,16 +73,41 @@ function greetingByTime(): string {
   return "Selamat malam";
 }
 
-function rankFeedback(firstName: string, rankCm: number, achCm: number): string {
-  if (achCm >= 100) return `✅ Selamat kak ${firstName}! Target bulan ini sudah tercapai. Mantap sekali, pertahankan momentum ini di bulan depan!`;
-  if (rankCm === 1) return `🥇 Luar biasa kak ${firstName}! Kamu jadi yang terbaik bulan ini di antara seluruh AM Witel Suramadu. Pertahankan terus ya!`;
-  if (rankCm <= 3) return `🥈 Keren kak ${firstName}! Kamu masuk podium top 3 bulan ini. Tinggal sedikit lagi menuju puncak — tetap semangat!`;
-  if (rankCm <= 10) return `⚡ Good job kak ${firstName}! Kamu sudah di kelompok atas. Terus tingkatkan dan podium bukan hal yang mustahil buat kamu!`;
-  return `💪 Semangat kak ${firstName}! Masih ada waktu tersisa di bulan ini — yuk kejar targetnya!\nJangan ragu koordinasi dengan tim kalau butuh support ya 🙏`;
+function fmtRev(val: number): string {
+  if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(2).replace(".", ",")} Miliar`;
+  if (val >= 1_000_000) return `Rp ${(val / 1_000_000).toFixed(2).replace(".", ",")} Juta`;
+  if (val >= 1_000) return `Rp ${(val / 1_000).toFixed(0)} Ribu`;
+  if (val === 0) return `Rp 0`;
+  return `Rp ${val.toLocaleString("id-ID")}`;
 }
 
-function getEmbedUrl(): string {
-  return `${getPublicBaseUrl()}/presentation`;
+function achStatus(ach: number): string {
+  if (ach >= 100) return "🟢 <b>Melewati Target</b>";
+  if (ach >= 80) return "🟡 <b>Mendekati Target</b>";
+  if (ach > 0) return "🟠 <b>Perlu Peningkatan</b>";
+  return "🔴 <b>Belum Ada Revenue</b>";
+}
+
+function buildFeedback(firstName: string, achCm: number, achYtd: number, monthName: string): string {
+  const cmLow = achCm < 80;
+  const ytdLow = achYtd < 80;
+
+  if (cmLow && ytdLow) {
+    return `💪 Semangat kak <b>${firstName}</b>! Performa <b>${monthName}</b> masih butuh peningkatan — capaian bulan berjalan masih di bawah target. Fokuskan pada aktivitas customer, pipeline, dan peluang closing. Koordinasikan kebutuhan support dengan tim ya 🙏`;
+  }
+  if (cmLow && !ytdLow) {
+    return `🔥 Tetap semangat kak <b>${firstName}</b>! Capaian <b>${monthName}</b> masih perlu ditingkatkan, namun secara akumulasi YTD performansi masih positif. Fokus jaga momentum dan kejar target bulan berjalan 💪`;
+  }
+  if (!cmLow && ytdLow) {
+    return `🚀 Progress bagus kak <b>${firstName}</b>! Performa <b>${monthName}</b> sudah menunjukkan peningkatan. Pertahankan tren positif ini agar bisa mengejar gap pencapaian YTD 🙏`;
+  }
+  return `🎉 Mantap kak <b>${firstName}</b>! Performa <b>${monthName}</b> berhasil mencapai target, dan capaian YTD juga menunjukkan performansi yang kuat. Pertahankan konsistensi dan optimalkan peluang revenue berikutnya 💪`;
+}
+
+function getEmbedUrl(importId?: number): string {
+  const base = `${getPublicBaseUrl()}/presentation`;
+  if (importId) return `${base}?type=performance&id=${importId}`;
+  return base;
 }
 
 function getFunnelDetailUrl(): string {
@@ -128,118 +141,199 @@ function countByStatus(lops: { statusF?: string | null }[]): FunnelCounts {
 async function buildPerformanceMessage(
   nik: string,
   period: string,
-): Promise<string | null> {
+): Promise<{ parts: string[]; keyboard: object } | null> {
   const [year, month] = period.split("-").map(Number);
 
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
 
   const firstName = am.nama.split(" ")[0];
+  const monthName = MONTH_NAMES[month] || String(month);
 
-  // Fetch all AMs' performance data for this period — latest snapshot first, fallback to all
+  // Get active AM NIKs (same rule as dashboard: ACCOUNT_MANAGER or AM, aktif=true)
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms
+      .filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik)
+      .map(m => m.nik)
+  );
+
   const allPerfs = await getSnapshotAwarePerfs(year, month);
+  // Only include active AMs
+  const activePerfs = allPerfs.filter(p => activeNikSet.has(p.nik));
 
-  const p = allPerfs.find(x => x.nik === nik);
-  const totalAMs = allPerfs.length;
+  // Deduplicate: keep one entry per NIK (the one with highest achRate)
+  const byNik = new Map<string, typeof activePerfs[0]>();
+  for (const p of activePerfs) {
+    const existing = byNik.get(p.nik);
+    if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
+      byNik.set(p.nik, p);
+    }
+  }
+  const uniquePerfs = [...byNik.values()];
 
-  // Both ranks computed dynamically from all AMs in this period
-  const sortedByCm = [...allPerfs].sort((a, b) => (b.achRate || 0) - (a.achRate || 0));
+  const p = uniquePerfs.find(x => x.nik === nik);
+  // Rank relative to unique active AMs who have perf data
+  const totalAMs = uniquePerfs.length;
+
+  const sortedByCm = [...uniquePerfs].sort((a, b) =>
+    (parseFloat(String(b.achRate ?? 0)) - parseFloat(String(a.achRate ?? 0))));
   const rankCm = sortedByCm.findIndex(x => x.nik === nik) + 1;
-
-  const sortedByYtd = [...allPerfs].sort((a, b) => (b.achRateYtd || 0) - (a.achRateYtd || 0));
+  const sortedByYtd = [...uniquePerfs].sort((a, b) =>
+    (parseFloat(String(b.achRateYtd ?? 0)) - parseFloat(String(a.achRateYtd ?? 0))));
   const rankYtd = sortedByYtd.findIndex(x => x.nik === nik) + 1;
 
-  // Overall rates
-  const achCm = p?.achRate || 0;
-  const achYtd = p?.achRateYtd || 0;
-
-  // Fetch YTD data for sub-categories: all months in same year up to this month
   const ytdPerfs = await db.select().from(performanceDataTable)
     .where(and(eq(performanceDataTable.nik, nik), eq(performanceDataTable.tahun, year)));
   const ytdUpTo = ytdPerfs.filter(x => x.bulan <= month);
 
-  function sumYtdAch(realKey: keyof typeof ytdPerfs[0], targetKey: keyof typeof ytdPerfs[0]): number {
-    const totalReal = ytdUpTo.reduce((s, x) => s + ((x[realKey] as number) || 0), 0);
-    const totalTarget = ytdUpTo.reduce((s, x) => s + ((x[targetKey] as number) || 0), 0);
-    return totalTarget > 0 ? (totalReal / totalTarget) * 100 : 0;
-  }
+  const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
 
-  const achRegulerCm = (p?.targetReguler ?? 0) > 0 ? ((p?.realReguler ?? 0) / p!.targetReguler!) * 100 : 0;
-  const achSustainCm = (p?.targetSustain ?? 0) > 0 ? ((p?.realSustain ?? 0) / p!.targetSustain!) * 100 : 0;
-  const achScalingCm = (p?.targetScaling ?? 0) > 0 ? ((p?.realScaling ?? 0) / p!.targetScaling!) * 100 : 0;
-  const achNgtmaCm   = (p?.targetNgtma ?? 0) > 0   ? ((p?.realNgtma ?? 0)   / p!.targetNgtma!)   * 100 : 0;
+  const realRegulerCm = fmtNum(p?.realReguler);
+  const targetRegulerCm = fmtNum(p?.targetReguler);
+  const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realReguler), 0);
+  const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetReguler), 0);
 
-  const achRegulerYtd = sumYtdAch("realReguler", "targetReguler");
-  const achSustainYtd = sumYtdAch("realSustain", "targetSustain");
-  const achScalingYtd = sumYtdAch("realScaling", "targetScaling");
-  const achNgtmaYtd   = sumYtdAch("realNgtma", "targetNgtma");
+  const realSustainCm = fmtNum(p?.realSustain);
+  const targetSustainCm = fmtNum(p?.targetSustain);
+  const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realSustain), 0);
+  const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetSustain), 0);
 
-  const greeting = greetingByTime();
+  const realScalingCm = fmtNum(p?.realScaling);
+  const targetScalingCm = fmtNum(p?.targetScaling);
+  const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realScaling), 0);
+  const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetScaling), 0);
 
-  // Detect zero-revenue condition: all real values are 0
-  const totalReal = (p?.realReguler ?? 0) + (p?.realSustain ?? 0) + (p?.realScaling ?? 0) + (p?.realNgtma ?? 0);
-  const noRealData = !p || totalReal === 0;
+  const realNgtmaCm = fmtNum(p?.realNgtma);
+  const targetNgtmaCm = fmtNum(p?.targetNgtma);
+  const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realNgtma), 0);
+  const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetNgtma), 0);
 
-  // Only call AI for feedback when there's actual data (saves time on empty records)
-  const fallbackFeedback = rankFeedback(firstName, rankCm, achCm);
-  const feedback = noRealData
-    ? null
-    : await generatePerfFeedback(firstName, achCm, rankCm, totalAMs, MONTH_NAMES[month], year, fallbackFeedback);
+  const achRegulerCm = targetRegulerCm > 0 ? (realRegulerCm / targetRegulerCm) * 100 : 0;
+  const achRegulerYtd = targetRegulerYtd > 0 ? (realRegulerYtd / targetRegulerYtd) * 100 : 0;
+  const achSustainCm = targetSustainCm > 0 ? (realSustainCm / targetSustainCm) * 100 : 0;
+  const achSustainYtd = targetSustainYtd > 0 ? (realSustainYtd / targetSustainYtd) * 100 : 0;
+  const achScalingCm = targetScalingCm > 0 ? (realScalingCm / targetScalingCm) * 100 : 0;
+  const achScalingYtd = targetScalingYtd > 0 ? (realScalingYtd / targetScalingYtd) * 100 : 0;
+  const achNgtmaCm = targetNgtmaCm > 0 ? (realNgtmaCm / targetNgtmaCm) * 100 : 0;
+  const achNgtmaYtd = targetNgtmaYtd > 0 ? (realNgtmaYtd / targetNgtmaYtd) * 100 : 0;
 
-  let msg = `📊 *LAPORAN PERFORMANSI ACCOUNT MANAGER*\n`;
-  msg += `LESA VI — Witel Suramadu\n\n`;
-  msg += `Halo kak *${firstName}*! 👋 ${greeting}\n\n`;
-  msg += `Berikut rekap performansi kamu\n`;
-  msg += `untuk periode *${MONTH_NAMES[month]} ${year}*:\n\n`;
+  const totalRealCm = realRegulerCm + realSustainCm + realScalingCm + realNgtmaCm;
+  const totalTargetCm = targetRegulerCm + targetSustainCm + targetScalingCm + targetNgtmaCm;
+  const achTotalCm = totalTargetCm > 0 ? (totalRealCm / totalTargetCm) * 100 : 0;
+  const totalRealYtd = realRegulerYtd + realSustainYtd + realScalingYtd + realNgtmaYtd;
+  const totalTargetYtd = targetRegulerYtd + targetSustainYtd + targetScalingYtd + targetNgtmaYtd;
+  const achTotalYtd = totalTargetYtd > 0 ? (totalRealYtd / totalTargetYtd) * 100 : 0;
 
-  // Section A: Reguler — with rank
-  msg += `*A. Reguler Revenue*\n`;
-  msg += `├ *Real Revenue*   : ${formatRupiah(p?.realReguler ?? 0)}\n`;
-  msg += `├ *Target Revenue* : ${formatRupiah(p?.targetReguler ?? 0)}\n`;
-  msg += `├ *Ach CM*         : ${fmtPct(achRegulerCm)} ${achLabel(achRegulerCm)}\n`;
-  msg += `├ *Ach YTD*        : ${fmtPct(achRegulerYtd)} ${achLabel(achRegulerYtd)}\n`;
-  msg += `│   *Rank CM*      : #${rankCm} dari ${totalAMs}\n`;
-  msg += `│   *Rank YTD*     : #${rankYtd} dari ${totalAMs}\n\n`;
+  const [latestImport] = await db.select().from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "performance"))
+    .orderBy(desc(dataImportsTable.createdAt))
+    .limit(1);
+  const snapDate = formatSnapshotDate(latestImport?.snapshotDate ?? null, latestImport?.period ?? null, "-");
 
-  // Section B: Sustain
-  msg += `*B. Sustain Revenue*\n`;
-  msg += `├ *Real Revenue*   : ${formatRupiah(p?.realSustain ?? 0)}\n`;
-  msg += `├ *Target Sustain* : ${formatRupiah(p?.targetSustain ?? 0)}\n`;
-  msg += `├ *Ach CM*         : ${fmtPct(achSustainCm)} ${achLabel(achSustainCm)}\n`;
-  msg += `└ *Ach YTD*        : ${fmtPct(achSustainYtd)} ${achLabel(achSustainYtd)}\n\n`;
+  const noRealData = !p || (totalRealCm === 0 && totalRealYtd === 0);
+  const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
 
-  // Section C: Scaling
-  msg += `*C. Scaling Revenue*\n`;
-  msg += `├ *Real Revenue*   : ${formatRupiah(p?.realScaling ?? 0)}\n`;
-  msg += `├ *Target Scaling* : ${formatRupiah(p?.targetScaling ?? 0)}\n`;
-  msg += `├ *Ach CM*         : ${fmtPct(achScalingCm)} ${achLabel(achScalingCm)}\n`;
-  msg += `└ *Ach YTD*        : ${fmtPct(achScalingYtd)} ${achLabel(achScalingYtd)}\n\n`;
+  // ── Part 1: Header + Section A, B, C, D ──────────────────────────────────
+  let part1 = `<b>📊 LAPORAN PERFORMANSI ACCOUNT MANAGER</b>\n`;
+  part1 += `<b>LESA VI — Witel Suramadu</b>\n\n`;
+  part1 += `Halo kak <b>${firstName}</b>! 👋\n\n`;
+  part1 += `Berikut rekap performansi kamu berdasarkan:\n\n`;
+  part1 += `📸 <b>Snapshot:</b> ${snapDate}\n`;
+  part1 += `📅 <b>Periode Current Month:</b> ${monthName} ${year}\n`;
+  part1 += `📊 <b>Periode YTD:</b> Januari - ${monthName} ${year}\n\n`;
 
-  // Section D: NGTMA
-  msg += `*D. NGTMA Revenue*\n`;
-  msg += `├ *Real Revenue*   : ${formatRupiah(p?.realNgtma ?? 0)}\n`;
-  msg += `├ *Target NGTMA*   : ${formatRupiah(p?.targetNgtma ?? 0)}\n`;
-  msg += `├ *Ach CM*         : ${fmtPct(achNgtmaCm)} ${achLabel(achNgtmaCm)}\n`;
-  msg += `└ *Ach YTD*        : ${fmtPct(achNgtmaYtd)} ${achLabel(achNgtmaYtd)}\n\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n`;
+  part1 += `<b>📌 A. REGULER REVENUE</b>\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n\n`;
+  part1 += `<b>📅 Current Month (${monthName})</b>\n`;
+  part1 += `├ Real Revenue   : <b>${fmtRev(realRegulerCm)}</b>\n`;
+  part1 += `├ Target Revenue : <b>${fmtRev(targetRegulerCm)}</b>\n`;
+  part1 += `├ Ach CM         : <b>${fmtPct(achRegulerCm)}</b>\n`;
+  part1 += `└ Status         : ${achStatus(achRegulerCm)}\n\n`;
+  part1 += `<b>📊 Year To Date (Jan - ${monthName})</b>\n`;
+  part1 += `├ Real Revenue   : <b>${fmtRev(realRegulerYtd)}</b>\n`;
+  part1 += `├ Target Revenue : <b>${fmtRev(targetRegulerYtd)}</b>\n`;
+  part1 += `├ Ach YTD        : <b>${fmtPct(achRegulerYtd)}</b>\n`;
+  part1 += `└ Status         : ${achStatus(achRegulerYtd)}\n\n`;
 
-  msg += `💬 *Feedback Performansi:*\n\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n`;
+  part1 += `<b>📌 B. SUSTAIN REVENUE</b>\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n\n`;
+  part1 += `<b>📅 Current Month (${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realSustainCm)}</b>\n`;
+  part1 += `├ Target Sustain  : <b>${fmtRev(targetSustainCm)}</b>\n`;
+  part1 += `├ Ach CM          : <b>${fmtPct(achSustainCm)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achSustainCm)}\n\n`;
+  part1 += `<b>📊 Year To Date (Jan - ${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realSustainYtd)}</b>\n`;
+  part1 += `├ Target Sustain  : <b>${fmtRev(targetSustainYtd)}</b>\n`;
+  part1 += `├ Ach YTD         : <b>${fmtPct(achSustainYtd)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achSustainYtd)}\n\n`;
+
+  part1 += `━━━━━━━━━━━━━━━━━━\n`;
+  part1 += `<b>📌 C. SCALING REVENUE</b>\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n\n`;
+  part1 += `<b>📅 Current Month (${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realScalingCm)}</b>\n`;
+  part1 += `├ Target Scaling  : <b>${fmtRev(targetScalingCm)}</b>\n`;
+  part1 += `├ Ach CM          : <b>${fmtPct(achScalingCm)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achScalingCm)}\n\n`;
+  part1 += `<b>📊 Year To Date (Jan - ${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realScalingYtd)}</b>\n`;
+  part1 += `├ Target Scaling  : <b>${fmtRev(targetScalingYtd)}</b>\n`;
+  part1 += `├ Ach YTD         : <b>${fmtPct(achScalingYtd)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achScalingYtd)}\n\n`;
+
+  part1 += `━━━━━━━━━━━━━━━━━━\n`;
+  part1 += `<b>📌 D. NGTMA REVENUE</b>\n`;
+  part1 += `━━━━━━━━━━━━━━━━━━\n\n`;
+  part1 += `<b>📅 Current Month (${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realNgtmaCm)}</b>\n`;
+  part1 += `├ Target NGTMA    : <b>${fmtRev(targetNgtmaCm)}</b>\n`;
+  part1 += `├ Ach CM          : <b>${fmtPct(achNgtmaCm)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achNgtmaCm)}\n\n`;
+  part1 += `<b>📊 Year To Date (Jan - ${monthName})</b>\n`;
+  part1 += `├ Real Revenue    : <b>${fmtRev(realNgtmaYtd)}</b>\n`;
+  part1 += `├ Target NGTMA    : <b>${fmtRev(targetNgtmaYtd)}</b>\n`;
+  part1 += `├ Ach YTD         : <b>${fmtPct(achNgtmaYtd)}</b>\n`;
+  part1 += `└ Status          : ${achStatus(achNgtmaYtd)}`;
+
+  // ── Part 2: Ringkasan + Feedback ─────────────────────────────────────────
+  let part2 = `━━━━━━━━━━━━━━━━━━\n`;
+  part2 += `<b>📈 RINGKASAN PERFORMANSI</b>\n`;
+  part2 += `━━━━━━━━━━━━━━━━━━\n\n`;
+  part2 += `<b>① Current Month — ${monthName} ${year}</b>\n`;
+  part2 += `Capaian: <b>${fmtPct(achTotalCm)}</b> · Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>\n\n`;
+  part2 += `<b>② Year To Date — Januari s/d ${monthName} ${year}</b>\n`;
+  part2 += `Capaian: <b>${fmtPct(achTotalYtd)}</b> · Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>\n\n`;
+
+  part2 += `━━━━━━━━━━━━━━━━━━\n`;
+  part2 += `<b>💬 FEEDBACK PERFORMANSI</b>\n`;
+  part2 += `━━━━━━━━━━━━━━━━━━\n\n`;
   if (noRealData) {
-    msg += `_Mohon maaf kak, sepertinya data revenue kamu untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya — kami akan segera menginformasikan jika data sudah tersedia. 🙏_\n\n`;
+    part2 += `Mohon maaf kak, data revenue untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya — kami akan segera menginformasikan jika data sudah tersedia. 🙏`;
   } else {
-    msg += `${feedback}\n\n`;
+    part2 += feedback ?? "";
   }
-  msg += `📎 Untuk melihat performa lengkap kamu dan benchmarking dengan AM lain, silahkan akses link berikut:\n`;
-  msg += `${getEmbedUrl()}`;
 
-  return msg;
+  const embedUrl = getEmbedUrl(latestImport?.id);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "🔄 Pilih Bulan", callback_data: "perf:menu" }],
+      [{ text: "🏆 Papan Peringkat", callback_data: "perf:peringkat" }],
+      [{ text: "📎 Lihat Dashboard", callback_data: "perf:dashboard" }],
+      [{ text: "🏠 Kembali ke Menu", callback_data: "nav:main" }],
+    ],
+  };
+
+  return { parts: [part1, part2], keyboard };
 }
 
 async function buildFunnelMessage(nik: string): Promise<string | null> {
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
 
-  // Get funnel import snapshots — sort: null snapshotDate first (most recent/current week),
-  // then by snapshotDate DESC, then createdAt DESC as tiebreaker
   const funnelImportsRaw = await db.select()
     .from(dataImportsTable)
     .where(eq(dataImportsTable.type, "funnel"))
@@ -248,27 +342,23 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
 
   if (funnelImportsRaw.length === 0) return null;
 
-  // Sort: null snapshotDate (freshly uploaded, most recent week) comes first,
-  // then by snapshotDate DESC, then by createdAt DESC
   const funnelImports = [...funnelImportsRaw].sort((a, b) => {
     const aDate = a.snapshotDate;
     const bDate = b.snapshotDate;
     if (!aDate && !bDate) return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-    if (!aDate) return -1; // null = newest
+    if (!aDate) return -1;
     if (!bDate) return 1;
     if (bDate > aDate) return 1;
     if (aDate > bDate) return -1;
     return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
   });
 
-  // All LOPs for this AM in the 2 relevant snapshot imports
   const latestImport = funnelImports[0];
   const prevImport = funnelImports.length >= 2 ? funnelImports[1] : null;
 
   const relevantImportIds = [latestImport.id, ...(prevImport ? [prevImport.id] : [])];
   const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, nik));
 
-  // Filter to current year (2026) by reportDate only
   const REPORT_YEAR = new Date().getFullYear().toString();
   const allLops = allLopsRaw.filter(l =>
     relevantImportIds.includes(l.importId!) &&
@@ -284,7 +374,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
     latestImport.createdAt?.toISOString()?.slice(0, 10) || "-"
   );
 
-  // ── Kondisi C: Only 1 snapshot — no comparison possible ─────────────────
   if (!prevImport) {
     let msg = `📋 *MONITORING SALES FUNNELING*\n`;
     msg += `LESA VI — Witel Suramadu\n\n`;
@@ -305,7 +394,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
     return msg;
   }
 
-  // ── 2+ snapshots: compare latest vs previous ─────────────────────────────
   const prevLops = allLops.filter(l => l.importId === prevImport.id);
   const snapshotDatePrev = formatSnapshotDate(
     prevImport.snapshotDate,
@@ -340,7 +428,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
 
   const hasStagnan = lopStagnan.length > 0;
 
-  // ── Header ───────────────────────────────────────────────────────────────
   let msg = `📋 *MONITORING SALES FUNNELING*\n`;
   msg += `LESA VI — Witel Suramadu\n\n`;
   msg += `Halo kak *${am.nama}*! 👋\n\n`;
@@ -357,7 +444,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
 
   const MAX_LIST = 10;
 
-  // ── LOP Baru (hanya ada di snapshot terkini) ──────────────────────────────
   if (lopBaru.length > 0) {
     msg += `\n🆕 *LOP Baru di Snapshot Ini (${lopBaru.length}):*\n`;
     const baruShow = lopBaru.slice(0, MAX_LIST);
@@ -372,7 +458,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
   }
 
   if (hasStagnan) {
-    // ── Kondisi A: Ada LOP stagnan ─────────────────────────────────────────
     msg += `\n⚠️ *LOP Belum Bergerak (${lopStagnan.length}):*\n`;
     msg += `_(status sama dengan snapshot *${snapshotDatePrev}*)_\n`;
     const stagnanShow = lopStagnan.slice(0, MAX_LIST);
@@ -401,7 +486,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
       msg += `\n_Belum ada pergerakan status pada periode ini._\n`;
     }
   } else {
-    // ── Kondisi B: Semua LOP sudah bergerak / tidak ada LOP yang perlu dipantau ──
     if (lopBergerak.length > 0) {
       msg += `\n🎉 *Semua LOP Bergerak — Keren!*\n\n`;
       msg += `✅ *Perubahan Status LOP (${lopBergerak.length}):*\n`;
@@ -422,7 +506,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
   msg += `\n📎 Detail lengkap:\n`;
   msg += getFunnelDetailUrl();
 
-  // Hard safety cap: Telegram max is 4096 chars
   if (msg.length > 4000) {
     const footer = `\n\n_[Pesan terpotong] Detail lengkap:\n${getFunnelDetailUrl()}_`;
     msg = msg.slice(0, 4000 - footer.length) + footer;
@@ -431,7 +514,6 @@ async function buildFunnelMessage(nik: string): Promise<string | null> {
   return msg;
 }
 
-// Return type for activity report — handler controls pagination UI
 export interface ActivityReport {
   summary: string;
   details: string[];
@@ -453,7 +535,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
 
-  // Always get the latest activity snapshot
   const [targetSnap] = await db.select().from(dataImportsTable)
     .where(eq(dataImportsTable.type, "activity"))
     .orderBy(desc(dataImportsTable.createdAt))
@@ -461,7 +542,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
 
   let allNikActs: typeof salesActivityTable.$inferSelect[] = [];
 
-  // Determine snapshot year and latest month
   let snapYear = new Date().getFullYear();
   let snapMonth = new Date().getMonth() + 1;
   if (targetSnap) {
@@ -477,10 +557,8 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
     }
   }
 
-  // Filter to selected month (or snapshot's latest month if no monthKey)
   const MONTH_NAMES3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
   const targetMonthStr = monthKey ?? `${snapYear}${String(snapMonth).padStart(2,"0")}`;
-  // snapshotLabel: if monthKey provided, use that month; otherwise snapshot's latest month
   const labelMonth = monthKey ? parseInt(monthKey.slice(4,6)) : snapMonth;
   const labelYear  = monthKey ? parseInt(monthKey.slice(0,4)) : snapYear;
   const labelSnapshot = `${MONTH_NAMES3[labelMonth]} ${labelYear}`;
@@ -490,7 +568,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
       .where(eq(salesActivityTable.importId, targetSnap.id));
     allNikActs = allActs.filter(a => a.nik === nik);
 
-    // Deduplicate
     const seen = new Set<string>();
     allNikActs = allNikActs.filter(a => {
       const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
@@ -502,7 +579,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
     allNikActs = [];
   }
 
-  // Filter to target month only
   allNikActs = allNikActs.filter(a => {
     const d = a.activityEndDate;
     if (!d) return false;
@@ -538,12 +614,12 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
     : kpiPercent >= 70 ? "⚡ *Mendekati target*"
     : `📌 *${kpiTarget - validCount} aktivitas lagi*`;
 
-  // ── SUMMARY MESSAGE ──────────────────────────────────────────────
   const summary =
     `📅 *SALES ACTIVITY — LESA VI*\n` +
     `${divider}\n` +
     `👤 *${am.nama}*\n` +
     `📆 Periode : *${labelSnapshot}*\n` +
+    `📦 Snapshot: *#${targetSnap?.id ?? "?"}*\n` +
     `${divider}\n` +
     `📊 *RINGKASAN AKTIVITAS*\n\n` +
     `├ 📋 Total      : *${allNikActs.length}* aktivitas\n` +
@@ -553,8 +629,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
     `${kpiBar(kpiPercent)} *${kpiPercent}%* — ${kpiStatus}\n` +
     `${divider}`;
 
-  // ── DETAIL PAGES ─────────────────────────────────────────────────
-  // Sort by date descending
   const sorted = [...allNikActs].sort((a, b) => {
     const da = a.activityEndDate ?? ""; const db2 = b.activityEndDate ?? "";
     return db2 < da ? -1 : db2 > da ? 1 : 0;
@@ -592,7 +666,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
       partMsg += `\n`;
     }
 
-    // Footer per page
     partMsg += `──────────────────\n`;
     if (chunks.length > 1) {
       partMsg += `_Halaman ${c + 1}/${chunks.length} · ${allNikActs.length} aktivitas_`;
@@ -615,7 +688,6 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
   };
 }
 
-// kept for backwards compat — delegates to buildActivityReport
 async function buildActivityMessage(nik: string, _period: string): Promise<string[]> {
   const report = await buildActivityReport(nik);
   if (!report) return [];
@@ -628,12 +700,16 @@ export async function buildTelegramMessages(
   nik: string,
   period: string,
   options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean }
-): Promise<string[]> {
+): Promise<{ messages: string[]; perfKeyboard?: object }> {
   const messages: string[] = [];
+  let perfKeyboard: object | undefined;
 
   if (options.includePerformance) {
-    const m = await buildPerformanceMessage(nik, period);
-    if (m) messages.push(m);
+    const result = await buildPerformanceMessage(nik, period);
+    if (result) {
+      messages.push(...result.parts);
+      perfKeyboard = result.keyboard;
+    }
   }
 
   if (options.includeFunnel) {
@@ -646,17 +722,17 @@ export async function buildTelegramMessages(
     messages.push(...msgs);
   }
 
-  return messages;
+  return { messages, perfKeyboard };
 }
 
-/** @deprecated Use buildTelegramMessages (returns array) instead */
+/** @deprecated Use buildTelegramMessages (returns {messages, perfKeyboard}) instead */
 export async function buildTelegramMessage(
   nik: string,
   period: string,
   options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean }
 ): Promise<string> {
-  const msgs = await buildTelegramMessages(nik, period, options);
-  return msgs.join("\n\n");
+  const result = await buildTelegramMessages(nik, period, options);
+  return result.messages.join("\n\n");
 }
 
 export async function sendToTelegram(
@@ -739,18 +815,25 @@ export async function sendReminderToAllAMs(
     }
 
     try {
-      // Build all messages for this AM — each type is a SEPARATE message
-      const messages = await buildTelegramMessages(am.nik, period, options);
+      const { messages, perfKeyboard } = await buildTelegramMessages(am.nik, period, options);
       if (!messages.length) {
         skipped++;
         details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
         continue;
       }
 
-      // Send each message individually with a small delay to avoid flood limits
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await new Promise(r => setTimeout(r, 500));
-        await sendToTelegram(settings.telegramBotToken!, am.telegramChatId, messages[i]);
+        await sendToTelegramHtml(settings.telegramBotToken!, am.telegramChatId, messages[i]);
+      }
+
+      if (perfKeyboard) {
+        await new Promise(r => setTimeout(r, 500));
+        const firstName = am.nama.split(" ")[0];
+        await sendToTelegramHtml(
+          settings.telegramBotToken!, am.telegramChatId,
+          `Mau apa lagi kak <b>${firstName}</b>? 😊`, perfKeyboard
+        );
       }
 
       sent++;

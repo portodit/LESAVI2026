@@ -30,6 +30,7 @@ export const performanceDataTable = pgTable("performance_data", {
   importId: integer("import_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   divisiCc: text("divisi_cc"),
+  proporsi: real("proporsi").default(1),
 });
 
 export const insertPerformanceDataSchema = createInsertSchema(performanceDataTable).omit({ id: true, createdAt: true });

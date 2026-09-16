@@ -1,6 +1,6 @@
-import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, dataImportsTable, salesFunnelTable } from "@workspace/db";
+import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, dataImportsTable, salesFunnelTable, salesActivityTable, performanceDataTable } from "@workspace/db";
 import { eq, and, gt, inArray, desc } from "drizzle-orm";
-import { sendToTelegram, answerCallbackQuery, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
+import { sendToTelegram, sendToTelegramHtml, answerCallbackQuery, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl } from "../../shared/publicUrl";
@@ -367,6 +367,9 @@ interface ActivityPageEntry {
 }
 const activityPageState = new Map<string, ActivityPageEntry>();
 
+// ── Perf Rank flow state: tracks selected periode for ranking ──────────────────
+const perfRankState = new Map<string, string>(); // chatId → period (YYYY-MM)
+
 // ── Activity detail navigation keyboard ───────────────────────────────────────
 function buildActivityNavKeyboard(currentPage: number, totalPages: number, hasMultiplePages: boolean) {
   const rows: { text: string; callback_data: string }[][] = [];
@@ -380,6 +383,7 @@ function buildActivityNavKeyboard(currentPage: number, totalPages: number, hasMu
   }
 
   rows.push([{ text: "🗓 Pilih Bulan", callback_data: "activity:period_menu" }]);
+  rows.push([{ text: "◀️ Kembali ke Menu", callback_data: "nav:main" }]);
   return { inline_keyboard: rows };
 }
 
@@ -717,10 +721,10 @@ export async function pollOnce() {
 
       // ── callback_query (inline keyboard buttons) ────────────────────────
       if (update.callback_query) {
+        const cb = update.callback_query;
+        const cbChatId = String(cb.message?.chat?.id || cb.from?.id || "");
+        const cbData = (cb.data || "").trim();
         try {
-          const cb = update.callback_query;
-          const cbChatId = String(cb.message?.chat?.id || cb.from?.id || "");
-          const cbData = (cb.data || "").trim();
           await answerCallbackQuery(token, cb.id);
           if (!cbChatId) continue;
 
@@ -804,19 +808,273 @@ export async function pollOnce() {
             continue;
           }
 
-          // ── Performansi: show period picker ─────────────────────────────
+          // ── Performansi: opening message ──────────────────────────────────
           if (cbData === "/performansi") {
-            const now = new Date();
-            const displayMonth = `${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}`;
-            const pickerKeyboard = {
+            const keyboard = {
               inline_keyboard: [
-                [{ text: `📅 Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],
-                [{ text: "🗓 Pilih Bulan Lain", callback_data: "perf:menu" }],
+                [{ text: "📋 Laporan Terkini", callback_data: "perf:laporan" }],
+                [{ text: "🏆 Papan Peringkat", callback_data: "perf:peringkat" }],
+                [{ text: "🔄 Pilih Bulan", callback_data: "perf:menu" }],
+                [{ text: "🏠 Kembali ke Menu", callback_data: "nav:main" }],
               ],
             };
             await sendToTelegram(token, cbChatId,
-              `📊 *Performansi Revenue*\n\nMau lihat rekap performansi bulan apa, kak *${amFirstName}*?`,
-              pickerKeyboard
+              `📊 *Revenue AM Performance — LESA VI*\n\n` +
+              `Halo kak *${amFirstName}*! 👋\n\n` +
+              `Fitur ini menyediakan informasi terkait pencapaian revenue kamu dan perbandingan dengan AM lainnya, mencakup periode berjalan (CM) dan Year To Date (YTD).\n\n` +
+              `Silakan pilih menu di bawah untuk melihat detailnya.`,
+              keyboard
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:laporan — latest performance report ───────────────────────
+          if (cbData === "perf:laporan") {
+            const period = currentPeriod();
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            if (!result.messages.length) {
+              const now = new Date();
+              await sendToTelegram(token, cbChatId,
+                `_Data performansi untuk *${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
+              ).catch(() => {});
+            } else {
+              for (let i = 0; i < result.messages.length; i++) {
+                await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {});
+                if (i < result.messages.length - 1) await new Promise(r => setTimeout(r, 300));
+              }
+              await new Promise(r => setTimeout(r, 300));
+              await sendToTelegramHtml(token, cbChatId,
+                `Mau apa lagi kak <b>${amFirstName}</b>? 😊`, result.perfKeyboard
+              ).catch(() => {});
+            }
+            continue;
+          }
+
+          // ── perf:peringkat — Step 1: pilih bulan ──────────────────────────────────
+          if (cbData === "perf:peringkat") {
+            perfRankState.delete(cbChatId);
+            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            if (!periods.length) {
+              await sendToTelegram(token, cbChatId, `❌ Belum ada data performansi tersimpan kak *${amFirstName}*.`).catch(() => {});
+              continue;
+            }
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const buttons = periods.map(p => ({
+              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
+              callback_data: `perf:rankbulan:${p.tahun}-${String(p.bulan).padStart(2, "0")}`,
+            }));
+            const rows: typeof buttons[] = [];
+            for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            rows.push([{ text: "🔙 Kembali", callback_data: "perf:menu" }]);
+            await sendToTelegram(token, cbChatId,
+              `🏆 *PAPAN PERINGKAT — Pilih Bulan*\n\n` +
+              `Halo kak *${amFirstName}*! 👋\n\n` +
+              `Silakan pilih bulan untuk melihat papan peringkat:\n` +
+              `• *Peringkat CM* — berdasarkan achievement bulan berjalan\n` +
+              `• *Peringkat YTD* — berdasarkan achievement Year-to-Date`,
+              { inline_keyboard: rows }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:rankbulan:YYYY-MM — Step 2: pilih divisi ───────────────────────
+          if (cbData.startsWith("perf:rankbulan:")) {
+            const period = cbData.slice("perf:rankbulan:".length);
+            if (!/^\d{4}-\d{2}$/.test(period)) { continue; }
+            perfRankState.set(cbChatId, period);
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const [y, m] = period.split("-").map(Number);
+            const monthLabel = `${SHORT_MONTHS[m]} ${y}`;
+            await sendToTelegram(token, cbChatId,
+              `🏆 *PAPAN PERINGKAT — Pilih Divisi*\n\n` +
+              `📅 Periode: *${monthLabel}*\n\n` +
+              `Silakan pilih divisi untuk papan peringkat:\n\n` +
+              `📋 *Peringkat LESA* — seluruh AM DPS + DSS\n` +
+              `📋 *Peringkat DPS* — AM divisi DPS saja\n` +
+              `📋 *Peringkat DSS* — AM divisi DSS saja`,
+              {
+                inline_keyboard: [
+                  [{ text: "📋 Peringkat LESA (DPS+DSS)", callback_data: "perf:rankdivisi:LESA" }],
+                  [{ text: "📋 Peringkat DPS", callback_data: "perf:rankdivisi:DPS" }],
+                  [{ text: "📋 Peringkat DSS", callback_data: "perf:rankdivisi:DSS" }],
+                  [{ text: "◀️ Ganti Bulan", callback_data: "perf:peringkat" }],
+                ],
+              }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:rankdivisi:* — Step 3: tampilkan ranking CM + YTD ───────────────
+          if (cbData.startsWith("perf:rankdivisi:")) {
+            const divisi = cbData.slice("perf:rankdivisi:".length);
+            const period = perfRankState.get(cbChatId);
+            if (!period || !["LESA","DPS","DSS"].includes(divisi)) {
+              await sendToTelegram(token, cbChatId,
+                `Sesi papan peringkat sudah expired kak. Silakan mulai lagi dari menu Peringkat.`,
+                { inline_keyboard: [[{ text: "🏆 Mulai Papan Peringkat", callback_data: "perf:peringkat" }]] }
+              ).catch(() => {});
+              continue;
+            }
+
+            const [year, month] = period.split("-").map(Number);
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const monthLabel = `${SHORT_MONTHS[month]} ${year}`;
+
+            const masterAms = await db.select().from(accountManagersTable);
+            const activeAms = masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
+
+            // Get all perfs for this month
+            const [latestImport] = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "performance"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+
+            let allPerfsRaw: typeof performanceDataTable.$inferSelect[] = [];
+            if (latestImport) {
+              allPerfsRaw = await db.select().from(performanceDataTable)
+                .where(and(
+                  eq(performanceDataTable.importId, latestImport.id),
+                  eq(performanceDataTable.tahun, year),
+                  eq(performanceDataTable.bulan, month),
+                ));
+              if (!allPerfsRaw.length) {
+                allPerfsRaw = await db.select().from(performanceDataTable)
+                  .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
+              }
+            } else {
+              allPerfsRaw = await db.select().from(performanceDataTable)
+                .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
+            }
+
+            // Deduplicate by NIK
+            const byNik = new Map<string, typeof allPerfsRaw[0]>();
+            for (const p of allPerfsRaw) {
+              const existing = byNik.get(p.nik);
+              if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
+                byNik.set(p.nik, p);
+              }
+            }
+            const uniquePerfs = [...byNik.values()];
+
+            // Filter by divisi
+            const matchesDivisi = (recordDivisiCc: string | null | undefined, recordDivisi: string | null | undefined): boolean => {
+              if (divisi === "LESA") {
+                if (recordDivisiCc === "DPS" || recordDivisiCc === "DSS" || recordDivisiCc === "DGS") return true;
+                if (recordDivisi === "DPS" || recordDivisi === "DSS" || recordDivisi === "DES" || recordDivisi === "DGS") return true;
+                return false;
+              }
+              if (recordDivisiCc === divisi) return true;
+              return recordDivisi === divisi;
+            };
+
+            // YTD data: all perfs up to current month for this year
+            const allYtdRaw = latestImport
+              ? await db.select().from(performanceDataTable)
+                  .where(eq(performanceDataTable.importId, latestImport.id))
+              : await db.select().from(performanceDataTable)
+                  .where(eq(performanceDataTable.tahun, year));
+            const ytdByNik = new Map<string, typeof allYtdRaw[0]>();
+            for (const p of allYtdRaw) {
+              if (p.bulan! > month) continue;
+              const existing = ytdByNik.get(p.nik);
+              if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
+                ytdByNik.set(p.nik, p);
+              }
+            }
+
+            const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
+            const fmtPct = (v: number) => `${Math.round(v * 100) / 100}`.replace(".", ",") + "%";
+            const fmtRev = (v: number) => {
+              if (v >= 1_000_000_000) return `Rp${(v / 1_000_000_000).toFixed(2)}M`;
+              if (v >= 1_000_000) return `Rp${(v / 1_000_000).toFixed(2)}Jt`;
+              if (v >= 1_000) return `Rp${(v / 1_000).toFixed(0)}Rb`;
+              return `Rp${v.toFixed(0)}`;
+            };
+            const MEDALS = ["🥇", "🥈", "🥉"];
+
+            // Compute CM + YTD stats per AM
+            interface AmRank {
+              nik: string; nama: string;
+              cmAch: number; cmReal: number; cmTarget: number;
+              ytdAch: number; ytdReal: number; ytdTarget: number;
+            }
+            const amRanks: AmRank[] = [];
+
+            for (const am of activeAms) {
+              // CM
+              const cmPerf = uniquePerfs.find(p => p.nik === am.nik);
+              if (!cmPerf) continue;
+              if (!matchesDivisi(cmPerf.divisiCc, cmPerf.divisi)) continue;
+
+              const cmTarget = fmtNum(cmPerf.targetReguler) + fmtNum(cmPerf.targetSustain) + fmtNum(cmPerf.targetScaling) + fmtNum(cmPerf.targetNgtma);
+              const cmReal = fmtNum(cmPerf.realReguler) + fmtNum(cmPerf.realSustain) + fmtNum(cmPerf.realScaling) + fmtNum(cmPerf.realNgtma);
+              const cmAch = cmTarget > 0 ? (cmReal / cmTarget) * 100 : 0;
+
+              // YTD
+              const ytdPerfs = allYtdRaw.filter(p => p.nik === am.nik && p.bulan! <= month);
+              const ytdTarget = ytdPerfs.reduce((s, p) => s + fmtNum(p.targetReguler) + fmtNum(p.targetSustain) + fmtNum(p.targetScaling) + fmtNum(p.targetNgtma), 0);
+              const ytdReal = ytdPerfs.reduce((s, p) => s + fmtNum(p.realReguler) + fmtNum(p.realSustain) + fmtNum(p.realScaling) + fmtNum(p.realNgtma), 0);
+              const ytdAch = ytdTarget > 0 ? (ytdReal / ytdTarget) * 100 : 0;
+
+              amRanks.push({ nik: am.nik, nama: am.nama, cmAch, cmReal, cmTarget, ytdAch, ytdReal, ytdTarget });
+            }
+
+            const sortedCm = [...amRanks].sort((a, b) => b.cmAch - a.cmAch);
+            const sortedYtd = [...amRanks].sort((a, b) => b.ytdAch - a.ytdAch);
+
+            const divisiLabel = divisi === "LESA" ? "LESA (DPS + DSS)" : divisi;
+            const showTop = (rows: AmRank[], sorted: AmRank[], label: string, key: "cm" | "ytd") => {
+              let msg = `🏆 *PAPAN PERINGKAT — ${label}*\n\n`;
+              msg += `📅 Periode : *${monthLabel}*\n`;
+              msg += `📋 Divisi  : *${divisiLabel}*\n`;
+              msg += `📑 KPI     : Achievement Rate (CM / YTD)\n\n`;
+
+              const top10 = sorted.slice(0, 10);
+              for (let i = 0; i < top10.length; i++) {
+                const a = top10[i];
+                const medal = MEDALS[i] || `${i + 1}.`;
+                const badge = a.nik === resolvedAm.nik ? " 👈" : "";
+                msg += `${medal} *${a.nama}*${badge}\n`;
+                msg += `Ach: *${fmtPct(a[key + "Ach"])}* · Revenue: *${fmtRev(a[key + "Real"])}*\n\n`;
+              }
+
+              const myIdx = sorted.findIndex(a => a.nik === resolvedAm.nik);
+              if (myIdx >= 0) {
+                const myA = sorted[myIdx];
+                const isShown = top10.some(a => a.nik === resolvedAm.nik);
+                if (!isShown) {
+                  msg += `📌 *${amFirstName}* · Ach: *${fmtPct(myA[key + "Ach"])}* · Revenue: *${fmtRev(myA[key + "Real"])}* (#${myIdx + 1}/${sorted.length})\n`;
+                } else {
+                  msg += `📌 Posisi kak: *#${myIdx + 1}* dari *${sorted.length} AM*\n`;
+                }
+              }
+              return msg;
+            };
+
+            // Pesan 1: CM Ranking
+            await sendToTelegram(token, cbChatId,
+              showTop(amRanks, sortedCm, "PERINGKAT CM (Current Month)", "cm"),
+              {
+                inline_keyboard: [
+                  [{ text: "◀️ Ganti Divisi", callback_data: "perf:rankbulan:" + period }],
+                  [{ text: "🔄 Pilih Bulan", callback_data: "perf:peringkat" }],
+                  [{ text: "🏠 Menu Utama", callback_data: "nav:main" }],
+                ],
+              }
+            ).catch(() => {});
+
+            await new Promise(r => setTimeout(r, 500));
+
+            // Pesan 2: YTD Ranking
+            await sendToTelegram(token, cbChatId,
+              showTop(amRanks, sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
+              {
+                inline_keyboard: [
+                  [{ text: "📋 Laporan Terkini", callback_data: "perf:laporan" }],
+                  [{ text: "🔄 Pilih Bulan", callback_data: "perf:peringkat" }],
+                  [{ text: "🏠 Menu Utama", callback_data: "nav:main" }],
+                ],
+              }
             ).catch(() => {});
             continue;
           }
@@ -824,15 +1082,21 @@ export async function pollOnce() {
           // ── perf:current — current month, snapshot-aware ─────────────────
           if (cbData === "perf:current") {
             const period = currentPeriod();
-            const msgs = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
-            for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
-            if (!msgs.length) {
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            if (!result.messages.length) {
               const now = new Date();
               await sendToTelegram(token, cbChatId,
                 `_Data performansi untuk *${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}* belum tersedia kak *${amFirstName}*. Mungkin belum diimport bulan ini._`
               ).catch(() => {});
             } else {
-              await sendToTelegram(token, cbChatId, `Butuh apa lagi kak *${amFirstName}*? 😊`, PERF_NAV_KEYBOARD).catch(() => {});
+              for (let i = 0; i < result.messages.length; i++) {
+                await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {});
+                if (i < result.messages.length - 1) await new Promise(r => setTimeout(r, 300));
+              }
+              await new Promise(r => setTimeout(r, 300));
+              await sendToTelegramHtml(token, cbChatId,
+                `Mau apa lagi kak <b>${amFirstName}</b>? 😊`, result.perfKeyboard
+              ).catch(() => {});
             }
             continue;
           }
@@ -851,6 +1115,7 @@ export async function pollOnce() {
             }));
             const rows: typeof buttons[] = [];
             for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            rows.push([{ text: "🔙 Kembali ke Menu", callback_data: "nav:main" }]);
             await sendToTelegram(token, cbChatId,
               `🗓 *Pilih Periode Performansi*\n\nSilakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
               { inline_keyboard: rows }
@@ -862,17 +1127,38 @@ export async function pollOnce() {
           if (cbData.startsWith("perf:")) {
             const periodStr = cbData.slice(5);
             if (/^\d{4}-\d{2}$/.test(periodStr)) {
-              const msgs = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
-              for (const m of msgs) await sendToTelegram(token, cbChatId, m).catch(() => {});
-              if (!msgs.length) {
+              const result = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
+              if (!result.messages.length) {
                 const [yr, mo] = periodStr.split("-").map(Number);
                 await sendToTelegram(token, cbChatId,
                   `_Data performansi untuk *${MONTH_NAMES[mo]} ${yr}* tidak ditemukan kak *${amFirstName}*._`
                 ).catch(() => {});
               } else {
-                await sendToTelegram(token, cbChatId, `Butuh apa lagi kak *${amFirstName}*? 😊`, PERF_NAV_KEYBOARD).catch(() => {});
+                for (let i = 0; i < result.messages.length; i++) {
+                  await sendToTelegramHtml(token, cbChatId, result.messages[i]).catch(() => {});
+                }
+                await sendToTelegramHtml(token, cbChatId,
+                  `Mau apa lagi kak <b>${amFirstName}</b>? 😊`, result.perfKeyboard
+                ).catch(() => {});
               }
             }
+            continue;
+          }
+
+          // ── perf:dashboard — send clickable dashboard URL ───────────────────────
+          if (cbData === "perf:dashboard") {
+            const [latestImport] = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "performance"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+            const base = getPublicBaseUrl();
+            const dashUrl = latestImport?.id ? `${base}/presentation?type=performance&id=${latestImport.id}` : `${base}/presentation`;
+            await sendToTelegram(token, cbChatId,
+              `📎 *Dashboard LESAVI*\n\n` +
+              `Kak bisa lihat visualisasi data performansi dan laporan lengkap di dashboard LESAVI:\n\n` +
+              `${dashUrl}`,
+              { inline_keyboard: [[{ text: "📊 Buka Dashboard", url: dashUrl }], [{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
             continue;
           }
 
@@ -998,6 +1284,7 @@ export async function pollOnce() {
             msg1 += `Kak *${firstName}* — Edisi *${currentSnapLabel}*\n\n`;
             msg1 += `Berikut merupakan laporan perkembangan Sales Funneling LESA VI.\n\n`;
             msg1 += `📅 Report Date : *${latestSnapYear} (semua bulan)*\n`;
+            msg1 += `📋 Snapshot    : *#${latestImport.id}*\n`;
             msg1 += `📑 Jenis Kontrak : GTMA & Own Channel\n`;
             msg1 += `🧮 Perhitungan : Nilai Kontrak per Tahun\n\n`;
             msg1 += `📊 *Ringkasan LOP Kakak Saat Ini:*\n\n`;
@@ -1022,7 +1309,7 @@ export async function pollOnce() {
 
               msg1 += `📈 *Perubahan dibanding snapshot sebelumnya:*\n`;
               msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "▲" : "▼"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})\n`;
-              msg1 += `_Snapshot sebelumnya: ${prevSnapLabel}_`;
+              msg1 += `_Snapshot sebelumnya: #${prevImport.id} (${prevSnapLabel})_`;
             }
 
             await sendToTelegram(token, cbChatId, msg1).catch(() => {});
@@ -1032,14 +1319,18 @@ export async function pollOnce() {
               const prevMap = new Map(prevLops.map(l => [l.lopid, l]));
               const stagnan: { lopid: string; pelanggan: string; status: string }[] = [];
               const bergerak: { lopid: string; pelanggan: string; lama: string; baru: string }[] = [];
+              const baru: { lopid: string; pelanggan: string; status: string }[] = [];
 
               for (const lop of latestLops) {
                 const prev = prevMap.get(lop.lopid);
-                if (!prev) continue;
+                if (!prev) {
+                  baru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: lop.statusF || "-" });
+                  continue;
+                }
                 const sb = lop.statusF || "";
                 const sl = prev.statusF || "";
                 if (sb === sl) {
-                  if (sb !== "F5") stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
+                  stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
                 } else {
                   bergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", lama: sl, baru: sb });
                 }
@@ -1050,37 +1341,84 @@ export async function pollOnce() {
                 : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
 
               let msg2 = `📈 *ANALISIS PERKEMBANGAN LOP*\n\n`;
-              msg2 += `Perbandingan berdasarkan snapshot terbaru dengan snapshot sebelumnya:\n`;
-              msg2 += `📅 Snapshot sebelumnya: *${prevSnapLabel}*\n\n`;
+              msg2 += `Benchmark: Snapshot #${latestImport.id} (terbaru) vs #${prevImport.id} (${prevSnapLabel})\n\n`;
 
-              if (stagnan.length > 0) {
-                msg2 += `⚠️ *LOP Belum Bergerak (${stagnan.length})*\n`;
-                msg2 += `LOP dengan status yang masih sama dibandingkan snapshot sebelumnya:\n\n`;
-                const show = stagnan.slice(0, 10);
+              if (bergerak.length > 0) {
+                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
+                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:\n\n`;
+                for (const l of bergerak) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  *${l.lama}* → *${l.baru}*\n\n`;
+                }
+                msg2 += `\n`;
+              }
+
+              if ( baru.length > 0) {
+                msg2 += `🆕 *LOP Baru Muncul (${ baru.length})*\n`;
+                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):\n\n`;
+                for (const l of  baru) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  Status saat ini: *${l.status}*\n\n`;
+                }
+                msg2 += `\n`;
+              }
+
+              const stagnanF5 = stagnan.filter(l => l.status === "F5");
+              const stagnanNon = stagnan.filter(l => l.status !== "F5");
+              const totalTercakup = bergerak.length + baru.length + stagnanNon.length + stagnanF5.length;
+              msg2 += `_Total: ${totalTercakup} LOP tercakup dalam analisis_\n\n`;
+
+              if (bergerak.length > 0) {
+                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
+                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:\n\n`;
+                for (const l of bergerak) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  *${l.lama}* → *${l.baru}*\n\n`;
+                }
+                msg2 += `\n`;
+              }
+
+              if ( baru.length > 0) {
+                msg2 += `🆕 *LOP Baru Muncul (${ baru.length})*\n`;
+                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):\n\n`;
+                for (const l of  baru) {
+                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
+                  msg2 += `  Status saat ini: *${l.status}*\n\n`;
+                }
+                msg2 += `\n`;
+              }
+
+              if (stagnanNon.length > 0) {
+                msg2 += `⚠️ *LOP Belum Bergerak (${stagnanNon.length})*\n`;
+                msg2 += `Status masih sama dibanding snapshot #${prevImport.id}:\n\n`;
+                const show = stagnanNon.slice(0, 10);
                 for (const l of show) {
                   msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
                   msg2 += `  Status tetap *${l.status}* sejak *${prevSnapLabel}*\n\n`;
                 }
-                if (stagnan.length > 10) msg2 += `...dan *${stagnan.length - 10}* LOP lainnya belum bergerak\n\n`;
+                if (stagnanNon.length > 10) msg2 += `...dan *${stagnanNon.length - 10}* LOP lainnya belum bergerak\n\n`;
               }
 
-              if (bergerak.length > 0) {
-                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
-                msg2 += `LOP yang mengalami perubahan status dibandingkan snapshot sebelumnya:\n\n`;
-                const show = bergerak.slice(0, 5);
-                for (const l of show) {
+              if (stagnanF5.length > 0) {
+                msg2 += `🏆 *LOP F5 / Win (${stagnanF5.length})*\n`;
+                msg2 += `LOP yang sudah menang dan status tetap *F5* sejak *${prevSnapLabel}* (#${prevImport.id}):\n\n`;
+                for (const l of stagnanF5) {
                   msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  Bergerak dari *${l.lama}* → *${l.baru}*\n\n`;
                 }
-                if (bergerak.length > 5) msg2 += `...dan *${bergerak.length - 5}* LOP lainnya\n`;
+                msg2 += `\n`;
+              }
+
+              if (bergerak.length === 0 &&  baru.length === 0 && stagnanNon.length === 0) {
+                msg2 += `✅ *LOP Sudah Bergerak (0)*\n`;
+                msg2 += `Tidak ada LOP yang berubah status dari snapshot #${prevImport.id} ke #${latestImport.id}.\n\n`;
               }
 
               msg2 += `\n💡 *Catatan:*\n`;
               msg2 += `Yuk, segera lakukan follow up dan update progress LOP yang masih belum bergerak agar setiap peluang dapat terus berkembang menuju tahap berikutnya.\n\n`;
               msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
 
-              const stagnanKeyboard = stagnan.length > 10
-                ? { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnan.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] }
+              const stagnanKeyboard = stagnanNon.length > 10
+                ? { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnanNon.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] }
                 : undefined;
               await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {});
             }
@@ -1336,8 +1674,22 @@ export async function pollOnce() {
             ]);
             keyboardRows.push([{ text: "◀️ Kembali ke Menu", callback_data: "nav:main" }]);
 
+            // Build snapshot label for display
+            const MONTHS3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            let snapYear = 0, snapMonth = 0;
+            if (targetSnap.snapshotDate) {
+              const d = new Date(targetSnap.snapshotDate);
+              snapYear = d.getFullYear(); snapMonth = d.getMonth() + 1;
+            } else if (targetSnap.period) {
+              const p = targetSnap.period;
+              if (/^\d{6}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+              else if (/^\d{4}-\d{2}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(5,7)); }
+              else if (/^\d{8}$/.test(p)) { snapYear = parseInt(p.slice(0,4)); snapMonth = parseInt(p.slice(4,6)); }
+            }
+            const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
+
             await sendToTelegram(token, cbChatId,
-              `🗓 *Pilih Bulan Sales Activity*\n\nSilakan pilih periode yang ingin dilihat kak *${amFirstName}*:`, { inline_keyboard: keyboardRows }
+              `🗓 *Pilih Bulan Sales Activity*\n\n📦 Snapshot #${targetSnap.id} — *${snapshotLabel}*\n\nSilakan pilih periode yang ingin dilihat kak *${amFirstName}*:`, { inline_keyboard: keyboardRows }
             ).catch(() => {});
             continue;
           }
@@ -1427,6 +1779,7 @@ export async function pollOnce() {
               .limit(1);
 
             let snapshotLabel = currentPeriod();
+            let filterYearMonth = ""; // e.g. "2026-09" — used to filter activities by month
             let allActs: typeof salesActivityTable.$inferSelect[] = [];
 
             if (latestImports.length > 0) {
@@ -1434,10 +1787,12 @@ export async function pollOnce() {
               allActs = await db.select().from(salesActivityTable)
                 .where(eq(salesActivityTable.importId, latestImport.id));
 
-              // Build snapshot label
+              // Build snapshot label and year-month filter
               if (latestImport.snapshotDate) {
                 const d = new Date(latestImport.snapshotDate);
                 snapshotLabel = `${MONTH_NAMES[d.getMonth() + 1]} ${d.getFullYear()}`;
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                filterYearMonth = `${d.getFullYear()}-${mm}`;
               } else if (latestImport.period) {
                 const p = latestImport.period;
                 const MONTH_SHORT2 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -1445,15 +1800,17 @@ export async function pollOnce() {
                   const y = parseInt(p.slice(0, 4));
                   const m = parseInt(p.slice(4, 6));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                  filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
                 } else if (/^\d{4}-\d{2}$/.test(p)) {
                   const y = parseInt(p.slice(0, 4));
                   const m = parseInt(p.slice(5, 7));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
+                  filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
                 }
               }
             }
 
-            // Deduplicate by lopid + activity_end_date + label
+            // Deduplicate by lopid + activity_end_date + label, then filter by current month
             const seen = new Set<string>();
             allActs = allActs.filter(a => {
               const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
@@ -1462,7 +1819,12 @@ export async function pollOnce() {
               return true;
             });
 
-            // KPI per AM (all snapshot activities, not filtered by month)
+            // Filter to current month (same as dashboard)
+            if (filterYearMonth) {
+              allActs = allActs.filter(a => a.activityEndDate?.startsWith(filterYearMonth));
+            }
+
+            // KPI per AM (filtered to current month, same as dashboard)
             const amStats: { nik: string; nama: string; total: number; valid: number; kpi: number; pct: number }[] = [];
             for (const am of activeAms) {
               const amAllActs = allActs.filter(a => a.nik === am.nik);
