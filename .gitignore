@@ -5,6 +5,7 @@
 tmp
 out-tsc
 *.tsbuildinfo
+uploads/
 .expo
 .expo-shared
 

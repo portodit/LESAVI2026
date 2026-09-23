@@ -370,10 +370,13 @@ export default function ImportData() {
   const [amTargetEditVal, setAmTargetEditVal] = useState("");
   const { data: masterAmsRaw = [] } = useQuery<any[]>({
     queryKey: ["master-am"],
-    queryFn: () => apiFetch("/api/master-am"),
+    queryFn: async () => {
+      const res = await apiFetch<any>("/api/funnel/master-am");
+      return Array.isArray(res) ? res : (res?.rows ?? []);
+    },
     staleTime: 60_000,
   });
-  const masterAmsActive = masterAmsRaw.filter((m: any) => m.aktif && m.role === "AM" && m.nik);
+  const masterAmsActive = masterAmsRaw.filter((m: any) => m.aktif && (m.role === "AM" || m.role === "ACCOUNT_MANAGER") && m.nik);
   const { data: amTargetsDB = [], refetch: refetchAmTargets } = useQuery<any[]>({
     queryKey: ["funnel-am-targets", amTahun],
     queryFn: () => apiFetch(`/api/funnel/am-targets?tahun=${amTahun}`),
@@ -1031,7 +1034,7 @@ export default function ImportData() {
                                 className="w-full h-8 px-2 bg-white border-2 border-primary rounded text-sm font-mono text-right focus:outline-none"
                               />
                             ) : (
-                              <span className="px-2 font-mono text-sm">Rp {((t.targetHo||0)/1e9).toFixed(2)}M</span>
+                              <span className="px-2 font-mono text-sm">Rp {(new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })).format((t.targetHo||0)/1e9)}</span>
                             )}
                           </td>
                           {/* TARGET FULL HO */}
@@ -1046,7 +1049,7 @@ export default function ImportData() {
                                 className="w-full h-8 px-2 bg-white border-2 border-primary rounded text-sm font-mono text-right focus:outline-none"
                               />
                             ) : (
-                              <span className="px-2 font-mono text-sm font-semibold">Rp {((t.targetFullHo||0)/1e9).toFixed(2)}M</span>
+                              <span className="px-2 font-mono text-sm font-semibold">Rp {(new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })).format((t.targetFullHo||0)/1e9)}</span>
                             )}
                           </td>
                           {/* AKSI */}
@@ -1166,10 +1169,14 @@ export default function ImportData() {
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted-foreground font-semibold">Tahun</span>
-                <select value={amTahun} onChange={e => setAmTahun(e.target.value)}
-                  className="border border-border rounded-lg px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-red-500">
-                  {[curYear+1, curYear, curYear-1, curYear-2].map(y => <option key={y} value={String(y)}>{y}</option>)}
-                </select>
+                <input
+                  type="number"
+                  min="2020"
+                  max="2099"
+                  value={amTahun}
+                  onChange={e => setAmTahun(e.target.value)}
+                  className="border border-border rounded-lg px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-red-500 w-20 font-mono text-center"
+                />
               </div>
             </div>
             <div className="border border-border rounded-xl overflow-hidden">
@@ -1229,7 +1236,7 @@ export default function ImportData() {
                                 onClick={() => { setAmTargetEditId(am.nik); setAmTargetEditVal(existing ? String(existing.targetValue) : ""); }}
                                 className="group/cell w-full flex items-center justify-end gap-2 hover:text-red-600 transition-colors">
                                 <span className="font-mono tabular-nums text-sm">
-                                  {existing ? `Rp ${typeof existing?.targetValue==="number"&&!isNaN(existing?.targetValue)?(existing.targetValue/1e9).toFixed(2):"0"}M` : <span className="text-muted-foreground italic text-xs">Belum diset</span>}
+                                  {existing ? `Rp ${typeof existing?.targetValue==="number"&&!isNaN(existing?.targetValue)?(new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })).format(existing.targetValue):"0"}` : <span className="text-muted-foreground italic text-xs">Belum diset</span>}
                                 </span>
                                 <Pencil className="w-3 h-3 text-muted-foreground group-hover/cell:text-red-600 shrink-0" />
                               </button>

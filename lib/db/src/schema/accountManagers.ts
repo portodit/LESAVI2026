@@ -24,6 +24,7 @@ export const accountManagersTable = pgTable("account_managers", {
   kpiActivity: integer("kpi_activity"),
   discoveredFrom: text("discovered_from"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  photoUrl: text("photo_url"),
 });
 
 export const insertAccountManagerSchema = createInsertSchema(accountManagersTable).omit({ id: true, createdAt: true });

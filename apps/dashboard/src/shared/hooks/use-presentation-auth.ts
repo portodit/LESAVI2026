@@ -4,6 +4,7 @@ const EXPIRY_DAYS = 1; // Token is server-validated; localStorage is just a cach
 export interface PresentationSession {
   nik: string;
   namaAm: string;
+  role?: string;
   expires: string;
   presentationToken: string;
 }
@@ -23,10 +24,10 @@ export function getPresentationSession(): PresentationSession | null {
   }
 }
 
-export function storePresentationSession(nik: string, namaAm: string, presentationToken: string): void {
+export function storePresentationSession(nik: string, namaAm: string, presentationToken: string, role?: string): void {
   const expires = new Date();
   expires.setDate(expires.getDate() + EXPIRY_DAYS);
-  const session: PresentationSession = { nik, namaAm, expires: expires.toISOString(), presentationToken };
+  const session: PresentationSession = { nik, namaAm, role, expires: expires.toISOString(), presentationToken };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 

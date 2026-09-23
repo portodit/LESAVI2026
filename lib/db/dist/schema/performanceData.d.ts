@@ -462,6 +462,23 @@ export declare const performanceDataTable: import("drizzle-orm/pg-core").PgTable
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        proporsi: import("drizzle-orm/pg-core").PgColumn<{
+            name: "proporsi";
+            tableName: "performance_data";
+            dataType: "number";
+            columnType: "PgReal";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: true;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
     };
     dialect: "pg";
 }>;
@@ -491,6 +508,7 @@ export declare const insertPerformanceDataSchema: z.ZodObject<{
     snapshotDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     importId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     divisiCc: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    proporsi: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
 }, {
     out: {};
     in: {};

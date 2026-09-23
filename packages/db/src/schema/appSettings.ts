@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const appSettingsTable = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   telegramBotToken: text("telegram_bot_token"),
+  telegramBotUsername: text("telegram_bot_username"),
   sharepointPerformanceUrl: text("sharepoint_performance_url"),
   sharepointFunnelUrl: text("sharepoint_funnel_url"),
   sharepointActivityUrl: text("sharepoint_activity_url"),

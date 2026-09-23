@@ -758,6 +758,77 @@ export async function sendToTelegram(
   }
 }
 
+export async function sendPhotoToTelegram(
+  botToken: string,
+  chatId: string,
+  photoUrl: string,
+  caption?: string,
+  replyMarkup?: object
+): Promise<void> {
+  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    photo: photoUrl,
+  };
+  if (caption) {
+    body.caption = caption;
+    body.parse_mode = "Markdown";
+  }
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    const data = await response.json() as { description?: string };
+    logger.error({ status: response.status, chatId, error: data.description }, "sendPhotoToTelegram failed");
+  }
+}
+
+export async function editMessageText(
+  botToken: string,
+  chatId: string,
+  messageId: number,
+  text: string,
+  replyMarkup?: object
+): Promise<void> {
+  const url = `https://api.telegram.org/bot${botToken}/editMessageText`;
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "Markdown",
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    const data = await response.json() as { description?: string };
+    logger.error({ status: response.status, chatId, messageId, error: data.description }, "editMessageText failed");
+  }
+}
+
+export async function answerCallbackQueryAndEdit(
+  botToken: string,
+  callbackId: string,
+  chatId: string,
+  messageId: number,
+  text: string,
+  replyMarkup?: object
+): Promise<void> {
+  await Promise.all([
+    editMessageText(botToken, chatId, messageId, text, replyMarkup),
+    answerCallbackQuery(botToken, callbackId),
+  ]);
+}
+
 export async function sendToTelegramHtml(
   botToken: string,
   chatId: string,

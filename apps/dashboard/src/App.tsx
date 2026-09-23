@@ -1,5 +1,5 @@
 import { useEffect, useState, Component, type ReactNode } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/shared/ui/toaster";
 import { TooltipProvider } from "@/shared/ui/tooltip";
@@ -14,6 +14,7 @@ import OtpVerificationPage from "@/features/auth/OtpVerificationPage";
 import TelegramLinkRequiredPage from "@/features/auth/TelegramLinkRequiredPage";
 import EmbedPerforma from "@/features/performance/PresentationPage";
 import PresentationLoginPage from "@/features/performance/PresentationLoginPage";
+import AmProfilePage from "@/features/presentation/AmProfilePage";
 import { getPresentationSession, clearPresentationSession } from "@/shared/hooks/use-presentation-auth";
 import ImportData from "@/features/import/ImportPage";
 import ImportDetail from "@/features/import/ImportDetailPage";
@@ -96,11 +97,29 @@ function PublicAmPage() {
   );
 }
 
-// ─── Presentation Guard ─────────────────────────────────────────────────────────
-function PresentationGuard() {
+// ─── Presentation Guard / Layout ─────────────────────────────────────────────────
+interface PresentationGuardProps {
+  children?: ReactNode;
+  sessionRole?: string | null;
+  sessionNik?: string | null;
+}
+
+function PresentationGuard({ children, sessionRole: forcedRole, sessionNik: forcedNik }: PresentationGuardProps) {
   const [status, setStatus] = useState<"loading" | "allowed" | "denied">("loading");
+  const [sessionRole, setSessionRole] = useState<string | null>(forcedRole ?? null);
+  const [sessionNik, setSessionNik] = useState<string | null>(forcedNik ?? null);
+
+  // If role/nik are forced (passed as props), skip validation
+  const skipValidation = forcedRole !== undefined;
 
   useEffect(() => {
+    if (skipValidation) {
+      setSessionRole(forcedRole);
+      setSessionNik(forcedNik);
+      setStatus("allowed");
+      return;
+    }
+
     const session = getPresentationSession();
     console.log("[PresentationGuard] session:", session ? `token=${session.presentationToken.slice(0, 8)}...` : "null");
     if (!session?.presentationToken) {
@@ -119,8 +138,12 @@ function PresentationGuard() {
       if (cancelled) return;
       console.log("[PresentationGuard] validate response:", res.status);
       if (res.ok) {
-        res.json().then(data => console.log("[PresentationGuard] valid, user:", data.nama, data.role));
-        setStatus("allowed");
+        res.json().then(data => {
+          console.log("[PresentationGuard] valid, user:", data.nama, data.role, "nik:", data.nik);
+          setSessionRole(data.role);
+          setSessionNik(data.nik);
+          setStatus("allowed");
+        });
       } else {
         res.text().then(err => console.log("[PresentationGuard] invalid:", err));
         clearPresentationSession();
@@ -134,7 +157,7 @@ function PresentationGuard() {
     });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [skipValidation]);
 
   if (status === "loading") {
     return (
@@ -148,7 +171,100 @@ function PresentationGuard() {
     return <SafeRedirect to="/presentation/login" />;
   }
 
-  return <EmbedPerforma />;
+  // ACCOUNT_MANAGER accessing /presentation (no sub-path) → their own profile as first slide
+  // (handled in EmbedPerforma itself via sessionRole prop)
+  // Render child, passing sessionRole/sessionNik down
+  return <>{children}</>;
+}
+
+// ─── Wrap EmbedPerforma with session info ──────────────────────────────────────
+function PresentationWithSession() {
+  const [sessionRole, setSessionRole] = useState<string | null>(null);
+  const [sessionNik, setSessionNik] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const session = getPresentationSession();
+    if (session?.presentationToken) {
+      fetch("/api/auth/presentation/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ presentationToken: session.presentationToken }),
+        credentials: "include",
+      }).then(res => {
+        if (!res.ok) {
+          clearPresentationSession();
+          return null;
+        }
+        return res.json();
+      }).then(data => {
+        if (data) {
+          setSessionRole(data.role);
+          setSessionNik(data.nik);
+        }
+        setReady(true);
+      }).catch(() => {
+        clearPresentationSession();
+        setReady(true);
+      });
+    } else {
+      setReady(true);
+    }
+  }, []);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!sessionRole) {
+    return <SafeRedirect to="/presentation/login" />;
+  }
+
+  return (
+    <EmbedPerforma sessionRole={sessionRole} sessionNik={sessionNik} />
+  );
+}
+
+function PresentationGuardNik({ params }: { params: { nik: string } }) {
+  const [status, setStatus] = useState<"loading" | "allowed" | "denied">("loading");
+
+  useEffect(() => {
+    const session = getPresentationSession();
+    if (!session?.presentationToken) {
+      setStatus("denied");
+      return;
+    }
+    fetch("/api/auth/presentation/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ presentationToken: session.presentationToken }),
+      credentials: "include",
+    }).then(res => res.ok ? res.json() : null).then(data => {
+      if (data?.role === "ACCOUNT_MANAGER") {
+        setStatus("allowed");
+      } else {
+        // ADMIN/OFFICER/MANAGER → redirect to /presentation
+        window.location.href = "/presentation";
+        setStatus("denied");
+      }
+    }).catch(() => setStatus("denied"));
+  }, []);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (status === "denied") return null;
+
+  return <AmProfilePage nik={params.nik} />;
 }
 
 // ─── Dashboard Router (wrapped in AuthProvider) ───────────────────────────────
@@ -252,7 +368,9 @@ function AppRouter() {
     <Switch>
       {/* ── Presentation routes — NO AuthProvider, uses localStorage token ── */}
       <Route path="/presentation/login" component={PresentationLoginPage} />
-      <Route path="/presentation" component={PresentationGuard} />
+      {/* /presentation/am/:nik MUST be before /presentation otherwise /presentation matches first */}
+      <Route path="/presentation/am/:nik">{(params: any) => <PresentationGuardNik params={params} />}</Route>
+      <Route path="/presentation">{() => <PresentationWithSession />}</Route>
       <Route path="/auth/otp-verify/presentation"><OtpVerificationPage mode="presentation" /></Route>
       <Route path="/am-public/:slug" component={PublicAmPage} />
       <Route path="/embed/performa" component={EmbedPerforma} />

@@ -20,6 +20,20 @@ async function ensureSessionTable(): Promise<void> {
   `);
 }
 
+async function ensurePhotoUrlColumn(): Promise<void> {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'account_managers' AND column_name = 'photo_url'
+      ) THEN
+        ALTER TABLE account_managers ADD COLUMN photo_url TEXT;
+      END IF;
+    END $$;
+  `);
+}
+
 async function ensurePresentationSessionTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS presentation_sessions (
@@ -32,6 +46,26 @@ async function ensurePresentationSessionTable(): Promise<void> {
       expires_at TIMESTAMP(6) NOT NULL
     ) WITH (OIDS=FALSE);
     CREATE INDEX IF NOT EXISTS IDX_pres_expires ON presentation_sessions (expires_at);
+  `);
+}
+
+async function ensureBulkLinksTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS telegram_bulk_links (
+      id SERIAL PRIMARY KEY,
+      code VARCHAR(50) NOT NULL UNIQUE,
+      code_hash VARCHAR(255) NOT NULL,
+      created_by_id INTEGER REFERENCES account_managers(id),
+      created_by_nik TEXT NOT NULL,
+      created_by_nama TEXT NOT NULL,
+      expires_at TIMESTAMP(6) NOT NULL,
+      used_at TIMESTAMP(6),
+      used_by_am_id INTEGER REFERENCES account_managers(id),
+      status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+      created_at TIMESTAMP(6) NOT NULL DEFAULT NOW()
+    ) WITH (OIDS=FALSE);
+    CREATE INDEX IF NOT EXISTS IDX_bulk_links_code ON telegram_bulk_links (code);
+    CREATE INDEX IF NOT EXISTS IDX_bulk_links_status_expires ON telegram_bulk_links (status, expires_at);
   `);
 }
 
@@ -76,6 +110,14 @@ ensureSessionTable()
 ensurePresentationSessionTable()
   .then(() => logger.info("Presentation session store table ensured"))
   .catch(err => logger.error({ err }, "Failed to ensure presentation session store table"));
+
+ensureBulkLinksTable()
+  .then(() => logger.info("Bulk links table ensured"))
+  .catch(err => logger.error({ err }, "Failed to ensure bulk links table"));
+
+ensurePhotoUrlColumn()
+  .then(() => logger.info("photo_url column ensured"))
+  .catch(err => logger.error({ err }, "Failed to ensure photo_url column"));
 
 ensureDefaultAdmin()
   .then(() => logger.info("Default admin user ensured"))

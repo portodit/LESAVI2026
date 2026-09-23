@@ -1,8 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, dataImportsTable, performanceDataTable, accountManagersTable, salesFunnelTable, salesActivityTable, masterCustomerTable } from "@workspace/db";
+import { db, dataImportsTable, performanceDataTable, accountManagersTable, salesFunnelTable, salesActivityTable, masterCustomerTable, telegramBulkLinksTable, appSettingsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { autoRegisterNewAms } from "./routes";
 import { logger } from "../../shared/logger";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import {
   detectExcelFormat, parseExcelFromBase64,
   parsePivotCache, parseNipnas2AmSheet, pivotCacheRowsToParsedRowsFromCache2, ParsedRow,
@@ -569,6 +571,142 @@ router.post("/import-activity", async (req, res): Promise<void> => {
     cleanedCount: cleaned.length,
     newAmDiscovered: newActAmCount,
     importId: imp.id,
+  });
+});
+
+// ── Internal: Create AM/Admin/Officer account via Telegram ──────────────────────
+router.post("/am/create", async (req, res): Promise<void> => {
+  const secret = req.headers["x-telegram-secret"];
+  const validSecret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+  if (secret !== validSecret) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { nik, nama, role, tipe, divisi, segmen, witel, email, telegramChatId, kpiActivity } = req.body as {
+    nik?: string | null; nama?: string; role?: string;
+    tipe?: string; divisi?: string; segmen?: string | null;
+    witel?: string; email?: string | null; telegramChatId?: string | null;
+    kpiActivity?: number | null;
+  };
+
+  if (!nama?.trim()) {
+    res.status(400).json({ error: "Nama wajib diisi" });
+    return;
+  }
+
+  const resolvedRole = (["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN"].includes(role ?? "") ? role : "ACCOUNT_MANAGER") as "OFFICER" | "MANAGER" | "ACCOUNT_MANAGER" | "ADMIN";
+  const resolvedTipe = "LESA";
+  const isAm = resolvedRole === "ACCOUNT_MANAGER" || resolvedRole === "AM";
+
+  if (!nik?.trim() && isAm) {
+    res.status(400).json({ error: "NIK wajib diisi untuk Account Manager" });
+    return;
+  }
+  if (nik?.trim() && !/^\d+$/.test(nik.trim())) {
+    res.status(400).json({ error: "NIK harus berupa angka" });
+    return;
+  }
+
+  // Check for duplicate NIK
+  if (nik?.trim()) {
+    const [existingNik] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik.trim()));
+    if (existingNik) {
+      res.status(409).json({ error: `NIK ${nik.trim()} sudah digunakan oleh ${existingNik.nama}` });
+      return;
+    }
+  }
+
+  const slug = nama.trim().toUpperCase().replace(/\s+/g, "-") + "-" + Date.now().toString(36);
+
+  try {
+    const [am] = await db.insert(accountManagersTable).values({
+      nik: nik?.trim() || null,
+      nama: nama.trim().toUpperCase(),
+      slug,
+      email: email?.trim() || null,
+      role: resolvedRole,
+      tipe: resolvedTipe,
+      divisi: divisi || "DPS",
+      segmen: segmen?.trim() || null,
+      witel: witel || "SURAMADU",
+      telegramChatId: telegramChatId?.trim() || null,
+      kpiActivity: isAm ? (kpiActivity ?? null) : 0,
+      aktif: true,
+      discoveredFrom: "manual_telegram",
+    } as any).returning();
+
+    res.status(201).json({
+      success: true,
+      id: am.id,
+      nik: am.nik,
+      nama: am.nama,
+      role: am.role,
+      divisi: am.divisi,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Internal: failed to create AM account");
+    res.status(500).json({ error: "Gagal menyimpan akun: " + (err?.message || "Unknown error") });
+  }
+});
+
+// ── Internal: Create bulk link (Tanpa Batas) ─────────────────────────────────────
+router.post("/bulk-link/create", async (req, res): Promise<void> => {
+  const secret = req.headers["x-telegram-secret"];
+  const validSecret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+  if (secret !== validSecret) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { createdById, createdByNik, createdByNama, expiresMinutes } = req.body as {
+    createdById?: number; createdByNik?: string; createdByNama?: string; expiresMinutes?: number;
+  };
+
+  if (!createdByNik?.trim() || !createdByNama?.trim()) {
+    res.status(400).json({ error: "createdByNik dan createdByNama wajib diisi" });
+    return;
+  }
+
+  const expiresMs = Math.max(5, Math.min(expiresMinutes ?? 60, 7 * 24 * 60)) * 60 * 1000;
+  const expiresAt = new Date(Date.now() + expiresMs);
+
+  // Generate ADMIN-XXXXXX code
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "ADMIN-";
+  for (let i = 0; i < 8; i++) code += chars[crypto.randomInt(chars.length)];
+
+  const codeHash = await bcrypt.hash(code, 10);
+
+  await db.insert(telegramBulkLinksTable).values({
+    code,
+    codeHash,
+    createdById: createdById ?? null,
+    createdByNik: createdByNik.trim(),
+    createdByNama: createdByNama.trim(),
+    expiresAt,
+    status: "ACTIVE",
+  } as any);
+
+  // Get bot username for deep link
+  const [settings] = await db.select().from(appSettingsTable).catch(() => [null]);
+  let botUsername: string | null = null;
+  if (settings?.telegramBotToken) {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/getMe`);
+      const d = await r.json() as { ok: boolean; result?: { username: string } };
+      botUsername = d.result?.username ?? null;
+    } catch { /* ignore */ }
+  }
+
+  const link = botUsername ? `https://t.me/${botUsername}?start=${code}` : null;
+
+  res.json({
+    success: true,
+    code,
+    link,
+    botUsername,
+    expiresAt: expiresAt.toISOString(),
   });
 });
 

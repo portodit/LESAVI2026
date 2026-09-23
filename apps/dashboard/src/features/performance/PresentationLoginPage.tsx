@@ -193,16 +193,24 @@ export default function PresentationLoginPage() {
       const token: string = data.presentationToken ?? "";
       const pendingNik = sessionStorage.getItem("pres_pendingNik") ?? "";
       const nama = sessionStorage.getItem("pres_pendingNama") ?? "";
+      const role: string = data.role ?? "ACCOUNT_MANAGER";
+      console.log("[handleVerify] role from API:", data.role, "→ using:", role, "pendingNik:", pendingNik);
       const expires = new Date();
       expires.setDate(expires.getDate() + 1);
       localStorage.setItem("presentation_auth_v1", JSON.stringify({
         nik: pendingNik,
         namaAm: nama,
+        role,
         expires: expires.toISOString(),
         presentationToken: token,
       }));
 
-      window.location.href = "/presentation" + returnTo;
+      // ACCOUNT_MANAGER → go to presentation (first slide = AM Profile)
+      if (role === "ACCOUNT_MANAGER") {
+        window.location.href = "/presentation";
+      } else {
+        window.location.href = "/presentation" + returnTo;
+      }
     } catch (err: any) {
       setError(err?.message ?? "Koneksi gagal. Silakan coba lagi.");
       setResendCooldown(60);

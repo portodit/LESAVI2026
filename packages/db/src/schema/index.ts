@@ -6,6 +6,7 @@ export * from "./salesActivity";
 export * from "./dataImports";
 export * from "./telegramLogs";
 export * from "./telegramBotUsers";
+export * from "./telegramBulkLinks";
 export * from "./appSettings";
 export * from "./driveReadLogs";
 export * from "./masterAm";

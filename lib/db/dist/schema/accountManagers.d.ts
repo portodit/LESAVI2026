@@ -360,6 +360,23 @@ export declare const accountManagersTable: import("drizzle-orm/pg-core").PgTable
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        photoUrl: import("drizzle-orm/pg-core").PgColumn<{
+            name: "photo_url";
+            tableName: "account_managers";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
     };
     dialect: "pg";
 }>;
@@ -383,6 +400,7 @@ export declare const insertAccountManagerSchema: z.ZodObject<{
     telegramCodeExpiry: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
     kpiActivity: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     discoveredFrom: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    photoUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, {
     out: {};
     in: {};

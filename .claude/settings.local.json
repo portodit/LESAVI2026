@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(pnpm --filter @workspace/api-server run build)",
-      "Bash(pnpm *)"
+      "Bash(pnpm *)",
+      "Bash(powershell -Command \"\\(Get-Content 'C:\\\\Users\\\\USER\\\\Desktop\\\\AmProfilePage.tsx' | Measure-Object -Line\\).Lines\")",
+      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\USER\\\\Desktop\\\\AmProfilePage.tsx' | Measure-Object -Line | Select-Object -ExpandProperty Lines\")"
     ]
   }
 }

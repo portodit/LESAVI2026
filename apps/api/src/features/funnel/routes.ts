@@ -341,6 +341,18 @@ router.get("/data-quality", requireAuth, async (req, res): Promise<void> => {
   });
 });
 
+// ── Master AM (redirect to account_managers) ─────────────────────────────────
+// NOTE: Must be defined BEFORE /:nik wildcard, otherwise "master-am" matches as a NIK
+router.get("/master-am", requireAuth, async (_req, res): Promise<void> => {
+  const rows = await db.select().from(accountManagersTable).execute();
+  // Sort: aktif first (desc), then by nama
+  rows.sort((a: any, b: any) => {
+    if (a.aktif !== b.aktif) return a.aktif ? -1 : 1;
+    return (a.nama || "").localeCompare(b.nama || "");
+  });
+  res.json(rows);
+});
+
 router.get("/:nik", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
   const lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, raw));
@@ -357,13 +369,6 @@ router.get("/:nik", requireAuth, async (req, res): Promise<void> => {
       estimateBulan: l.estimateBulan, namaAm: l.namaAm, reportDate: l.reportDate || "",
     })),
   });
-});
-
-// ── Master AM (redirect to account_managers) ─────────────────────────────────
-router.get("/master-am", requireAuth, async (_req, res): Promise<void> => {
-  const rows = await db.select().from(accountManagersTable)
-    .orderBy(accountManagersTable.aktif, accountManagersTable.nama);
-  res.json(rows);
 });
 
 router.post("/master-am", requireAuth, async (req, res): Promise<void> => {

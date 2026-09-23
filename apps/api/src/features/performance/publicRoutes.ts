@@ -115,11 +115,11 @@ router.get("/import-history", async (req, res): Promise<void> => {
 router.get("/am", async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  // Semua user aktif boleh login presentation (AM, OFFICER, MANAGER)
+  // Only ACCOUNT_MANAGER and AM roles — matching what the performance endpoint uses
   const ams = await db
     .select({ nik: accountManagersTable.nik, nama: accountManagersTable.nama, divisi: accountManagersTable.divisi, role: accountManagersTable.role })
     .from(accountManagersTable)
-    .where(eq(accountManagersTable.aktif, true))
+    .where(and(eq(accountManagersTable.aktif, true), inArray(accountManagersTable.role, ["ACCOUNT_MANAGER", "AM"])))
     .orderBy(accountManagersTable.nama);
   res.json(ams);
 });

@@ -1,6 +1,6 @@
-import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, dataImportsTable, salesFunnelTable, salesActivityTable, performanceDataTable } from "@workspace/db";
+import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, telegramBulkLinksTable, dataImportsTable, salesFunnelTable, salesActivityTable, performanceDataTable } from "@workspace/db";
 import { eq, and, gt, inArray, desc } from "drizzle-orm";
-import { sendToTelegram, sendToTelegramHtml, answerCallbackQuery, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
+import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl } from "../../shared/publicUrl";
@@ -158,7 +158,7 @@ async function doProcessImport(
       : "/import-activity";
 
   const secret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
-  const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:8000";
+  const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:3000";
   const domain = getPublicBaseUrl();
 
   const dbType = state.importType === "performance" ? "performance" : state.importType === "funnel" ? "funnel" : "activity";
@@ -282,11 +282,28 @@ const MAIN_KEYBOARD_AM = {
 const MAIN_KEYBOARD_ADMIN = {
   inline_keyboard: [
     [
-      { text: "📥 Impor Data",          callback_data: "/import"   },
-      { text: "🔓 Putuskan Koneksi",   callback_data: "/logout"  },
+      { text: "🏆 Papan Peringkat",    callback_data: "lb:menu"  },
+      { text: "📥 Impor Data",         callback_data: "/import"  },
     ],
     [
-      { text: "📋 List Data Snapshot",  callback_data: "/list"    },
+      { text: "👥 Manajemen Akun",     callback_data: "/manajemen" },
+      { text: "📋 List Data Snapshot",callback_data: "/list"    },
+    ],
+    [
+      { text: "🔓 Putuskan Koneksi",  callback_data: "/logout"  },
+    ],
+  ],
+};
+
+const LB_SUB_KEYBOARD = {
+  inline_keyboard: [
+    [
+      { text: "📊 Performansi Revenue", callback_data: "lb:perf" },
+      { text: "📋 Sales Funnel",        callback_data: "lb:funnel" },
+    ],
+    [
+      { text: "📅 Sales Activity",      callback_data: "lb:activity" },
+      { text: "◀️ Kembali",            callback_data: "nav:main" },
     ],
   ],
 };
@@ -318,7 +335,7 @@ const FUNNEL_SUB_KEYBOARD = {
       { text: "📊 Visualisasi Data",   callback_data: "funnel:visualisasi" },
     ],
     [
-      { text: "◀️ Kembali ke Menu",    callback_data: "nav:main"  },
+      { text: "◀️ Kembali ke Menu",    callback_data: "lb:menu"  },
     ],
   ],
 };
@@ -427,6 +444,143 @@ interface SnapshotState {
   selectedIndex: number;
 }
 const snapshotState = new Map<string, SnapshotState>();
+
+// ── Account management flow state ───────────────────────────────────────────────
+type AkunStep = "idle" | "waiting_role" | "waiting_nama" | "waiting_nik" | "waiting_divisi" | "waiting_confirm"
+  | "waiting_bulk_expires" | "waiting_per_am_select" | "waiting_per_am_action";
+interface AkunState {
+  step: AkunStep;
+  role: string;
+  nama: string;
+  nik: string;
+  divisi: string;
+  createdById: number;
+  // Bulk link fields
+  bulkLinkCode?: string;
+  bulkLinkCreatedByNik?: string;
+  bulkLinkCreatedByNama?: string;
+  // Per-AM fields
+  perAmSelectedId?: number;
+  perAmSelectedNik?: string;
+  perAmSelectedNama?: string;
+  perAmPage?: number;
+}
+const akunState = new Map<string, AkunState>();
+
+// ── Bulk link verification state (for ADMIN-XXXXXX flow) ────────────────────
+interface BulkLinkVerifyState {
+  bulkLinkId: number;
+  officerNik: string;
+  officerNama: string;
+  officerId: number | null;
+  createdByNik: string;
+}
+const bulkLinkVerifyState = new Map<string, BulkLinkVerifyState>();
+
+// ── Account management keyboard ──────────────────────────────────────────────
+const AKUN_MAIN_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "📋 Daftar Akun", callback_data: "akun:daftar" }],
+    [{ text: "➕ Tambah Akun", callback_data: "akun:tambah" }],
+    [{ text: "🔑 Kode Verifikasi", callback_data: "akun:kodeparas" }],
+    [{ text: "◀️ Menu Utama", callback_data: "nav:main" }],
+  ],
+};
+
+function buildAkunTambahKeyboard(role: string) {
+  const isAm = role === "ACCOUNT_MANAGER" || role === "AM";
+  const rows: { text: string; callback_data: string }[][] = [];
+  rows.push([
+    { text: "Account Manager", callback_data: "akun:role:ACCOUNT_MANAGER" },
+    { text: "Officer", callback_data: "akun:role:OFFICER" },
+  ]);
+  rows.push([
+    { text: "Manager", callback_data: "akun:role:MANAGER" },
+    { text: "Admin", callback_data: "akun:role:ADMIN" },
+  ]);
+  rows.push([{ text: "◀️ Kembali", callback_data: "/manajemen" }]);
+  return { inline_keyboard: rows };
+}
+
+function buildAkunDivisiKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "DPS", callback_data: "akun:divisi:DPS" }],
+      [{ text: "DSS", callback_data: "akun:divisi:DSS" }],
+      [{ text: "DGS", callback_data: "akun:divisi:DGS" }],
+      [{ text: "◀️ Kembali", callback_data: "akun:tambah" }],
+    ],
+  };
+}
+
+const AKUN_CONFIRM_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "✅ Ya, Simpan", callback_data: "akun:confirm_save" }],
+    [{ text: "❌ Batal", callback_data: "/manajemen" }],
+  ],
+};
+
+const AKUN_LIST_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "◀️ Kembali", callback_data: "/manajemen" }],
+  ],
+};
+
+// ── Kode verifikasi: pilih tipe ───────────────────────────────────────────────
+const KODE_PARAS_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "🔗 Tanpa Batas", callback_data: "akun:kodeparas:bulk" }],
+    [{ text: "📋 Histori Tanpa Batas", callback_data: "akun:kodeparas:hist" }],
+    [{ text: "👤 Per User", callback_data: "akun:kodeparas:peram" }],
+    [{ text: "◀️ Kembali", callback_data: "/manajemen" }],
+  ],
+};
+
+const KODE_PARAS_BACK_KEYBOARD = {
+  inline_keyboard: [
+    [{ text: "◀️ Kembali", callback_data: "akun:kodeparas" }],
+  ],
+};
+
+// Build paginated unlinked AM keyboard for per-AM flow
+function buildPerAmKeyboard(unlinked: Array<{ id: number; nama: string; nik: string | null; divisi: string; role: string }>, page: number, total: number) {
+  const PER_PAGE = 10;
+  const rows: { text: string; callback_data: string }[][] = [];
+  const ROLE_SHORT: Record<string, string> = { ADMIN: "Admin", MANAGER: "Manager", OFFICER: "Off", ACCOUNT_MANAGER: "AM", AM: "AM" };
+  for (let i = 0; i < unlinked.length; i++) {
+    const am = unlinked[i];
+    const nik = am.nik || "-";
+    const badge = ROLE_SHORT[am.role] ?? am.role;
+    rows.push([{
+      text: `${am.nama} (${badge}) - ${am.divisi} - ${nik}`,
+      callback_data: `akun:peram:select:${am.id}`,
+    }]);
+  }
+  // Pagination
+  if (total > PER_PAGE) {
+    const navRow: { text: string; callback_data: string }[] = [];
+    if (page > 0) navRow.push({ text: "◀️ Prev", callback_data: `akun:peram:page:${page - 1}` });
+    navRow.push({ text: `Halaman ${page + 1}/${Math.ceil(total / PER_PAGE)}`, callback_data: "akun:noop" });
+    if ((page + 1) * PER_PAGE < total) navRow.push({ text: "Next ▶️", callback_data: `akun:peram:page:${page + 1}` });
+    if (navRow.length > 1) rows.push(navRow);
+  }
+  rows.push([{ text: "◀️ Kembali", callback_data: "akun:kodeparas" }]);
+  return { inline_keyboard: rows };
+}
+
+// Per-AM: after selecting AM, choose code or link
+function buildPerAmActionKeyboard(amId: number, amNama: string) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🔑 Kode Verifikasi", callback_data: `akun:peram:gencode:${amId}` },
+        { text: "🔗 Link Deep", callback_data: `akun:peram:genlink:${amId}` },
+      ],
+      [{ text: "◀️ Ganti AM", callback_data: "akun:kodeparas:peram" }],
+      [{ text: "◀️ Kembali", callback_data: "akun:kodeparas" }],
+    ],
+  };
+}
 
 // Keyboard: choose data type
 const LIST_SNAPSHOT_TYPE_KEYBOARD = {
@@ -1428,7 +1582,7 @@ export async function pollOnce() {
           }
 
           // ── funnel:peringkat — Papan Peringkat ─────────────────────────
-          if (cbData === "funnel:peringkat") {
+          if (cbData === "funnel:peringkat" || cbData === "lb:funnel") {
             const firstName = resolvedAm.nama.split(" ")[0];
 
             // Get latest funnel snapshot
@@ -1766,7 +1920,7 @@ export async function pollOnce() {
           }
 
           // ── activity:peringkat — Papan Peringkat KPI Activity ──────────────
-          if (cbData === "activity:peringkat") {
+          if (cbData === "activity:peringkat" || cbData === "lb:activity") {
             const firstName = resolvedAm.nama.split(" ")[0];
             const masterAms = await db.select().from(accountManagersTable);
             const activeAms = masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
@@ -1921,6 +2075,42 @@ export async function pollOnce() {
             continue;
           }
 
+          // ── lb:perf / lb:funnel / lb:activity — Leaderboard sub-menu ────
+          if (cbData === "lb:menu") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const amFirstName = resolvedAm.nama.split(" ")[0];
+            await sendToTelegram(token, cbChatId,
+              `🏆 *Papan Peringkat*\n\nHai kak *${amFirstName}*! Pilih tipe data untuk melihat peringkat:`, LB_SUB_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          if (cbData === "lb:perf") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const amFirstName = resolvedAm.nama.split(" ")[0];
+            perfRankState.delete(cbChatId);
+            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            if (!periods.length) {
+              await sendToTelegram(token, cbChatId, `❌ Belum ada data performansi tersimpan kak *${amFirstName}*.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
+              continue;
+            }
+            const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const buttons = periods.map(p => ({
+              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
+              callback_data: `perf:rankbulan:${p.tahun}-${String(p.bulan).padStart(2, "0")}`,
+            }));
+            const rows: typeof buttons[] = [];
+            for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
+            rows.push([{ text: "🔙 Kembali", callback_data: "lb:menu" }]);
+            await sendToTelegram(token, cbChatId,
+              `🏆 *PAPAN PERINGKAT — Pilih Bulan*\n\nHai kak *${amFirstName}*! Pilih bulan untuk melihat peringkat:\n\n` +
+              `• *Peringkat CM* — achievement bulan berjalan\n` +
+              `• *Peringkat YTD* — Year-to-Date`,
+              { inline_keyboard: rows }
+            ).catch(() => {});
+            continue;
+          }
+
           // ── /list — show list snapshot type menu ─────────────────────────
           if (cbData === "/list") {
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
@@ -2069,6 +2259,538 @@ export async function pollOnce() {
               `📥 *Import Data*\n\nPilih tipe data yang ingin diimport kak *${resolvedAm.nama.split(" ")[0]}*:`,
               IMPORT_TYPE_KEYBOARD
             ).catch(() => {});
+            continue;
+          }
+
+          // ════════════════════════════════════════════════════════════
+          // ── MANAJEMEN AKUN ───────────────────────────────────────────
+          // ════════════════════════════════════════════════════════════
+
+          // ── /manajemen — main account management menu ──────────────────
+          if (cbData === "/manajemen") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            akunState.delete(cbChatId);
+            const domain = getPublicBaseUrl();
+            await sendToTelegram(token, cbChatId,
+              `👥 *Manajemen Akun*\n\n` +
+              `Halo kak *${resolvedAm.nama.split(" ")[0]}*! 👋\n\n` +
+              `Fitur ini memungkinkan kamu mengelola akun dashboard LESAVI:\n\n` +
+              `📋 *Daftar Akun* — Lihat daftar semua akun (AM, Officer, Manager, Admin)\n\n` +
+              `➕ *Tambah Akun* — Buat akun baru dengan role tertentu\n\n` +
+              `🔑 *Kode Verifikasi* — Generate kode akses Telegram untuk AM baru\n\n` +
+              `📎 Dashboard penuh:\n${domain}/manajemen-akun`,
+              AKUN_MAIN_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:daftar — show account list ─────────────────────────────
+          if (cbData === "akun:daftar") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            const allUsers = await db.select().from(accountManagersTable).orderBy(accountManagersTable.nama);
+            if (allUsers.length === 0) {
+              await sendToTelegram(token, cbChatId, `Belum ada akun tersimpan kak *${resolvedAm.nama.split(" ")[0]}*.`, AKUN_LIST_KEYBOARD).catch(() => {});
+              continue;
+            }
+
+            // Build compact list grouped by role
+            const byRole: Record<string, typeof allUsers> = {};
+            for (const u of allUsers) {
+              if (!byRole[u.role]) byRole[u.role] = [];
+              byRole[u.role].push(u);
+            }
+            const ROLE_SHORT: Record<string, string> = { ADMIN: "Admin", MANAGER: "Manager", OFFICER: "Officer", ACCOUNT_MANAGER: "AM", AM: "AM" };
+            let msg = `📋 *DAFTAR AKUN LESA VI*\n\n`;
+            msg += `Total: *${allUsers.length}* akun\n\n`;
+
+            for (const role of ["ADMIN", "MANAGER", "OFFICER", "ACCOUNT_MANAGER", "AM"]) {
+              const members = byRole[role];
+              if (!members?.length) continue;
+              msg += `─── *${ROLE_SHORT[role] ?? role}* ───\n`;
+              for (const m of members) {
+                const tgBadge = m.telegramChatId ? " ✅" : "";
+                const aktifBadge = !m.aktif ? " ⏸" : "";
+                const nik = m.nik || "-";
+                msg += `• *${m.nama}* | NIK: ${nik}${tgBadge}${aktifBadge}\n`;
+              }
+              msg += "\n";
+            }
+
+            await sendToTelegram(token, cbChatId, msg, AKUN_LIST_KEYBOARD).catch(() => {});
+            continue;
+          }
+
+          // ── akun:tambah — start add account flow ────────────────────────
+          if (cbData === "akun:tambah") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            akunState.delete(cbChatId);
+            await sendToTelegram(token, cbChatId,
+              `➕ *Tambah Akun Baru*\n\n` +
+              `Pilih *role* akun yang ingin dibuat kak *${resolvedAm.nama.split(" ")[0]}*:`,
+              buildAkunTambahKeyboard("ACCOUNT_MANAGER")
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:role:* — set role and ask for nama ─────────────────────
+          if (cbData.startsWith("akun:role:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            const role = cbData.slice("akun:role:".length);
+            akunState.set(cbChatId, {
+              step: "waiting_nama",
+              role,
+              nama: "",
+              nik: "",
+              divisi: "DPS",
+              createdById: resolvedAm.id,
+            });
+            const roleLabel = ROLE_LABELS[role] ?? role;
+            await sendToTelegram(token, cbChatId,
+              `➕ *Tambah Akun — ${roleLabel}*\n\n` +
+              `Ketik *Nama Lengkap* akun baru kak *${resolvedAm.nama.split(" ")[0]}*:\n\n` +
+              `Format: NAMA LENGKAP (huruf besar)\n` +
+              `Contoh: *BUDI SANTOSO*`,
+              { inline_keyboard: [[{ text: "◀️ Batal", callback_data: "/manajemen" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:divisi:* — set divisi and go to confirm ─────────────────
+          if (cbData.startsWith("akun:divisi:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const state = akunState.get(cbChatId);
+            if (!state || state.step !== "waiting_divisi") { continue; }
+            const divisi = cbData.slice("akun:divisi:".length);
+            state.divisi = divisi;
+            state.step = "waiting_confirm";
+            akunState.set(cbChatId, state);
+
+            const isAm = state.role === "ACCOUNT_MANAGER" || state.role === "AM";
+            const roleLabel = ROLE_LABELS[state.role] ?? state.role;
+            const nikLine = isAm ? `├ NIK    : *${state.nik}*\n` : "";
+            const divLine = isAm ? `├ Divisi : *${divisi}*\n` : "";
+            const msg =
+              `📝 *Konfirmasi Data Akun*\n\n` +
+              `Pastikan data di bawah sudah benar:\n\n` +
+              `├ Role   : *${roleLabel}*\n` +
+              `${nikLine}` +
+              `${divLine}` +
+              `└ Nama   : *${state.nama}*\n\n` +
+              `Data akan disimpan ke sistem.`;
+            await sendToTelegram(token, cbChatId, msg, AKUN_CONFIRM_KEYBOARD).catch(() => {});
+            continue;
+          }
+
+          // ── akun:confirm_save — create account via API ───────────────────
+          if (cbData === "akun:confirm_save") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const state = akunState.get(cbChatId);
+            if (!state || state.step !== "waiting_confirm") { continue; }
+
+            const isAm = state.role === "ACCOUNT_MANAGER" || state.role === "AM";
+            const secret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+            const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:3000";
+            const domain = getPublicBaseUrl();
+
+            await sendToTelegram(token, cbChatId, `⏳ Menyimpan data akun...`).catch(() => {});
+
+            try {
+              const apiResp = await fetch(`${internalBase}/api/internal/am/create`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-telegram-secret": secret },
+                body: JSON.stringify({
+                  nik: isAm ? state.nik : null,
+                  nama: state.nama,
+                  role: state.role,
+                  tipe: "LESA",
+                  divisi: isAm ? state.divisi : "DPS",
+                  segmen: isAm ? null : null,
+                  witel: "SURAMADU",
+                  email: null,
+                  telegramChatId: null,
+                  kpiActivity: isAm ? null : 0,
+                }),
+              });
+
+              const apiData = await apiResp.json() as { error?: string; id?: number; nik?: string; role?: string };
+
+              if (!apiResp.ok) {
+                await sendToTelegram(token, cbChatId,
+                  `❌ *Gagal Membuat Akun*\n\n${apiData.error || "Terjadi kesalahan saat menyimpan data."}\n\n` +
+                  `Silakan coba lagi atau hubungi developer.`,
+                  AKUN_MAIN_KEYBOARD
+                ).catch(() => {});
+                akunState.delete(cbChatId);
+                continue;
+              }
+
+              const roleLabel = ROLE_LABELS[state.role] ?? state.role;
+              await sendToTelegram(token, cbChatId,
+                `✅ *Akun Berhasil Dibuat!*\n\n` +
+                `├ Role   : *${roleLabel}*\n` +
+                `├ Nama   : *${state.nama}*\n` +
+                (isAm ? `├ NIK    : *${state.nik}*\n├ Divisi : *${state.divisi}*\n` : "") +
+                `└ ID     : #${apiData.id}\n\n` +
+                `📎 Kelola di Dashboard:\n${domain}/manajemen-akun`,
+                AKUN_MAIN_KEYBOARD
+              ).catch(() => {});
+            } catch (err) {
+              logger.error({ err }, "Failed to create account via Telegram");
+              await sendToTelegram(token, cbChatId,
+                `❌ *Gagal Membuat Akun*\n\nTerjadi kesalahan koneksi ke server.\n\nSilakan coba lagi nanti.`,
+                AKUN_MAIN_KEYBOARD
+              ).catch(() => {});
+            }
+
+            akunState.delete(cbChatId);
+            continue;
+          }
+
+          // ── akun:kodeparas — main kode verifikasi menu ────────────────
+          if (cbData === "akun:kodeparas") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") {
+              await sendToTelegram(token, cbChatId, `Fitur ini hanya tersedia untuk *ADMIN*, *OFFICER*, dan *MANAGER*.`).catch(() => {});
+              continue;
+            }
+            akunState.delete(cbChatId);
+            await sendToTelegram(token, cbChatId,
+              `🔑 *Kode Verifikasi Telegram*\n\n` +
+              `Pilih tipe verifikasi kak *${resolvedAm.nama.split(" ")[0]}*:\n\n` +
+              `🔗 *Tanpa Batas* — Generate 1 link/QR yang bisa dishare ke AM manapun. Link ini memiliki masa berlaku tertentu.\n\n` +
+              `👤 *Per AM* — Generate kode/link untuk AM tertentu dari daftar.`,
+              KODE_PARAS_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:kodeparas:bulk — start bulk (tanpa batas) flow ──────
+          if (cbData === "akun:kodeparas:bulk") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            akunState.set(cbChatId, {
+              step: "waiting_bulk_expires",
+              role: "", nama: "", nik: "", divisi: "",
+              createdById: resolvedAm.id,
+              bulkLinkCreatedByNik: resolvedAm.nik || "",
+              bulkLinkCreatedByNama: resolvedAm.nama,
+            });
+            await sendToTelegram(token, cbChatId,
+              `🔗 *Tanpa Batas — Generate Link*\n\n` +
+              `Ketik *masa berlaku* link ini (default: *jam*).\n\n` +
+              `Contoh:\n` +
+              `• *2* — 2 jam (default)\n` +
+              `• *60* — 60 menit (setara 1 jam)\n` +
+              `• *2h* — 2 jam\n` +
+              `• *3d* — 3 hari\n` +
+              `• *30m* — 30 menit\n\n` +
+              `Maksimum: 7 hari.`,
+              KODE_PARAS_BACK_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:kodeparas:hist — show bulk link history ───────────────
+          if (cbData === "akun:kodeparas:hist") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+
+            const now = new Date();
+            const allLinks = await db.select().from(telegramBulkLinksTable)
+              .orderBy(desc(telegramBulkLinksTable.createdAt));
+
+            // Get bot username from cached app_settings (set when token is saved)
+            const [settings] = await db.select({
+              telegramBotToken: appSettingsTable.telegramBotToken,
+              telegramBotUsername: appSettingsTable.telegramBotUsername,
+            }).from(appSettingsTable);
+            const botUsername = settings?.telegramBotUsername ?? null;
+
+            const rows: { text: string; callback_data: string }[][] = [];
+            let msg = `📋 *Histori Link Tanpa Batas*\n\n`;
+
+            if (allLinks.length === 0) {
+              await sendToTelegram(token, cbChatId,
+                `📋 *Histori Link Tanpa Batas*\n\nBelum ada link yang dibuat.`,
+                KODE_PARAS_BACK_KEYBOARD
+              ).catch(() => {});
+              continue;
+            }
+
+            for (const link of allLinks) {
+              const expiresAt = new Date(link.expiresAt);
+              const isExpired = expiresAt <= now || link.status === "USED";
+              const usedStatus = link.status === "USED" ? "✅ Terpakai" : (isExpired ? "❌ Kadaluarsa" : "🟢 Aktif");
+              const remaining = isExpired
+                ? usedStatus
+                : (() => {
+                    const diffMs = expiresAt.getTime() - now.getTime();
+                    const diffMin = Math.floor(diffMs / 60000);
+                    if (diffMin < 60) return `🟢 ${diffMin}m`;
+                    const diffH = Math.floor(diffMin / 60);
+                    if (diffH < 24) return `🟡 ${diffH}j ${diffMin % 60}m`;
+                    const diffD = Math.floor(diffH / 24);
+                    return `🟡 ${diffD}d ${diffH % 24}j`;
+                  })();
+
+              const deepLink = botUsername ? `https://t.me/${botUsername}/start=${link.code}` : null;
+              msg += `🔗 ${link.code}\n`;
+              msg += `├ Dibuat  : ${link.createdByNama} (${link.createdByNik})\n`;
+              msg += `├ Kadaluarsa: ${expiresAt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" })}\n`;
+              msg += `├ Status  : ${remaining}\n`;
+              msg += `├ Terpakai: ${link.status === "USED" ? "Ya" : "Belum"}\n`;
+              if (deepLink) msg += `└ Link    : ${deepLink}\n\n`;
+              else msg += `\n`;
+
+              if (!isExpired) {
+                rows.push([{ text: `🗑️ Hapus ${link.code}`, callback_data: `akun:kodeparas:delhist:${link.id}` }]);
+              }
+            }
+
+            rows.push([{ text: "◀️ Kembali", callback_data: "akun:kodeparas:bulk" }]);
+            await sendToTelegram(token, cbChatId, msg, { inline_keyboard: rows }).catch(() => {});
+            continue;
+          }
+
+          // ── akun:kodeparas:delhist:N — delete a bulk link ─────────────
+          if (cbData.startsWith("akun:kodeparas:delhist:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const linkId = parseInt(cbData.slice("akun:kodeparas:delhist:".length), 10);
+            if (isNaN(linkId)) { continue; }
+
+            const [link] = await db.select().from(telegramBulkLinksTable)
+              .where(eq(telegramBulkLinksTable.id, linkId));
+            if (!link) {
+              await sendToTelegram(token, cbChatId, `❌ Link tidak ditemukan.`, KODE_PARAS_KEYBOARD).catch(() => {});
+              continue;
+            }
+
+            await db.update(telegramBulkLinksTable)
+              .set({ status: "CANCELLED" })
+              .where(eq(telegramBulkLinksTable.id, linkId));
+
+            await sendToTelegram(token, cbChatId,
+              `✅ Link *${link.code}* telah dibatalkan.`,
+              KODE_PARAS_KEYBOARD
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:kodeparas:peram — show unlinked AM list ────────────
+          if (cbData === "akun:kodeparas:peram") {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const allUsers = await db.select({
+              id: accountManagersTable.id, nama: accountManagersTable.nama,
+              nik: accountManagersTable.nik, divisi: accountManagersTable.divisi,
+              role: accountManagersTable.role,
+              telegramChatId: accountManagersTable.telegramChatId,
+            }).from(accountManagersTable);
+            const unconnected = allUsers.filter(u => !u.telegramChatId);
+            if (unconnected.length === 0) {
+              await sendToTelegram(token, cbChatId,
+                `👤 *Per User*\n\n` +
+                `Semua user sudah terhubung dengan Telegram kak *${resolvedAm.nama.split(" ")[0]}*.`,
+                KODE_PARAS_KEYBOARD
+              ).catch(() => {});
+              continue;
+            }
+            akunState.set(cbChatId, {
+              step: "waiting_per_am_select",
+              role: "", nama: "", nik: "", divisi: "",
+              createdById: resolvedAm.id,
+              perAmPage: 0,
+              perAmSelectedId: undefined,
+              perAmSelectedNik: undefined,
+              perAmSelectedNama: undefined,
+            });
+            const page = 0;
+            const PER_PAGE = 10;
+            const pageItems = unconnected.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
+            await sendToTelegram(token, cbChatId,
+              `👤 *Per User — Pilih User*\n\n` +
+              `Pilih user yang ingin di-generate kode/link:\n` +
+              `(User belum terhubung Telegram)`,
+              buildPerAmKeyboard(pageItems, 0, unconnected.length)
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:peram:page:N — pagination for per-AM list ──────────
+          if (cbData.startsWith("akun:peram:page:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const page = parseInt(cbData.slice("akun:peram:page:".length), 10) || 0;
+            const state = akunState.get(cbChatId);
+            if (!state) { continue; }
+
+            const allUsers = await db.select({
+              id: accountManagersTable.id, nama: accountManagersTable.nama,
+              nik: accountManagersTable.nik, divisi: accountManagersTable.divisi,
+              role: accountManagersTable.role,
+              telegramChatId: accountManagersTable.telegramChatId,
+            }).from(accountManagersTable);
+            const unconnected = allUsers.filter(u => !u.telegramChatId);
+            const PER_PAGE = 10;
+            const pageItems = unconnected.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
+
+            state.perAmPage = page;
+            akunState.set(cbChatId, state);
+
+            const msg = `👤 *Per User — Pilih User*\n\nPilih user yang ingin di-generate kode/link:\n(User belum terhubung Telegram)`;
+            const cb = update.callback_query;
+            await answerCallbackQueryAndEdit(
+              token, cb?.id || "", cbChatId,
+              cb?.message?.message_id || 0,
+              msg,
+              buildPerAmKeyboard(pageItems, page, unconnected.length)
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:peram:select:N — select an AM ─────────────────────
+          if (cbData.startsWith("akun:peram:select:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const amId = parseInt(cbData.slice("akun:peram:select:".length), 10);
+            const [am] = await db.select({
+              id: accountManagersTable.id, nama: accountManagersTable.nama,
+              nik: accountManagersTable.nik, divisi: accountManagersTable.divisi,
+              role: accountManagersTable.role,
+              telegramChatId: accountManagersTable.telegramChatId,
+            }).from(accountManagersTable).where(eq(accountManagersTable.id, amId));
+
+            if (!am || am.telegramChatId) {
+              await sendToTelegram(token, cbChatId, `❌ User tidak ditemukan atau sudah terhubung.`, KODE_PARAS_KEYBOARD).catch(() => {});
+              continue;
+            }
+
+            const ROLE_SHORT: Record<string, string> = { ADMIN: "Admin", MANAGER: "Manager", OFFICER: "Officer", ACCOUNT_MANAGER: "AM", AM: "AM" };
+            const badge = ROLE_SHORT[am.role ?? ""] ?? am.role ?? "";
+            const nik = am.nik || "-";
+            await sendToTelegram(token, cbChatId,
+              `👤 User Dipilih:\n` +
+              `├ Nama   : ${am.nama}\n` +
+              `├ Role   : ${badge}\n` +
+              `├ NIK    : ${nik}\n` +
+              `├ Divisi : ${am.divisi}\n\n` +
+              `Pilih tipe verifikasi:`,
+              buildPerAmActionKeyboard(am.id, am.nama)
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── akun:peram:gencode:N — generate code for selected AM ────
+          if (cbData.startsWith("akun:peram:gencode:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const state = akunState.get(cbChatId);
+            const amId = parseInt(cbData.slice("akun:peram:gencode:".length), 10);
+
+            const [am] = await db.select({
+              id: accountManagersTable.id, nama: accountManagersTable.nama,
+              nik: accountManagersTable.nik, divisi: accountManagersTable.divisi,
+              telegramChatId: accountManagersTable.telegramChatId,
+            }).from(accountManagersTable).where(eq(accountManagersTable.id, amId));
+
+            if (!am || am.telegramChatId) {
+              await sendToTelegram(token, cbChatId, `❌ User tidak ditemukan atau sudah terhubung.`, KODE_PARAS_KEYBOARD).catch(() => {});
+              continue;
+            }
+
+            const secret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+            const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:3000";
+
+            await sendToTelegram(token, cbChatId, `⏳ Generate kode verifikasi untuk ${am.nama}...`).catch(() => {});
+
+            try {
+              const apiResp = await fetch(`${internalBase}/api/internal/telegram/gen-link/${amId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-telegram-secret": secret },
+                body: JSON.stringify({ duration: "2h" }),
+              });
+              const apiData = await apiResp.json() as { code?: string; link?: string; error?: string; expiresAt?: string };
+
+              if (!apiResp.ok || !apiData.code) {
+                await sendToTelegram(token, cbChatId, `❌ Gagal generate kode.\n\n${apiData.error || "Terjadi kesalahan."}`, KODE_PARAS_KEYBOARD).catch(() => {});
+                continue;
+              }
+
+              const expiresStr = apiData.expiresAt
+                ? new Date(apiData.expiresAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" })
+                : "-";
+
+              let msg = `✅ Kode Verifikasi Dibuat\n\n`;
+              msg += `├ User   : ${am.nama}\n`;
+              msg += `├ NIK    : ${am.nik || "-"}\n`;
+              msg += `├ Kode   : ${apiData.code}\n`;
+              msg += `├ Link   : ${apiData.link || "-"}\n`;
+              msg += `└ Expires: ${expiresStr}\n\n`;
+              msg += `Kirim kode/link di atas ke user yang bersangkutan.`;
+              akunState.delete(cbChatId);
+              await sendToTelegram(token, cbChatId, msg, KODE_PARAS_KEYBOARD).catch(() => {});
+            } catch (err) {
+              logger.error({ err }, "Failed to generate per-AM code");
+              await sendToTelegram(token, cbChatId, `❌ Gagal generate kode.\n\nTerjadi kesalahan koneksi.`, KODE_PARAS_KEYBOARD).catch(() => {});
+            }
+            continue;
+          }
+
+          // ── akun:peram:genlink:N — generate link for selected AM ─────
+          if (cbData.startsWith("akun:peram:genlink:")) {
+            if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
+            const amId = parseInt(cbData.slice("akun:peram:genlink:".length), 10);
+
+            const [am] = await db.select({
+              id: accountManagersTable.id, nama: accountManagersTable.nama,
+              nik: accountManagersTable.nik, divisi: accountManagersTable.divisi,
+              telegramChatId: accountManagersTable.telegramChatId,
+            }).from(accountManagersTable).where(eq(accountManagersTable.id, amId));
+
+            if (!am || am.telegramChatId) {
+              await sendToTelegram(token, cbChatId, `❌ User tidak ditemukan atau sudah terhubung.`, KODE_PARAS_KEYBOARD).catch(() => {});
+              continue;
+            }
+
+            const secret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+            const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:3000";
+
+            await sendToTelegram(token, cbChatId, `⏳ Generate link untuk *${am.nama}*...`).catch(() => {});
+
+            try {
+              const apiResp = await fetch(`${internalBase}/api/internal/telegram/gen-link/${amId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-telegram-secret": secret },
+                body: JSON.stringify({ duration: "2h" }),
+              });
+              const apiData = await apiResp.json() as { code?: string; link?: string; error?: string; expiresAt?: string };
+
+              if (!apiResp.ok || !apiData.link) {
+                await sendToTelegram(token, cbChatId, `❌ Gagal generate link.\n\n${apiData.error || "Terjadi kesalahan."}`, KODE_PARAS_KEYBOARD).catch(() => {});
+                continue;
+              }
+
+              const expiresStr = apiData.expiresAt
+                ? new Date(apiData.expiresAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" })
+                : "-";
+
+              let msg = `🔗 Link Deep Dibuat\n\n`;
+              msg += `├ User   : ${am.nama}\n`;
+              msg += `├ NIK    : ${am.nik || "-"}\n`;
+              msg += `├ Link   : ${apiData.link}\n`;
+              msg += `└ Expires: ${expiresStr}\n\n`;
+              msg += `Kirim link di atas ke user yang bersangkutan.`;
+              akunState.delete(cbChatId);
+              await sendToTelegram(token, cbChatId, msg, KODE_PARAS_KEYBOARD).catch(() => {});
+            } catch (err) {
+              logger.error({ err }, "Failed to generate per-AM link");
+              await sendToTelegram(token, cbChatId, `❌ Gagal generate link.\n\nTerjadi kesalahan koneksi.`, KODE_PARAS_KEYBOARD).catch(() => {});
+            }
             continue;
           }
 
@@ -2308,6 +3030,120 @@ export async function pollOnce() {
       }
 
       const isVerifCode = (s: string) => /^LV-[A-Z0-9]{6}$/i.test(s);
+      const isBulkLinkCode = (s: string) => /^ADMIN-[A-Z0-9]{8}$/i.test(s);
+
+      const tryLinkByBulkCode = async (code: string) => {
+        const now = new Date();
+
+        // Look up bulk link in DB
+        const [bulkLink] = await db.select().from(telegramBulkLinksTable)
+          .where(and(
+            eq(telegramBulkLinksTable.code, code.toUpperCase()),
+            eq(telegramBulkLinksTable.status, "ACTIVE")
+          ));
+
+        if (!bulkLink) {
+          await sendToTelegram(token, chatId,
+            `❌ Link tidak valid atau sudah kadaluarsa.\n\nMinta ADMIN, OFFICER, atau MANAGER untuk generate link baru.`
+          ).catch(() => {});
+          return;
+        }
+        if (bulkLink.expiresAt < now) {
+          await db.update(telegramBulkLinksTable)
+            .set({ status: "EXPIRED" })
+            .where(eq(telegramBulkLinksTable.id, bulkLink.id));
+          await sendToTelegram(token, chatId,
+            `❌ Link sudah kadaluarsa.\n\nMinta ADMIN, OFFICER, atau MANAGER untuk generate link baru.`
+          ).catch(() => {});
+          return;
+        }
+
+        // Check if user already linked
+        const [alreadyLinked] = await db.select({
+          nama: accountManagersTable.nama,
+        }).from(accountManagersTable)
+          .where(eq(accountManagersTable.telegramChatId, chatId));
+
+        if (alreadyLinked) {
+          await sendToTelegram(token, chatId,
+            `ℹ️ Akun Sudah Terhubung\n\n` +
+            `Akun kamu sudah terhubung dengan Telegram.\n` +
+            `Putuskan koneksi dulu kalau mau menggantikan.`
+          ).catch(() => {});
+          return;
+        }
+
+        // Step 1: Ask for officer NIK
+        await sendToTelegram(token, chatId,
+          `🔗 *Link Valid*\n\n` +
+          `Link ini dibuat oleh Officer.\n\n` +
+          `Ketik NIK Officer yang membuat link ini untuk verifikasi:\n\n` +
+          `Format: angka NIK (contoh: 850099)`
+        ).catch(() => {});
+
+        // Store bulk link id + officer NIK in temp state for this chatId
+        bulkLinkVerifyState.set(chatId, {
+          bulkLinkId: bulkLink.id,
+          officerNik: bulkLink.createdByNik.toLowerCase(),
+          officerNama: bulkLink.createdByNama,
+          officerId: bulkLink.createdById,
+          createdByNik: bulkLink.createdByNik,
+        });
+      };
+
+      // After officer NIK verified, ask for AM NIK
+      const tryVerifyAmNikForBulk = async (chatId: string, amNikInput: string) => {
+        const verifyData = bulkLinkVerifyState.get(chatId);
+        if (!verifyData) return;
+
+        // Look up AM by NIK
+        const [am] = await db.select({
+          id: accountManagersTable.id,
+          nama: accountManagersTable.nama,
+          nik: accountManagersTable.nik,
+          role: accountManagersTable.role,
+          telegramChatId: accountManagersTable.telegramChatId,
+        }).from(accountManagersTable)
+          .where(eq(accountManagersTable.nik, amNikInput.trim()));
+
+        if (!am) {
+          await sendToTelegram(token, chatId,
+            `❌ NIK AM tidak ditemukan di database.\n\n` +
+            `Pastikan NIK yang dimasukkan benar. Hubungi admin jika ada masalah.`
+          ).catch(() => {});
+          bulkLinkVerifyState.delete(chatId);
+          return;
+        }
+        if (am.telegramChatId) {
+          await sendToTelegram(token, chatId,
+            `⚠️ *AM Sudah Terhubung*\n\n` +
+            `NIK *${amNikInput}* (${am.nama}) sudah terhubung dengan akun Telegram lain.\n\n` +
+            `Hubungi admin untuk memutuskan koneksi lama terlebih dahulu.`
+          ).catch(() => {});
+          bulkLinkVerifyState.delete(chatId);
+          return;
+        }
+
+        const now = new Date();
+
+        // Link the AM
+        await db.update(accountManagersTable)
+          .set({ telegramChatId: chatId, telegramLinkedAt: now })
+          .where(eq(accountManagersTable.id, am.id));
+
+        // Mark bulk link as USED
+        await db.update(telegramBulkLinksTable)
+          .set({ usedAt: now, status: "USED", usedByAmId: am.id })
+          .where(eq(telegramBulkLinksTable.id, verifyData.bulkLinkId));
+
+        bulkLinkVerifyState.delete(chatId);
+        await upsertBotUser({ ...botUsersMap.get(chatId)!, lastMessage: "✅ Linked via bulk link" });
+        await sendToTelegram(token, chatId,
+          buildLinkedConfirm(am.nama, am.role),
+          getMainKeyboard(am.role)
+        ).catch(() => {});
+        logger.info({ amId: am.id, nama: am.nama, chatId }, "AM linked via bulk link");
+      };
 
       const tryLinkByCode = async (code: string, source: string) => {
         const now = new Date();
@@ -2367,8 +3203,13 @@ export async function pollOnce() {
         logger.info({ chatId, text }, "PROCESSING /start");
         const deepLinkCode = text.slice(6).trim();
         if (isVerifCode(deepLinkCode)) {
-          logger.info({ chatId, deepLinkCode }, "/start WITH valid code — linking");
+          logger.info({ chatId, deepLinkCode }, "/start WITH valid LV code — linking");
           await tryLinkByCode(deepLinkCode, "magic link");
+          continue;
+        }
+        if (isBulkLinkCode(deepLinkCode)) {
+          logger.info({ chatId, deepLinkCode }, "/start WITH bulk link code — verifying");
+          await tryLinkByBulkCode(deepLinkCode);
           continue;
         }
         const [linkedAm] = await db.select().from(accountManagersTable)
@@ -2524,9 +3365,184 @@ export async function pollOnce() {
         continue;
       }
 
-      // Verification code
+      // ════════════════════════════════════════════════════════════
+      // ── MANAJEMEN AKUN — Text input flow ─────────────────────────
+      // ════════════════════════════════════════════════════════════
+      {
+        const state = akunState.get(chatId);
+        const [linkedAm] = await db.select().from(accountManagersTable)
+          .where(eq(accountManagersTable.telegramChatId, chatId));
+        if (state && linkedAm && linkedAm.role !== "ACCOUNT_MANAGER") {
+          if (state.step === "waiting_nama") {
+            if (!text.trim()) {
+              await sendToTelegram(token, chatId, `❌ Nama tidak boleh kosong. Ketik nama lengkap kak:`).catch(() => {});
+              continue;
+            }
+            state.nama = text.trim().toUpperCase();
+            const isAm = state.role === "ACCOUNT_MANAGER" || state.role === "AM";
+            if (isAm) {
+              state.step = "waiting_nik";
+              akunState.set(chatId, state);
+              await sendToTelegram(token, chatId,
+                `✅ Nama: *${state.nama}*\n\n` +
+                `Sekarang ketik *NIK* (Nomor Induk Karyawan) kak:\n\n` +
+                `Format: angka saja\n` +
+                `Contoh: *850099*`,
+                { inline_keyboard: [[{ text: "◀️ Batal", callback_data: "/manajemen" }]] }
+              ).catch(() => {});
+            } else {
+              // Officer/Admin/Manager — no NIK, go straight to confirm
+              state.step = "waiting_confirm";
+              akunState.set(chatId, state);
+              const roleLabel = ROLE_LABELS[state.role] ?? state.role;
+              await sendToTelegram(token, chatId,
+                `📝 *Konfirmasi Data Akun*\n\n` +
+                `Pastikan data di bawah sudah benar:\n\n` +
+                `├ Role   : *${roleLabel}*\n` +
+                `└ Nama   : *${state.nama}*\n\n` +
+                `Data akan disimpan ke sistem.`,
+                AKUN_CONFIRM_KEYBOARD
+              ).catch(() => {});
+            }
+            continue;
+          }
+          if (state.step === "waiting_nik") {
+            if (!text.trim()) {
+              await sendToTelegram(token, chatId, `❌ NIK tidak boleh kosong. Ketik NIK kak:`).catch(() => {});
+              continue;
+            }
+            if (!/^\d+$/.test(text.trim())) {
+              await sendToTelegram(token, chatId, `❌ NIK harus berupa angka. Ketik NIK kak:`).catch(() => {});
+              continue;
+            }
+            state.nik = text.trim();
+            state.step = "waiting_divisi";
+            akunState.set(chatId, state);
+            await sendToTelegram(token, chatId,
+              `✅ NIK: *${state.nik}*\n\n` +
+              `Sekarang pilih *Divisi* kak:`,
+              buildAkunDivisiKeyboard()
+            ).catch(() => {});
+            continue;
+          }
+          if (state.step === "waiting_bulk_expires") {
+            const input = text.trim().toLowerCase();
+            let minutes = 0;
+            if (/^\d+$/.test(input)) {
+              minutes = parseInt(input, 10) * 60; // plain number = hours
+            } else if (/^(\d+)m$/.test(input)) {
+              minutes = parseInt(input);
+            } else if (/^(\d+)h$/.test(input)) {
+              minutes = parseInt(input) * 60;
+            } else if (/^(\d+)d$/.test(input)) {
+              minutes = parseInt(input) * 60 * 24;
+            }
+            if (minutes <= 0 || minutes > 7 * 24 * 60) {
+              await sendToTelegram(token, chatId,
+                `❌ Input tidak valid. Masukkan angka menit (1-${7 * 24 * 60}), atau akhiran *h* (jam) atau *d* (hari).\n\nContoh: *60*, *2h*, *3d*`
+              ).catch(() => {});
+              continue;
+            }
+            // Proceed to generate bulk link
+            const secret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+            const internalBase = process.env["PUBLIC_API_URL"] || "http://localhost:3000";
+
+            await sendToTelegram(token, chatId, `⏳ Generate link Tanpa Batas...`).catch(() => {});
+
+            try {
+              const apiResp = await fetch(`${internalBase}/api/internal/bulk-link/create`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-telegram-secret": secret },
+                body: JSON.stringify({
+                  createdById: state.createdById,
+                  createdByNik: state.bulkLinkCreatedByNik,
+                  createdByNama: state.bulkLinkCreatedByNama,
+                  expiresMinutes: minutes,
+                }),
+              });
+              const apiData = await apiResp.json() as {
+                success?: boolean; code?: string; link?: string;
+                botUsername?: string; expiresAt?: string; error?: string;
+              };
+
+              if (!apiResp.ok || !apiData.code) {
+                await sendToTelegram(token, chatId,
+                  `❌ Gagal generate link.\n\n${apiData.error || "Terjadi kesalahan."}`,
+                  KODE_PARAS_KEYBOARD
+                ).catch(() => {});
+                akunState.delete(chatId);
+                continue;
+              }
+
+              const expiresDate = apiData.expiresAt
+                ? new Date(apiData.expiresAt).toLocaleString("id-ID", {
+                    timeZone: "Asia/Jakarta",
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                : "-";
+
+              let msg = `✅ *Link Tanpa Batas Dibuat!*\n\n`;
+              msg += `├ Kode      : *${apiData.code}*\n`;
+              msg += `├ Dibuat oleh: *${state.bulkLinkCreatedByNama}*\n`;
+              msg += `├ Berlaku   : ${minutes} menit\n`;
+              msg += `├ Expires   : ${expiresDate}\n\n`;
+              if (apiData.link) {
+                msg += `🔗 *Link:*\n${apiData.link}\n\n`;
+              }
+              msg += `📎 QR Code:\n`;
+              msg += `Link di atas bisa dishare ke AM manapun. AM akan diminta memasukkan NIK officer pengirim untuk verifikasi.`;
+
+              akunState.delete(chatId);
+              await sendToTelegram(token, chatId, msg, KODE_PARAS_KEYBOARD).catch(() => {});
+
+              // Send QR code as photo
+              if (apiData.link) {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(apiData.link)}`;
+                await sendPhotoToTelegram(token, chatId, qrUrl, `📎 *QR Code — Scan untuk buka bot*`, KODE_PARAS_KEYBOARD);
+              }
+            } catch (err) {
+              logger.error({ err }, "Failed to generate bulk link via Telegram");
+              await sendToTelegram(token, chatId,
+                `❌ Gagal generate link.\n\nTerjadi kesalahan koneksi.`,
+                KODE_PARAS_KEYBOARD
+              ).catch(() => {});
+              akunState.delete(chatId);
+            }
+            continue;
+          }
+        }
+      }
+
+      // Verification code (LV-)
       if (isVerifCode(text)) {
         await tryLinkByCode(text, "manual code");
+        continue;
+      }
+
+      // Bulk link verification flow — check if user is in verification mode
+      if (bulkLinkVerifyState.has(chatId)) {
+        const verifyData = bulkLinkVerifyState.get(chatId)!;
+        const inputNik = text.trim().toLowerCase();
+
+        if (inputNik === verifyData.officerNik) {
+          // Officer NIK verified! Now ask for AM NIK
+          await sendToTelegram(token, chatId,
+            `✅ NIK Officer Terverifikasi!\n\n` +
+            `Sekarang ketik NIK Account Manager yang ingin ditautkan:\n\n` +
+            `Format: angka NIK (contoh: 850099)`
+          ).catch(() => {});
+          bulkLinkVerifyState.set(chatId, { ...verifyData, officerNik: "VERIFIED" });
+        } else if (verifyData.officerNik === "VERIFIED") {
+          // Officer already verified, this should be AM NIK
+          await tryVerifyAmNikForBulk(chatId, text.trim());
+        } else {
+          await sendToTelegram(token, chatId,
+            `❌ NIK Officer Salah\n\n` +
+            `NIK yang kamu masukkan tidak cocok dengan officer yang membuat link ini.\n\n` +
+            `Coba lagi - ketik NIK Officer yang membuat link ini:`
+          ).catch(() => {});
+        }
         continue;
       }
 

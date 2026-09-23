@@ -17,6 +17,7 @@ import settingsRouter from "./features/settings/routes";
 import gSheetsRouter from "./features/gsheets/routes";
 import gDriveRouter from "./features/gdrive/routes";
 import corporateRouter from "./features/corporate/routes";
+import presentationRouter from "./features/presentation/routes";
 import { requireAuth, requireManagerOrOfficer } from "./shared/auth";
 import { logger } from "./shared/logger";
 import { setPublicBaseUrl } from "./shared/publicUrl";
@@ -69,6 +70,12 @@ app.use((req, _res, next) => {
   }
   next();
 });
+
+// ─── Serve Uploaded AM Photos ───────────────────────────────────────────────────
+const uploadsPath = path.resolve(process.cwd(), "..", "..", "uploads");
+if (fs.existsSync(uploadsPath)) {
+  app.use("/uploads", express.static(uploadsPath));
+}
 
 // ─── Serve Dashboard Static Build (SPA fallback) ────────────────────────────────
 // Must come BEFORE /api routes so API calls go through first
@@ -152,5 +159,6 @@ app.use("/api/settings", dashboardSessionMw, requireAuth, requireManagerOrOffice
 app.use("/api/gsheets", dashboardSessionMw, requireAuth, requireManagerOrOfficer, gSheetsRouter);
 app.use("/api/gdrive", dashboardSessionMw, requireAuth, requireManagerOrOfficer, gDriveRouter);
 app.use("/api/corporate", dashboardSessionMw, requireAuth, requireManagerOrOfficer, corporateRouter);
+app.use("/api/presentation", presentationRouter);
 
 export default app;

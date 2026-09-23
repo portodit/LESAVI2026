@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { db, accountManagersTable } from "@workspace/db";
+import { db, accountManagersTable, presentationSessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { Request, Response, NextFunction } from "express";
 
@@ -158,5 +158,43 @@ export function requireManagerOrOfficer(req: Request, res: Response, next: NextF
     res.status(403).json({ error: "Akses ditolak. Hanya Admin, Officer, atau Manager yang dapat mengakses fitur ini." });
     return;
   }
+  next();
+}
+
+/**
+ * Middleware: validates presentation token from x-presentation-token header or body.
+ * Injects req.user with presentation session data.
+ */
+export async function requirePresentationAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const token = (req.headers["x-presentation-token"] as string)
+    || (req.body as any)?.presentationToken;
+
+  if (!token) {
+    res.status(401).json({ error: "Session tidak ditemukan. Silakan login ulang." });
+    return;
+  }
+
+  const [session] = await db
+    .select()
+    .from(presentationSessionsTable)
+    .where(eq(presentationSessionsTable.token, token));
+
+  if (!session) {
+    res.status(401).json({ error: "Session tidak valid. Silakan login ulang." });
+    return;
+  }
+
+  if (new Date(session.expiresAt).getTime() < Date.now()) {
+    await db.delete(presentationSessionsTable).where(eq(presentationSessionsTable.token, token));
+    res.status(401).json({ error: "Session sudah kedaluwarsa. Silakan login ulang." });
+    return;
+  }
+
+  (req as any).user = {
+    id: session.userId,
+    nik: session.userNik,
+    nama: session.userNama,
+    role: session.userRole,
+  };
   next();
 }

@@ -150,6 +150,7 @@ const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   OFFICER:       { label: "Officer",       color: "text-purple-700", bg: "bg-purple-100",    border: "border-purple-200" },
   MANAGER:       { label: "Manager",       color: "text-orange-700", bg: "bg-orange-100",   border: "border-orange-200" },
   ACCOUNT_MANAGER: { label: "AM",           color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-200" },
+  AM:              { label: "AM",           color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-200" },
 };
 
 const TIPE_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
@@ -185,13 +186,13 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
   }
 
   const isOfficer = form.role === "OFFICER";
-  const isAccountManager = form.role === "ACCOUNT_MANAGER";
+  const isAccountManager = form.role === "ACCOUNT_MANAGER" || form.role === "AM";
 
   function validate(): boolean {
     const errs: Partial<UserFormData> = {};
     if (!form.nama.trim()) errs.nama = "Nama wajib diisi";
-    if (!isOfficer && !form.nik.trim()) errs.nik = "NIK wajib diisi";
-    if (!isOfficer && form.nik.trim() && !/^\d+$/.test(form.nik.trim())) errs.nik = "NIK harus berupa angka";
+    if (isAccountManager && !form.nik.trim()) errs.nik = "NIK wajib diisi";
+    if (isAccountManager && form.nik.trim() && !/^\d+$/.test(form.nik.trim())) errs.nik = "NIK harus berupa angka";
     if (isAccountManager && !form.divisi) errs.divisi = "Divisi wajib dipilih";
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -224,48 +225,45 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
 
         <form onSubmit={handleSubmit} className="space-y-4 py-1 overflow-y-auto flex-1 min-h-0 pr-1">
 
-          {/* Role */}
-          <FormField label="Role">
-            <select
-              value={form.role}
-              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-              className={cn(
-                "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-                "focus:outline-none focus:ring-1 focus:ring-ring"
-              )}
-            >
-              {roleOptions.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
-            </select>
-          </FormField>
-
-          {/* Tipe */}
-          <FormField label="Tipe">
-            <div className="flex gap-2">
+          {/* Row 1: Role + Tipe */}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Role">
+              <select
+                value={form.role}
+                onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                className={cn(
+                  "flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
+                  "focus:outline-none focus:ring-1 focus:ring-ring"
+                )}
+              >
+                {roleOptions.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Tipe">
               <button
                 type="button"
                 onClick={() => setForm(f => ({ ...f, tipe: "LESA" }))}
                 className={cn(
-                  "flex-1 py-2 px-3 rounded-lg border text-sm font-semibold transition-colors",
+                  "w-full h-10 rounded-md border text-sm font-semibold transition-colors",
                   form.tipe === "LESA"
                     ? "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-400 dark:border-red-700"
-                    : "bg-secondary text-muted-foreground border-border hover:border-red-300/50"
+                    : "bg-secondary text-muted-foreground border-border"
                 )}
               >LESA</button>
-            </div>
-          </FormField>
+            </FormField>
+          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {!isOfficer && (
+          {/* Row 2: NIK + Divisi (AM) or NIK + Email (Officer/Admin) */}
+          {isAccountManager ? (
+            <div className="grid grid-cols-2 gap-3">
               <FormField label="NIK" required error={errors.nik}>
                 <Input
                   value={form.nik} onChange={set("nik")}
                   placeholder="mis. 850099"
                   disabled={mode === "edit"}
-                  className={errors.nik ? "border-destructive" : ""}
+                  className={cn("h-10", errors.nik ? "border-destructive" : "")}
                 />
               </FormField>
-            )}
-            {isAccountManager && (
               <FormField label="Divisi" required error={errors.divisi}>
                 <SelectField
                   value={form.divisi}
@@ -275,32 +273,45 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
                     { value: "DSS", label: "DSS" },
                     { value: "DGS", label: "DGS" },
                   ]}
+                  className="h-10"
                 />
               </FormField>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="NIK">
+                <Input
+                  value={form.nik} onChange={set("nik")}
+                  placeholder="mis. 850099 (opsional)"
+                  disabled={mode === "edit"}
+                  className="h-10"
+                />
+              </FormField>
+              <FormField label="Email Login">
+                <Input
+                  type="email"
+                  value={form.email} onChange={set("email")}
+                  placeholder="mis. officer@example.com"
+                  className="h-10"
+                />
+              </FormField>
+            </div>
+          )}
 
+          {/* Row 3: Nama Lengkap — always full width */}
           <FormField label="Nama Lengkap" required error={errors.nama}>
             <Input
               value={form.nama} onChange={set("nama")}
               placeholder="mis. RENI WULANSARI"
-              className={errors.nama ? "border-destructive" : ""}
+              className={cn("h-10", errors.nama ? "border-destructive" : "")}
             />
           </FormField>
 
-          {isOfficer && (
-            <FormField label="Email Login">
-              <Input
-                type="email"
-                value={form.email} onChange={set("email")}
-                placeholder="mis. officer@example.com"
-              />
-            </FormField>
-          )}
-
+          {/* AM-only fields */}
           {isAccountManager && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              {/* Segmen + Witel */}
+              <div className="grid grid-cols-2 gap-3">
                 <FormField label="Segmen">
                   <SelectField
                     value={form.segmen}
@@ -311,6 +322,7 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
                       { value: "Government", label: "Government" },
                       { value: "SME", label: "SME" },
                     ]}
+                    className="h-10"
                   />
                 </FormField>
                 <FormField label="Witel">
@@ -322,32 +334,42 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
                       { value: "SURABAYA", label: "SURABAYA" },
                       { value: "MADURA", label: "MADURA" },
                     ]}
+                    className="h-10"
                   />
                 </FormField>
               </div>
 
-              <FormField label="Telegram User ID">
-                <Input
-                  value={form.telegramUsername} onChange={set("telegramUsername")}
-                  placeholder="@username Telegram (opsional)"
-                />
-              </FormField>
-              <FormField label="Nama Telegram">
-                <Input
-                  value={form.telegramDisplayName} onChange={set("telegramDisplayName")}
-                  placeholder="Nama tampil Telegram (opsional)"
-                />
-              </FormField>
-              <FormField label="Chat ID (Bot)">
-                <Input
-                  value={form.telegramChatId} onChange={set("telegramChatId")}
-                  placeholder="ID untuk bot kirim pesan (auto dari Telegram)"
-                />
-              </FormField>
+              {/* Telegram fields — compact */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Data Telegram (opsional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Username Telegram">
+                    <Input
+                      value={form.telegramUsername} onChange={set("telegramUsername")}
+                      placeholder="@username"
+                      className="h-9"
+                    />
+                  </FormField>
+                  <FormField label="Nama Tampilan">
+                    <Input
+                      value={form.telegramDisplayName} onChange={set("telegramDisplayName")}
+                      placeholder="Nama tampil di bot"
+                      className="h-9"
+                    />
+                  </FormField>
+                </div>
+                <FormField label="Chat ID Bot">
+                  <Input
+                    value={form.telegramChatId} onChange={set("telegramChatId")}
+                    placeholder="ID numerik dari Telegram (opsional)"
+                    className="h-9"
+                  />
+                </FormField>
+              </div>
             </>
           )}
 
-          <div className="flex items-center justify-end gap-2 shrink-0">
+          <div className="flex items-center justify-end gap-2 shrink-0 pt-1">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Batal</Button>
             <Button type="submit" disabled={loading}>
               {loading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
@@ -366,11 +388,11 @@ function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, toggling
   user: User; onEdit: () => void; onDelete: () => void;
   isPrivileged: boolean; onToggleAktif: () => void; togglingAktif: boolean;
 }) {
-  const role = user.role || "ACCOUNT_MANAGER";
+  const role = (user.role === "AM" ? "ACCOUNT_MANAGER" : (user.role || "ACCOUNT_MANAGER"));
   const roleCfg = ROLE_CONFIG[role] ?? ROLE_CONFIG["ACCOUNT_MANAGER"];
   const tipeCfg = user.tipe ? (TIPE_CONFIG[user.tipe] ?? TIPE_CONFIG["LESA"]) : TIPE_CONFIG["LESA"];
   const divisiCfg = DIVISI_CONFIG[user.divisi] ?? DIVISI_CONFIG["DPS"];
-  const isAccountManager = role === "ACCOUNT_MANAGER";
+  const isAccountManager = role === "ACCOUNT_MANAGER" || role === "AM";
   const isNonaktif = !user.aktif;
 
   return (
@@ -558,7 +580,7 @@ function StatCard({ icon, label, value, sub, color }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type FilterRole = "all" | "ACCOUNT_MANAGER" | "MANAGER" | "OFFICER" | "ADMIN";
+type FilterRole = "all" | "ACCOUNT_MANAGER" | "AM" | "MANAGER" | "OFFICER" | "ADMIN";
 type FilterDivisi = "all" | "DPS" | "DSS" | "DGS";
 
 export default function ManajemenAmPage() {
@@ -654,7 +676,7 @@ export default function ManajemenAmPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["am-list"] }); setDeleteTarget(null); },
   });
 
-  const amOnly        = users.filter(u => u.role === "ACCOUNT_MANAGER");
+  const amOnly        = users.filter(u => u.role === "ACCOUNT_MANAGER" || u.role === "AM");
   const activeAmOnly  = amOnly.filter(u => u.aktif);
   const managers      = users.filter(u => u.role === "MANAGER");
   const officers      = users.filter(u => u.role === "OFFICER");

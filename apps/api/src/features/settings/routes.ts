@@ -110,7 +110,17 @@ router.patch("/", requireAuth, async (req, res): Promise<void> => {
 
   rescheduleGSheets();
   rescheduleGDrive();
-  if (updates.telegramBotToken) rescheduleTelegramPoller(updates.telegramBotToken);
+  if (updates.telegramBotToken) {
+    rescheduleTelegramPoller(updates.telegramBotToken);
+    // Auto-fetch and cache bot username
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${updates.telegramBotToken}/getMe`);
+      const d = await r.json() as { ok: boolean; result?: { username: string } };
+      if (d.ok && d.result?.username) {
+        updates.telegramBotUsername = d.result.username;
+      }
+    } catch { /* ignore */ }
+  }
 
   res.json(buildSettingsResponse(settings));
 });

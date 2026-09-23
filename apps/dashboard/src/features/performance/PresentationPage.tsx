@@ -11,9 +11,10 @@ import {
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getPresentationSession, clearPresentationSession } from "@/shared/hooks/use-presentation-auth";
-import { ChevronDown, ChevronLeft, ChevronRight, Camera, X, BarChart2, Filter, Activity, Check, Maximize2, Minimize2, Expand, Search, Columns2, LogOut, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Camera, X, BarChart2, Filter, Activity, Check, Maximize2, Minimize2, Expand, Search, Columns2, LogOut, TrendingUp, User } from "lucide-react";
 import PrognosaSlide, { SCENARIOS, ScenarioKey, prognosaDataDefault, TIPE_RANK_OPTIONS, TIPE_REVENUE_OPTIONS, TipeRankKey, TipeRevenueKey } from "./PrognosaSlide";
-const SLIDES = [
+import AmProfilePage from "@/features/presentation/AmProfilePage";
+const BASE_SLIDES = [
   { label: "Visualisasi Performa", icon: BarChart2 },
   { label: "Prognosa AM", icon: TrendingUp },
   { label: "AM Sales Funnel", icon: Filter },
@@ -2757,10 +2758,19 @@ function ActivitySlide() {
 }
 
 // ─── Main Embed Page ────────────────────────────────────────────────────────────
-export default function EmbedPerforma() {
+export default function EmbedPerforma({ sessionRole, sessionNik }: { sessionRole?: string | null; sessionNik?: string | null }) {
+  const isAM = sessionRole === "ACCOUNT_MANAGER";
+  const AM_PROFILE_SLIDE = 0;
+
+  const SLIDES = isAM
+    ? [{ label: "Profil AM", icon: User }, ...BASE_SLIDES]
+    : BASE_SLIDES;
+
   const [imports, setImports] = useState<any[]>([]);
+  const [amProfileInfo, setAmProfileInfo] = useState<{ nama: string; badge: string; nik: string } | null>(null);
   const [snapshotId, setSnapshotId] = useState<number | null>(null);
   const [allPerfs, setAllPerfs] = useState<any[]>([]);
+  const [allActiveAms, setAllActiveAms] = useState<{ nik: string; nama: string; divisi: string; role: string }[]>([]);
   const [filterPeriodes, setFilterPeriodes] = useState<Set<string>>(new Set());
   const [filterDivisi, setFilterDivisi] = useState("LESA");
   const [filterNamaAms, setFilterNamaAms] = useState<Set<string>>(new Set());
@@ -2772,14 +2782,22 @@ export default function EmbedPerforma() {
   const [custViewMode, setCustViewMode] = useState<"perBulan" | "agregasi">("agregasi");
   const [loading, setLoading] = useState(true);
   // Read ?type= from URL to determine initial slide (performance|funnel|activity)
+  // For AM: slide 0=Profil AM, 1=Performa, 2=Prognosa, 3=Funnel, 4=Activity
+  // ?type= maps to +1 offset for AM
   const initialSlide = useMemo(() => {
     const p = new URLSearchParams(window.location.search);
     const t = p.get("type");
+    if (isAM) {
+      if (t === "funnel") return 3;
+      if (t === "activity") return 4;
+      if (t === "prognosa") return 2;
+      return 0; // AM starts on Profil AM
+    }
     if (t === "funnel") return 2;
     if (t === "activity") return 3;
     if (t === "prognosa") return 1;
     return 0;
-  }, []);
+  }, [isAM]);
 
   const [currentSlide, setCurrentSlide] = useState(initialSlide);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -3048,11 +3066,13 @@ export default function EmbedPerforma() {
 
       if (inInput) return; // rest of shortcuts skip when typing
 
-      // Jump to slide by number
-      if (e.key === "1") { e.preventDefault(); setCurrentSlide(0); return; }
-      if (e.key === "2") { e.preventDefault(); setCurrentSlide(1); return; }
-      if (e.key === "3") { e.preventDefault(); setCurrentSlide(2); return; }
-      if (e.key === "4") { e.preventDefault(); setCurrentSlide(3); return; }
+      // Jump to slide by number (1-5 keys)
+      // For AM: 1=Profil AM, 2=Performa, 3=Prognosa, 4=Funnel, 5=Activity
+      if (e.key === "1") { e.preventDefault(); setCurrentSlide(isAM ? 0 : 0); return; }
+      if (e.key === "2") { e.preventDefault(); setCurrentSlide(isAM ? 1 : 1); return; }
+      if (e.key === "3") { e.preventDefault(); setCurrentSlide(isAM ? 2 : 2); return; }
+      if (e.key === "4") { e.preventDefault(); setCurrentSlide(isAM ? 3 : 3); return; }
+      if (e.key === "5") { e.preventDefault(); if (isAM) setCurrentSlide(4); return; }
 
       // Fullscreen
       if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); return; }
@@ -3083,30 +3103,34 @@ export default function EmbedPerforma() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API_BASE}/api/public/import-history`)
-      .then(r => r.json())
-      .then((data: any[]) => {
-        setImports(data);
-        const snapId = data.length > 0 ? data[0].id : null;
-        setSnapshotId(snapId);
-        // Fetch performance data in the same effect to avoid React 18 timing issues
-        if (!snapId) {
-          setAllPerfs([]);
-          setLoading(false);
-          return;
-        }
-        return fetch(`${API_BASE}/api/public/performance?importId=${snapId}`).then(r => r.json());
-      })
+    // Fetch all active AMs (to show all AMs in table even without perf data) + import history
+    Promise.all([
+      fetch(`${API_BASE}/api/public/am`).then(r => r.json()),
+      fetch(`${API_BASE}/api/public/import-history`).then(r => r.json()),
+    ]).then(([ams, data]: [any[], any[]]) => {
+      setAllActiveAms(ams);
+      setImports(data);
+      const snapId = data.length > 0 ? data[0].id : null;
+      setSnapshotId(snapId);
+      if (!snapId) {
+        setAllPerfs([]);
+        setLoading(false);
+        return;
+      }
+      return fetch(`${API_BASE}/api/public/performance?importId=${snapId}`).then(r => r.json());
+    })
       .then((data: any[] | undefined) => {
         if (!data) return;
         setAllPerfs(data);
         window.__perfDebug = { rows: data.length, dps: data.filter((p: any) => p.divisiCc === 'DPS').length, des: data.filter((p: any) => p.divisi === 'DES').length };
         console.log("[DEBUG perf fetch]", data.length, "rows", data.filter((p: any) => p.divisiCc === 'DPS').length, "DPS via divisiCc", data.filter((p: any) => p.divisi === 'DES').length, "DES via divisi");
-        const ps = [...new Set(data.map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`))] as string[];
+        // For AM users, only consider their own data for default period filter
+        const perfData = (isAM && sessionNik) ? data.filter((p: any) => p.nik === sessionNik) : data;
+        const ps = [...new Set(perfData.map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`))] as string[];
         ps.sort();
         const psWithData = ps.filter(period => {
           const [y, m] = period.split("-");
-          return data.some((p: any) =>
+          return perfData.some((p: any) =>
             String(p.tahun) === y && String(p.bulan).padStart(2, "0") === m &&
             (p.realRevenue ?? 0) > 0
           );
@@ -3121,6 +3145,7 @@ export default function EmbedPerforma() {
 
   useEffect(() => {
     if (!snapshotId) { setAllPerfs([]); return; }
+    if (!allActiveAms.length) return; // Wait for active AMs to be loaded first
     setLoading(true);
     fetch(`${API_BASE}/api/public/performance?importId=${snapshotId}`)
       .then(r => r.json())
@@ -3128,11 +3153,13 @@ export default function EmbedPerforma() {
         setAllPerfs(data);
         window.__perfDebug = { rows: data.length, dps: data.filter((p: any) => p.divisiCc === 'DPS').length, des: data.filter((p: any) => p.divisi === 'DES').length };
         console.log("[DEBUG perf fetch]", data.length, "rows", data.filter((p: any) => p.divisiCc === 'DPS').length, "DPS via divisiCc", data.filter((p: any) => p.divisi === 'DES').length, "DES via divisi");
-        const ps = [...new Set(data.map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`))] as string[];
+        // For AM users, only consider their own data for default period filter
+        const perfData = (isAM && sessionNik) ? data.filter((p: any) => p.nik === sessionNik) : data;
+        const ps = [...new Set(perfData.map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`))] as string[];
         ps.sort();
         const psWithData = ps.filter(period => {
           const [y, m] = period.split("-");
-          return data.some((p: any) =>
+          return perfData.some((p: any) =>
             String(p.tahun) === y && String(p.bulan).padStart(2, "0") === m &&
             (p.realRevenue ?? 0) > 0
           );
@@ -3146,17 +3173,40 @@ export default function EmbedPerforma() {
   }, [snapshotId]);
 
   const availablePeriodes = useMemo(() => {
+    // For AM users, only show periods from their own data
+    const perfData = (isAM && sessionNik) ? allPerfs.filter((p: any) => p.nik === sessionNik) : allPerfs;
     return [...new Set(
-      allPerfs
+      perfData
         .map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`)
     )].sort();
-  }, [allPerfs]);
+  }, [allPerfs, isAM, sessionNik]);
+
+  // Sync filterPeriodes to all available periods on initial load (default: all checked)
+  const filterPeriodesInitialized = useRef(false);
+  useEffect(() => {
+    if (filterPeriodesInitialized.current) return;
+    if (availablePeriodes.length > 0) {
+      filterPeriodesInitialized.current = true;
+      setFilterPeriodes(new Set(availablePeriodes));
+    }
+  }, [availablePeriodes]);
 
   // Latest selected period (for CM)
+  // Latest selected period — prefer latest WITH real revenue data, fallback to latest available
   const cmPeriode = useMemo(() => {
+    // Find the latest period that has real_reguler > 0 in allPerfs
+    const withReal = [...new Set(allPerfs.map((p: any) => `${p.tahun}-${String(p.bulan).padStart(2, "0")}`))]
+      .filter(ym => {
+        const [tahun, bulan] = ym.split("-");
+        return allPerfs.some((p: any) => p.tahun === Number(tahun) && p.bulan === Number(bulan) && Number(p.realReguler || p.real_revenue || 0) > 0);
+      })
+      .sort()
+      .reverse();
+    if (withReal.length > 0) return withReal[0];
+    // Fallback: latest available period
     const sorted = [...filterPeriodes].sort().reverse();
     return sorted[0] ?? null;
-  }, [filterPeriodes]);
+  }, [allPerfs, filterPeriodes]);
   const cmMonth = useMemo(() => cmPeriode ? parseInt(cmPeriode.split("-")[1]) : null, [cmPeriode]);
   const cmYear = useMemo(() => cmPeriode ? cmPeriode.split("-")[0] : null, [cmPeriode]);
 
@@ -3189,22 +3239,52 @@ export default function EmbedPerforma() {
 
   // amTableData
   const amTableData = useMemo(() => {
-    if (!allPerfs.length || !cmPeriode) { console.log("[DEBUG amTableData] early return: allPerfs.length=", allPerfs.length, "cmPeriode=", cmPeriode); return []; }
-    console.log("[DEBUG amTableData] filterDivisi=", filterDivisi, "cmPeriode=", cmPeriode, "cmMonth=", cmMonth, "total rows=", allPerfs.length);
-    let rows = allPerfs as any[];
-    if (filterPeriodes.size > 0) {
-      rows = rows.filter((p: any) => filterPeriodes.has(`${p.tahun}-${String(p.bulan).padStart(2, "0")}`));
+    if (!allActiveAms.length || !cmPeriode) {
+      console.log("[DEBUG amTableData] early return: allActiveAms.length=", allActiveAms.length, "cmPeriode=", cmPeriode);
+      return [];
     }
-    // Group by NIK. AMs with multi-divisi (e.g. DPS+DSS) get multiple cmRows — we combine them.
-    const amMap = new Map<string, { cmRows: any[]; filteredRows: any[] }>();
-    for (const r of rows) {
-      if (!amMap.has(r.nik)) amMap.set(r.nik, { cmRows: [], filteredRows: [] });
+    console.log("[DEBUG amTableData] allActiveAms=", allActiveAms.length, "allPerfs=", allPerfs.length, "filterPeriodes=", filterPeriodes.size, "cmPeriode=", cmPeriode);
+    // Collect all NIKs that appear in performance data
+    const perfsNikSet = new Set(allPerfs.map((p: any) => p.nik));
+    // Group ALL rows by NIK (before period filter — so every AM with any data gets grouped)
+    const amMap = new Map<string, { allRows: any[]; cmRows: any[] }>();
+    // Seed the map with ALL active AMs — even those with no performance data
+    for (const am of allActiveAms) {
+      amMap.set(am.nik, { allRows: [], cmRows: [] });
+    }
+    // Fill in performance data
+    for (const r of allPerfs) {
+      // Only restrict to own NIK for non-admin users viewing slides OTHER than AM Performance
+      // amTableData (Slide 1 AM Performance) should always show ALL AMs for admin view
+      if (!amMap.has(r.nik)) amMap.set(r.nik, { allRows: [], cmRows: [] });
       const e = amMap.get(r.nik)!;
-      e.filteredRows.push(r);
+      e.allRows.push(r);
       if (r.bulan === cmMonth) e.cmRows.push(r);
     }
+    // Now filter allRows by selected periods for YTD calculation
+    console.log("[DEBUG amMap] size=", amMap.size, "niks=", [...amMap.keys()].join(","), "cmMonth=", cmMonth, "allPerfs.length=", allPerfs.length, "allPerfs[0].nik=", allPerfs[0]?.nik);
     let result = [...amMap.entries()].map(([nik, entry]) => {
-      const cmRows = entry.cmRows;
+      console.log("[DEBUG MAP nik=" + nik + "] allRows=" + entry.allRows.length + " cmRows=" + entry.cmRows.length);
+      // Apply period filter to get the "filtered" rows for YTD display
+      const filteredRows = filterPeriodes.size > 0
+        ? entry.allRows.filter((p: any) => filterPeriodes.has(`${p.tahun}-${String(p.bulan).padStart(2, "0")}`))
+        : entry.allRows;
+      // Fallback: if no data for cmMonth (entry.cmRows empty),
+      // use filteredRows; if that's also empty, use all available data
+      let cmRows = entry.cmRows;
+      if (cmRows.length === 0) {
+        cmRows = filteredRows.length > 0 ? filteredRows : entry.allRows;
+      }
+      // AM with no data at all: show empty row
+      if (cmRows.length === 0 && entry.allRows.length === 0) {
+        const amInfo = allActiveAms.find(a => a.nik === nik);
+        return {
+          nik, namaAm: amInfo?.nama ?? nik, divisi: amInfo?.divisi ?? "", divisiAll: amInfo?.divisi ? [amInfo.divisi] : [],
+          statusWarna: undefined,
+          cmAch: 0, ytdAch: 0, cmTarget: 0, cmReal: 0, ytdTarget: 0, ytdReal: 0,
+          customers: [], rawCustomers: [],
+        };
+      }
       if (cmRows.length === 0) return null;
       // When divisi filter is active, restrict CM rows to matching divisi only
       const activeCmRows = (filterDivisi === "LESA")
@@ -3218,8 +3298,8 @@ export default function EmbedPerforma() {
       }
       // For YTD, filter rows by divisi if active
       const activeFilteredRows = (filterDivisi === "LESA")
-        ? entry.filteredRows
-        : entry.filteredRows.filter((r: any) => matchesDivisiPerforma(r.divisi_cc, filterDivisi));
+        ? filteredRows
+        : filteredRows.filter((r: any) => matchesDivisiPerforma(r.divisi_cc, filterDivisi));
       let ytdTarget = 0, ytdReal = 0;
       for (const r of activeFilteredRows) {
         const s = getTypedRevenue(r, filterTipeRevenue);
@@ -3227,16 +3307,10 @@ export default function EmbedPerforma() {
       }
       const effectiveCmAch = cmTarget > 0 ? cmReal / cmTarget : 0;
       const effectiveYtdAch = ytdTarget > 0 ? ytdReal / ytdTarget : 0;
-      // Primary divisi: use activeCmRows for dominant portfolio
-      const primaryCmRow = (activeCmRows.length > 0 ? activeCmRows : cmRows).reduce((best: any, r: any) => {
-        const s = getTypedRevenue(r, filterTipeRevenue);
-        const bS = getTypedRevenue(best, filterTipeRevenue);
-        return s.target > bS.target ? r : best;
-      }, (activeCmRows.length > 0 ? activeCmRows : cmRows)[0]);
-      const divisiAll = [...new Set(cmRows.map((r: any) => r.divisi_cc as string))];
-      // Build customers — only from rows matching divisi filter
+      // Build customers — from ALL rows (not filtered by divisi)
+      // filterPeriodes is respected but divisi filter is NOT applied to customer rows
       // For flat format (komponen_detail = single object without Reguler/Sustain/etc), inject revenue from parent AM row
-      const custRaw = activeFilteredRows.flatMap((cr: any) => {
+      const custRaw = filteredRows.flatMap((cr: any) => {
         const periodeStr = `${cr.tahun}-${String(cr.bulan).padStart(2, "0")}`;
         const rawKomponen = parseKomponen(cr.komponenDetail);
         // Flat format: each komponen_detail is a single object with customer metadata (nip, pelanggan, proporsi)
@@ -3268,10 +3342,10 @@ export default function EmbedPerforma() {
           custMap.set(key, { c: { ...c }, periods: new Set([c._periode]), proporsiSum: c.proporsi ?? 0, proporsiCount: 1 });
         } else {
           const entry = custMap.get(key)!;
+          // Track if this period was already seen BEFORE adding current one
+          const alreadyHadPeriod = entry.periods.has(c._periode);
           entry.periods.add(c._periode);
-          // Merge revenue only if this customer appeared in this period already
-          // (flat format: same customer across periods — don't double-count)
-          const alreadyHadPeriod = entry.periods.size > 1;
+          // Merge revenue only for NEW periods (flat format: same customer across periods — don't double-count)
           if (!alreadyHadPeriod) {
             for (const tipe of ["Reguler", "Sustain", "Scaling", "NGTMA"] as const) {
               if (c[tipe] || entry.c[tipe]) {
@@ -3293,6 +3367,15 @@ export default function EmbedPerforma() {
         const avgProporsi = e.proporsiCount > 0 ? e.proporsiSum / e.proporsiCount : 0;
         return { ...e.c, proporsi: avgProporsi };
       });
+      console.log("[DEBUG amRow]", nik, "cmRows.len=", cmRows.length, "cmRows[0].namaAm=", cmRows[0]?.namaAm, "cmRows[0].targetReguler=", cmRows[0]?.targetReguler, "cmRows[0].realReguler=", cmRows[0]?.realReguler);
+      // Primary divisi: use activeCmRows for dominant portfolio
+      const primaryCmRow = (activeCmRows.length > 0 ? activeCmRows : cmRows).reduce((best: any, r: any) => {
+        const s = getTypedRevenue(r, filterTipeRevenue);
+        const bS = getTypedRevenue(best, filterTipeRevenue);
+        return s.target > bS.target ? r : best;
+      }, (activeCmRows.length > 0 ? activeCmRows : cmRows)[0]);
+      console.log("[DEBUG amRow2]", nik, "primaryCmRow=", primaryCmRow?.namaAm, "primaryCmRow.targetReguler=", primaryCmRow?.targetReguler);
+      const divisiAll = [...new Set(cmRows.map((r: any) => r.divisi_cc as string))];
       return {
         nik, namaAm: primaryCmRow.namaAm, divisi: primaryCmRow.divisi, divisiAll,
         statusWarna: primaryCmRow.statusWarna,
@@ -3307,23 +3390,25 @@ export default function EmbedPerforma() {
     if (filterDivisi !== "LESA") result = result.filter(r =>
       (r.divisiAll as string[]).some((d: string) => matchesDivisiPerforma(d, filterDivisi))
     );
-    console.log("[DEBUG amTableData final] filterDivisi=", filterDivisi, "result.length=", result.length, "LESA filter check:", result.filter(r => { const matched = (r.divisiAll as string[]).some((d: string) => matchesDivisiPerforma(d, "LESA")); return matched; }).length);
+    console.log("[DEBUG amTableData final] filterDivisi=", filterDivisi, "result.length=", result.length, "perfsNikSet size=", perfsNikSet.size);
     if (filterNamaAms.size > 0) result = result.filter(r => filterNamaAms.has(r.namaAm));
     result.sort((a, b) => {
       if (filterTipeRank === "Ach YTD") return b.ytdAch - a.ytdAch;
       return b.cmAch - a.cmAch;
     });
     return result.map((r, i) => ({ ...r, displayRank: i + 1 }));
-  }, [allPerfs, filterPeriodes, cmPeriode, cmMonth, filterDivisi, filterNamaAms, filterTipeRank, filterTipeRevenue]);
+  }, [allPerfs, allActiveAms, filterPeriodes, cmPeriode, cmMonth, filterDivisi, filterNamaAms, filterTipeRank, filterTipeRevenue, sessionNik, isAM]);
 
   const divisiOptions = useMemo(() => {
-    if (!allPerfs.length || !cmMonth) return [];
-    return [...new Set(allPerfs.filter((p: any) => p.bulan === cmMonth).map((p: any) => p.divisi).filter(Boolean))].sort() as string[];
-  }, [allPerfs, cmMonth]);
+    const perfData = (isAM && sessionNik) ? allPerfs.filter((p: any) => p.nik === sessionNik) : allPerfs;
+    if (!perfData.length || !cmMonth) return [];
+    return [...new Set(perfData.filter((p: any) => p.bulan === cmMonth).map((p: any) => p.divisi).filter(Boolean))].sort() as string[];
+  }, [allPerfs, cmMonth, isAM, sessionNik]);
 
   const amNames = useMemo(() => {
-    if (!allPerfs.length || !cmMonth) return [];
-    const rows = allPerfs.filter((p: any) => p.bulan === cmMonth && matchesDivisiPerforma(p.divisi_cc, filterDivisi));
+    const perfData = (isAM && sessionNik) ? allPerfs.filter((p: any) => p.nik === sessionNik) : allPerfs;
+    if (!perfData.length || !cmMonth) return [];
+    const rows = perfData.filter((p: any) => p.bulan === cmMonth && matchesDivisiPerforma(p.divisi_cc, filterDivisi));
     return [...new Set(rows.map((p: any) => p.namaAm).filter(Boolean))].sort() as string[];
   }, [allPerfs, cmMonth, filterDivisi]);
 
@@ -3517,16 +3602,19 @@ export default function EmbedPerforma() {
             <div className="leading-tight min-w-0">
               <p className="text-[9px] sm:text-[10px] font-black text-muted-foreground uppercase tracking-widest leading-none">LESA VI WITEL SURAMADU</p>
               <p className="text-xs sm:text-sm font-bold text-foreground truncate max-w-[160px] sm:max-w-none">
-                {currentSlide === 1 ? "Prognosa AM FY 2026" : currentSlide === 2
-                  ? <><span className="sm:hidden">AM Sales Funnel</span><span className="hidden sm:inline">SALES FUNNELING LOP MYTENS {funnelSubtitle}</span></>
-                  : currentSlide === 3
-                  ? <><span className="sm:hidden">Sales Activity</span><span className="hidden sm:inline">AM SALES ACTIVITY REPORT</span></>
-                  : "AM Performance Report"}
+                {isAM && currentSlide === AM_PROFILE_SLIDE
+                  ? "Profil Performa Account Manager"
+                  : isAM ? currentSlide === 2 ? "Prognosa AM FY 2026" : currentSlide === 3
+                    ? <><span className="sm:hidden">AM Sales Funnel</span><span className="hidden sm:inline">SALES FUNNELING LOP MYTENS {funnelSubtitle}</span></>
+                    : <><span className="sm:hidden">Sales Activity</span><span className="hidden sm:inline">AM SALES ACTIVITY REPORT</span></>
+                  : currentSlide === 1 ? "Prognosa AM FY 2026" : currentSlide === 2
+                    ? <><span className="sm:hidden">AM Sales Funnel</span><span className="hidden sm:inline">SALES FUNNELING LOP MYTENS {funnelSubtitle}</span></>
+                    : "AM Performance Report"}
               </p>
             </div>
           </div>
-          {/* Desktop-only divider + filters */}
-          {currentSlide === 0 && (
+          {/* Desktop-only divider + filters — Visualisasi Performa (AM slide 1, non-AM slide 0) */}
+          {(isAM ? currentSlide === 1 : currentSlide === 0) && (
             <>
               <div className="hidden sm:block w-px h-9 bg-border/60 shrink-0 mx-0.5" />
               <div className="hidden sm:flex items-end gap-2 flex-1 min-w-0">
@@ -3565,11 +3653,11 @@ export default function EmbedPerforma() {
             </>
           )}
           <div className="hidden sm:block w-px h-9 bg-border/60 shrink-0 mx-0.5" />
-          {currentSlide === 1 && prognosaFilterBar}
-          {currentSlide === 2 && (
+          {(isAM ? currentSlide === 2 : currentSlide === 1) && prognosaFilterBar}
+          {(isAM ? currentSlide === 3 : currentSlide === 2) && (
             <div className="hidden sm:flex items-end gap-2 flex-1 min-w-0 overflow-x-auto" id="funnel-navbar-portal" />
           )}
-          {currentSlide === 3 && (
+          {(isAM ? currentSlide === 4 : currentSlide === 3) && (
             <div className="hidden sm:flex items-end gap-2 flex-1 min-w-0 overflow-x-auto" id="activity-navbar-portal" />
           )}
           {/* Slide arrows + fullscreen — always pushed to the right */}
@@ -3604,8 +3692,8 @@ export default function EmbedPerforma() {
           </div>
         </div>
 
-        {/* Row 2 — Mobile-only scrollable filter row */}
-        {currentSlide === 0 && (
+        {/* Row 2 — Mobile-only scrollable filter row — Visualisasi Performa (AM slide 1, non-AM slide 0) */}
+        {(isAM ? currentSlide === 1 : currentSlide === 0) && (
           <div className="sm:hidden flex items-end gap-2 overflow-x-auto px-3 pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <SelectDropdown
               label="📷 Snapshot"
@@ -3641,21 +3729,21 @@ export default function EmbedPerforma() {
           </div>
         )}
         {/* Mobile prognosa filter row */}
-        {currentSlide === 1 && (
+        {(isAM ? currentSlide === 2 : currentSlide === 1) && (
           <div
             id="prognosa-navbar-portal-mobile"
             className="sm:hidden flex items-end gap-2 overflow-x-auto px-3 pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           />
         )}
-        {/* Mobile funnel filter row — portal target for FunnelSlide */}
-        {currentSlide === 2 && (
+        {/* Mobile funnel filter row */}
+        {(isAM ? currentSlide === 3 : currentSlide === 2) && (
           <div
             id="funnel-navbar-portal-mobile"
             className="sm:hidden flex items-end gap-2 overflow-x-auto px-3 pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           />
         )}
-        {/* Mobile activity filter row — portal target for ActivitySlide */}
-        {currentSlide === 3 && (
+        {/* Mobile activity filter row */}
+        {(isAM ? currentSlide === 4 : currentSlide === 3) && (
           <div
             id="activity-navbar-portal-mobile"
             className="sm:hidden flex items-end gap-2 overflow-x-auto px-3 pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
@@ -3667,7 +3755,7 @@ export default function EmbedPerforma() {
 
       {/* ─── Slide: Prognosa AM ────────────────────────── */}
       <PrognosaSlide
-        visible={currentSlide === 1}
+        visible={isAM ? currentSlide === 2 : currentSlide === 1}
         scenario={scenario}
         setScenario={setScenario}
         selectedPeriodes={selectedPeriodes}
@@ -3685,13 +3773,18 @@ export default function EmbedPerforma() {
       />
 
       {/* ─── Slide: Sales Funnel ──────────────────────────── */}
-      {currentSlide === 2 && <FunnelSlide onTitleChange={setFunnelSubtitle} />}
+      {(isAM ? currentSlide === 3 : currentSlide === 2) && <FunnelSlide onTitleChange={setFunnelSubtitle} />}
 
       {/* ─── Slide: Sales Activity ────────────────────────── */}
-      {currentSlide === 3 && <ActivitySlide />}
+      {(isAM ? currentSlide === 4 : currentSlide === 3) && <ActivitySlide />}
 
-      {/* ─── Slide: Visualisasi Performa ─────────────────── */}
-      {currentSlide === 0 && (
+      {/* ─── Slide: Profil AM (AM only) ──────────────────── */}
+      {isAM && currentSlide === AM_PROFILE_SLIDE && (
+        <AmProfilePage nik={sessionNik ?? undefined} embedded onAmLoaded={setAmProfileInfo} />
+      )}
+
+      {/* ─── Slide: Visualisasi Performa (AM slide 1, non-AM slide 0) ─ */}
+      {(isAM ? currentSlide === 1 : currentSlide === 0) && (
       <div className="p-4 space-y-4">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">Memuat data...</div>
@@ -3932,6 +4025,18 @@ export default function EmbedPerforma() {
                       }
 
                       // ── Expanded AM ──
+                      const isMultiPeriode = filterPeriodes.size > 1;
+                      const displayCusts = isMultiPeriode && custViewMode === "perBulan"
+                        ? (row.rawCustomers || row.customers)
+                        : row.customers;
+                      const showPeriodeCol = isMultiPeriode && custViewMode === "perBulan";
+                      const getCustRev = (c: any) => filterTipeRevenue === "Semua"
+                        ? customerTotal(c)
+                        : { target: c[filterTipeRevenue]?.target ?? 0, real: c[filterTipeRevenue]?.real ?? 0 };
+                      const headerTarget = displayCusts.reduce((s: number, c: any) => s + getCustRev(c).target, 0);
+                      const headerReal   = displayCusts.reduce((s: number, c: any) => s + getCustRev(c).real, 0);
+                      const headerAch    = headerTarget > 0 ? headerReal / headerTarget : 0;
+
                       return (
                         <div key={row.nik}>
                           {/* Sticky AM name row — sticks at top:0 of the inner scroll container */}
@@ -3941,21 +4046,39 @@ export default function EmbedPerforma() {
                               <tr className="cursor-pointer select-none"
                                 style={{borderTop:`2px solid ${ring}`, borderLeft:`2px solid ${ring}`, borderRight:`2px solid ${ring}`, borderBottom:"none"}}
                                 onClick={() => toggleRow(row.nik)}>
-                                {amCells}
+                                <td className="px-2 py-2.5" style={{backgroundColor:bgCard, width:"28px"}}>
+                                  {hasCustomers ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : null}
+                                </td>
+                                <td className="px-4 py-2.5 font-black text-foreground uppercase tracking-wide overflow-visible" style={{backgroundColor:bgCard}}>
+                                  <div className="group relative flex flex-col w-fit gap-0.5">
+                                    <span className="text-sm font-extrabold">{row.namaAm}</span>
+                                    <span className="flex items-center gap-1 flex-wrap">
+                                      {((row.divisiAll as string[]) ?? [row.divisi_cc])
+                                        .filter((d: string) => filterDivisi === "LESA" || matchesDivisiPerforma(d, filterDivisi))
+                                        .map((d: string) => (
+                                        <span key={d} className={cn("text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0",
+                                          d === "DPS" ? "bg-blue-100 text-blue-700" : d === "DSS" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
+                                        )}>{d}</span>
+                                      ))}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2.5 text-center font-black text-foreground text-xs" style={{backgroundColor:bgCard}}>{displayCusts.length}</td>
+                                <td className="px-4 py-2.5 text-right font-semibold text-foreground tabular-nums text-xs whitespace-nowrap" style={{backgroundColor:bgCard}}>{fmtRupiah(headerTarget)}</td>
+                                <td className="px-4 py-2.5 text-right font-black text-foreground tabular-nums text-xs whitespace-nowrap" style={{backgroundColor:bgCard}}>{fmtRupiah(headerReal)}</td>
+                                {showCmCol && <td className={cn("px-3 py-2.5 text-right font-black tabular-nums text-xs", headerAch >= 1 ? "text-green-600" : headerAch >= 0.8 ? "text-orange-500" : "text-red-600")} style={{backgroundColor:bgCard}}>
+                                  {typeof headerAch === "number" && !isNaN(headerAch) ? (headerAch * 100).toFixed(decimalPrecision).replace(".", ",") : decimalPrecision === 1 ? "0,0" : "0,00"}%
+                                </td>}
+                                {showYtdCol && <td className={cn("px-3 py-2.5 text-right font-black tabular-nums text-xs", headerAch >= 1 ? "text-green-600" : headerAch >= 0.8 ? "text-blue-600" : "text-red-600")} style={{backgroundColor:bgCard}}>
+                                  {typeof headerAch === "number" && !isNaN(headerAch) ? (headerAch * 100).toFixed(decimalPrecision).replace(".", ",") : decimalPrecision === 1 ? "0,0" : "0,00"}%
+                                </td>}
+                                <td className="px-3 py-2.5 text-center font-black text-foreground text-xs" style={{backgroundColor:bgCard}}>{row.displayRank}</td>
                               </tr>
                             </tbody>
                           </table>
 
                           {/* Customer detail table — inline rows, sub-header sticky below AM row */}
                           {(() => {
-                            const isMultiPeriode = filterPeriodes.size > 1;
-                            const displayCusts = isMultiPeriode && custViewMode === "perBulan"
-                              ? (row.rawCustomers || row.customers)
-                              : row.customers;
-                            const showPeriodeCol = isMultiPeriode && custViewMode === "perBulan";
-                            const getCustRev = (c: any) => filterTipeRevenue === "Semua"
-                              ? customerTotal(c)
-                              : { target: c[filterTipeRevenue]?.target ?? 0, real: c[filterTipeRevenue]?.real ?? 0 };
                             return (
                               <>
                           <table style={{...PERF_TB, borderLeft:`2px solid ${ring}`, borderRight:`2px solid ${ring}`, tableLayout:"fixed", minWidth:"780px"}}>
