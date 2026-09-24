@@ -698,7 +698,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
 
         {/* ── LOP per Fase + Metrics (3 cols) ── */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 220px 200px" }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 280px" }}>
             {/* LOP per Fase */}
             <div>
               <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
@@ -786,27 +786,6 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     <span className="font-bold text-emerald-600 shrink-0">Rate</span>
                     <span className="font-black tabular-nums text-emerald-600 shrink-0">{fmtPct(funnelData.conversionRate ?? 0)}</span>
                   </div>
-                </div>
-              </div>
-            </div>
-            {/* Counter Cards */}
-            <div className="flex flex-col gap-3 justify-between">
-              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-center gap-3 flex-1">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
-                  <Filter className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-2xl font-black tabular-nums leading-none text-blue-600">{funnelData.totalLop ?? 0}</div>
-                  <div className="text-[10px] font-medium leading-none mt-0.5" style={{ color: "#1e1e1e" }}>Total LOP</div>
-                </div>
-              </div>
-              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-center gap-3 flex-1">
-                <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
-                  <CreditCard className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</div>
-                  <div className="text-[10px] font-medium leading-none mt-0.5" style={{ color: "#1e1e1e" }}>Total Nilai Pipeline</div>
                 </div>
               </div>
             </div>
