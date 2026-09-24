@@ -696,33 +696,9 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           </div>
         </div>
 
-        {/* ── Overview Cards ── */}
-        <div className="grid grid-cols-4 gap-3">
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
-            <div className="text-2xl font-black tabular-nums leading-none text-foreground">{funnelData.totalLop ?? 0}</div>
-            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Total LOP</p>
-          </div>
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
-            <div className="text-2xl font-black tabular-nums leading-none text-blue-600">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</div>
-            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Total Nilai Pipeline</p>
-          </div>
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
-            <div className="text-2xl font-black tabular-nums leading-none text-amber-600">{funnelData.pelangganCount ?? 0}</div>
-            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Pelanggan</p>
-          </div>
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
-            <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtPct(funnelData.conversionRate ?? 0)}</div>
-            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Conversion Rate</p>
-          </div>
-        </div>
-
-        {/* ── LOP per Fase + Capaian + CR (3 cols) ── */}
+        {/* ── LOP per Fase + Metrics (3 cols) ── */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 220px 200px" }}>
             {/* LOP per Fase */}
             <div>
               <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
@@ -761,61 +737,76 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 })}
               </div>
             </div>
-            {/* Capaian Real vs Target */}
-            <div className="bg-secondary/40 border border-border rounded-xl p-3 flex flex-col justify-between">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Capaian Real vs Target</h3>
-              <div className="flex items-center gap-3 flex-1">
-                <div className="shrink-0">
-                  <DonutChart pct={funnelData.capaianTotal ?? 0} color="#3b82f6" size={120} stroke={14} />
-                </div>
-                <div className="flex-1 min-w-0 space-y-1" style={{ fontSize: "11px" }}>
+            {/* Capaian + Conversion Rate (stacked) */}
+            <div className="flex flex-col gap-3">
+              {/* Capaian Real vs Target */}
+              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-start gap-2">
+                <DonutChart pct={funnelData.capaianTotal ?? 0} color="#3b82f6" size={56} stroke={8} />
+                <div className="flex-1 min-w-0 space-y-0.5" style={{ fontSize: "10px" }}>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Capaian</p>
                   <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Real Pipeline</span>
+                    <span className="text-muted-foreground shrink-0">Real</span>
                     <span className="font-bold text-foreground tabular-nums shrink-0">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</span>
                   </div>
                   <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Target {selectedFunnelTarget === "FULL" ? "FULL (HO+BA)" : selectedFunnelTarget === "HO" ? "HO Only" : "BA Only"}</span>
+                    <span className="text-muted-foreground shrink-0">Target</span>
                     <span className="tabular-nums text-foreground shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
                   </div>
-                  {(funnelData.capaianTotal ?? 0) >= 100 && (
-                    <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
-                      <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600">Kelebihan</span>
-                      <span className="font-bold tabular-nums shrink-0 text-emerald-600">+{fmtRupiahShort(Math.max(0, (funnelData.totalNilai ?? 0) - (funnelData.targetTotal ?? 0)))}</span>
+                  {(funnelData.capaianTotal ?? 0) >= 100 ? (
+                    <div className="flex justify-between items-baseline gap-1">
+                      <span className="font-bold text-emerald-600 shrink-0">Plus</span>
+                      <span className="font-bold tabular-nums text-emerald-600 shrink-0">+{fmtRupiahShort(Math.max(0, (funnelData.totalNilai ?? 0) - (funnelData.targetTotal ?? 0)))}</span>
                     </div>
-                  )}
-                  {(funnelData.capaianTotal ?? 0) < 100 && (funnelData.targetTotal ?? 0) > 0 && (
-                    <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
-                      <span className="font-bold whitespace-nowrap shrink-0 text-red-600">Kekurangan</span>
-                      <span className="font-bold tabular-nums shrink-0 text-red-600">-{fmtRupiahShort(Math.max(0, (funnelData.targetTotal ?? 0) - (funnelData.totalNilai ?? 0)))}</span>
+                  ) : (funnelData.targetTotal ?? 0) > 0 ? (
+                    <div className="flex justify-between items-baseline gap-1">
+                      <span className="font-bold text-red-600 shrink-0">Minus</span>
+                      <span className="font-bold tabular-nums text-red-600 shrink-0">-{fmtRupiahShort(Math.max(0, (funnelData.targetTotal ?? 0) - (funnelData.totalNilai ?? 0)))}</span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
-            </div>
-            {/* Conversion Rate */}
-            <div className="bg-secondary/40 border border-border rounded-xl p-3 flex flex-col justify-between">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Conversion Rate</h3>
-              <div className="flex items-center gap-3 flex-1">
-                <div className="shrink-0">
-                  <DonutChart pct={funnelData.conversionRate ?? 0} color="#10b981" size={120} stroke={14} />
-                </div>
-                <div className="flex-1 min-w-0 space-y-1" style={{ fontSize: "11px" }}>
+              {/* Conversion Rate */}
+              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-start gap-2">
+                <DonutChart pct={funnelData.conversionRate ?? 0} color="#10b981" size={56} stroke={8} />
+                <div className="flex-1 min-w-0 space-y-0.5" style={{ fontSize: "10px" }}>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Conversion Rate</p>
                   <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground whitespace-nowrap shrink-0">F5 (Closed Won)</span>
+                    <span className="text-muted-foreground shrink-0">F5 Won</span>
                     <span className="font-bold tabular-nums shrink-0" style={{ color: "rgb(16,185,129)" }}>{fmtNilai(funnelData.wonLopNilai ?? 0)}</span>
                   </div>
                   <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground whitespace-nowrap shrink-0">F3 + F4 + F5</span>
+                    <span className="text-muted-foreground shrink-0">F3+F4+F5</span>
                     <span className="tabular-nums text-foreground shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
                   </div>
-                  <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
-                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Threshold</span>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="text-muted-foreground shrink-0">Threshold</span>
                     <span className="font-bold text-amber-500 shrink-0">≥ 70%</span>
                   </div>
                   <div className="flex justify-between items-baseline gap-1">
-                    <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600">Tercapai</span>
-                    <span className="font-black tabular-nums shrink-0 text-emerald-600">{fmtPct(funnelData.conversionRate ?? 0)}</span>
+                    <span className="font-bold text-emerald-600 shrink-0">Rate</span>
+                    <span className="font-black tabular-nums text-emerald-600 shrink-0">{fmtPct(funnelData.conversionRate ?? 0)}</span>
                   </div>
+                </div>
+              </div>
+            </div>
+            {/* Counter Cards */}
+            <div className="flex flex-col gap-3 justify-between">
+              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+                  <Filter className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-2xl font-black tabular-nums leading-none text-blue-600">{funnelData.totalLop ?? 0}</div>
+                  <div className="text-[10px] font-medium leading-none mt-0.5" style={{ color: "#1e1e1e" }}>Total LOP</div>
+                </div>
+              </div>
+              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</div>
+                  <div className="text-[10px] font-medium leading-none mt-0.5" style={{ color: "#1e1e1e" }}>Total Nilai Pipeline</div>
                 </div>
               </div>
             </div>
