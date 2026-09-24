@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, pool, performanceDataTable, accountManagersTable, dataImportsTable } from "@workspace/db";
+import { db, pool, performanceDataTable, accountManagersTable, dataImportsTable, salesFunnelTable, amFunnelTargetTable } from "@workspace/db";
 import { sql, and, eq, gte, lte, inArray, desc } from "drizzle-orm";
 import { requirePresentationAuth } from "../../shared/auth";
 import multer from "multer";
@@ -59,7 +59,11 @@ router.get("/am-profile/:nik", requirePresentationAuth, async (req, res): Promis
     perfConditions.push(eq(performanceDataTable.importId, targetSnapshotId));
   }
   if (tahun) {
-    perfConditions.push(eq(performanceDataTable.tahun, parseInt(String(tahun))));
+    const tahunVal = Array.isArray(tahun) ? tahun[0] : tahun;
+    const tahunNum = parseInt(String(tahunVal));
+    if (!isNaN(tahunNum)) {
+      perfConditions.push(eq(performanceDataTable.tahun, tahunNum));
+    }
   }
 
   let perfData = await db.select().from(performanceDataTable)
@@ -464,6 +468,178 @@ router.post("/am-photo", requirePresentationAuth, upload.single("photo"), async 
   );
 
   res.json({ success: true, photoUrl });
+});
+
+// GET /api/presentation/am-funnel/:nik
+// Returns funnel data for a specific AM: LOP per fase, DPS/DSS capaikan, conversion rate
+router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise<void> => {
+  const rawNik = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
+  const { import_id, tahun: tahunParam, divisi: divisiParam } = req.query;
+
+  // Verify AM exists
+  const [am] = await db.select().from(accountManagersTable)
+    .where(eq(accountManagersTable.nik, rawNik));
+  if (!am) { res.status(404).json({ error: "Account Manager tidak ditemukan" }); return; }
+
+  // Get funnel imports (snapshots)
+  const funnelImports = await db.select().from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "funnel"))
+    .orderBy(desc(dataImportsTable.createdAt));
+
+  // Determine which import to use
+  let targetImportId: number | null = import_id ? parseInt(String(import_id)) : null;
+  if (!targetImportId && funnelImports.length > 0) {
+    targetImportId = funnelImports[0].id;
+  }
+
+  // Get all funnel LOPs for this AM from the latest import
+  let lops = await db.select().from(salesFunnelTable)
+    .where(and(
+      eq(salesFunnelTable.nikAm, rawNik),
+      ...(targetImportId ? [eq(salesFunnelTable.importId, targetImportId)] : [])
+    ));
+
+  // Same auto-filters as main funnel endpoint
+  lops = lops.filter(l => (l.isReport || "").toUpperCase() === "Y");
+  lops = lops.filter(l => ["AO", "MO"].includes((l.projectType || "").toUpperCase()));
+  lops = lops.filter(l => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()));
+  lops = lops.filter(l => (l.divisi || "").toUpperCase() !== "DGS");
+
+  // Year filter
+  if (tahunParam) {
+    const yearNum = Number(tahunParam);
+    lops = lops.filter(l => {
+      const rdYear = l.reportDate ? parseInt(String(l.reportDate).slice(0, 4), 10) || null : null;
+      return rdYear === yearNum;
+    });
+  }
+
+  // Deduplicate by lopid
+  const lopMap = new Map<string, typeof lops[0]>();
+  for (const l of lops) {
+    const existing = lopMap.get(l.lopid);
+    if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+  }
+  lops = [...lopMap.values()];
+
+  // Group by statusF (F0-F5)
+  const statusMap: Record<string, { status: string; count: number; totalNilai: number }> = {};
+  const allPhases = ["F0", "F1", "F2", "F3", "F4", "F5"];
+  for (const p of allPhases) statusMap[p] = { status: p, count: 0, totalNilai: 0 };
+
+  let totalNilai = 0;
+  let totalLop = 0;
+
+  for (const l of lops) {
+    const s = l.statusF || "Unknown";
+    if (!statusMap[s]) statusMap[s] = { status: s, count: 0, totalNilai: 0 };
+    statusMap[s].count++;
+    statusMap[s].totalNilai += l.nilaiProyek || 0;
+    totalNilai += l.nilaiProyek || 0;
+    totalLop++;
+  }
+
+  const byStatus = allPhases.map(p => statusMap[p]).filter(s => s.count > 0);
+
+  // DPS vs DSS split (based on divisi field)
+  let dpsNilai = 0, dpsLop = 0;
+  let dssNilai = 0, dssLop = 0;
+  for (const l of lops) {
+    const div = (l.divisi || "").toUpperCase();
+    if (div === "DPS") { dpsNilai += l.nilaiProyek || 0; dpsLop++; }
+    else if (div === "DSS") { dssNilai += l.nilaiProyek || 0; dssLop++; }
+  }
+
+  // Conversion rate: (F4 + F5) / (F0 + F1 + F2 + F3 + F4 + F5)
+  const won = (statusMap["F4"]?.count || 0) + (statusMap["F5"]?.count || 0);
+  const conversionRate = totalLop > 0 ? (won / totalLop) * 100 : 0;
+
+  // DPS conversion
+  const dpsWon = lops.filter(l => (l.divisi || "").toUpperCase() === "DPS" && ["F4", "F5"].includes(l.statusF || "")).length;
+  const dpsConversionRate = dpsLop > 0 ? (dpsWon / dpsLop) * 100 : 0;
+
+  // DSS conversion
+  const dssWon = lops.filter(l => (l.divisi || "").toUpperCase() === "DSS" && ["F4", "F5"].includes(l.statusF || "")).length;
+  const dssConversionRate = dssLop > 0 ? (dssWon / dssLop) * 100 : 0;
+
+  // AM funnel targets
+  const lookupYear = tahunParam ? Number(tahunParam) : new Date().getFullYear();
+  const amTargets = await db.select().from(amFunnelTargetTable)
+    .where(and(
+      eq(amFunnelTargetTable.nikAm, rawNik),
+      eq(amFunnelTargetTable.tahun, lookupYear)
+    ));
+
+  // DPS/DSS specific targets
+  let targetDps = amTargets[0]?.targetValueDps ?? null;
+  let targetDss = amTargets[0]?.targetValueDss ?? null;
+  let targetTotal = amTargets[0]?.targetValue ?? null;
+
+  // Capaian rates
+  const capaikanDps = targetDps && targetDps > 0 ? (dpsNilai / targetDps) * 100 : null;
+  const capaikanDss = targetDss && targetDss > 0 ? (dssNilai / targetDss) * 100 : null;
+  const capaikanTotal = targetTotal && targetTotal > 0 ? (totalNilai / targetTotal) * 100 : null;
+
+  // Latest snapshot info
+  const currentImport = funnelImports.find(imp => imp.id === targetImportId);
+  const periodText = currentImport
+    ? (() => {
+        const d = currentImport.snapshotDate ? new Date(currentImport.snapshotDate) : (currentImport.createdAt ? new Date(currentImport.createdAt) : null);
+        if (!d || isNaN(d.getTime())) return currentImport.period || "-";
+        return d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+      })()
+    : "-";
+
+  // Snapshot options for UI
+  const snapshots = funnelImports.map(s => ({
+    id: s.id,
+    period: s.period,
+    snapshotDate: s.snapshotDate,
+    label: (() => {
+      const d = s.snapshotDate ? new Date(s.snapshotDate) : (s.createdAt ? new Date(s.createdAt) : null);
+      if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
+      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+    })(),
+  }));
+
+  // Table rows: individual LOPs grouped by statusF
+  const lopRows = lops.map(l => ({
+    lopid: l.lopid,
+    judulProyek: l.judulProyek,
+    pelanggan: l.pelanggan,
+    nilaiProyek: l.nilaiProyek,
+    divisi: l.divisi,
+    statusF: l.statusF,
+    proses: l.proses,
+    reportDate: l.reportDate,
+  }));
+
+  res.json({
+    snapshots,
+    selectedSnapshotId: targetImportId,
+    periodText,
+    byStatus,
+    totalLop,
+    totalNilai,
+    targetTotal,
+    capaikanTotal,
+    dps: {
+      nilai: dpsNilai,
+      lop: dpsLop,
+      target: targetDps,
+      capaikan: capaikanDps,
+      conversionRate: dpsConversionRate,
+    },
+    dss: {
+      nilai: dssNilai,
+      lop: dssLop,
+      target: targetDss,
+      capaikan: capaikanDss,
+      conversionRate: dssConversionRate,
+    },
+    conversionRate,
+    lopRows,
+  });
 });
 
 // DELETE /api/presentation/am-photo
