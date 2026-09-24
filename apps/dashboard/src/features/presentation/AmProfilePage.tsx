@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import {
   Loader2, X, Upload, TrendingUp, ChevronDown, Check, Target,
   TrendingDown, ChevronLeft, ChevronRight, Users, Trophy, CreditCard, MapPin,
-  BarChart2, Filter, Activity, TrendingUp, Search
+  BarChart2, Filter, Activity, TrendingUp, Search, Minimize2
 } from "lucide-react";
 import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { getPresentationSession } from "@/shared/hooks/use-presentation-auth";
@@ -32,6 +32,12 @@ const fmtRupiahShort = (n: number) => {
   if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `Rp ${(n / 1_000).toFixed(0)}Rb`;
   return `Rp ${n.toFixed(0)}`;
+};
+const fmtNilai = (n: number) => {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}Rb`;
+  return `${n.toFixed(0)}`;
 };
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
@@ -68,6 +74,143 @@ function Sparkline({ values, color = "#10b981", fill = true }: { values: number[
       {fill && fillPath && <path d={fillPath} fill={`url(#${gradId})`} />}
       <path d={linePath} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// ─── Donut Chart ─────────────────────────────────────────────────────────────
+function DonutChart({ pct, color = "#3b82f6", size = 150, stroke = 18 }: { pct: number; color?: string; size?: number; stroke?: number }) {
+  const R = 54;
+  const cx = 80, cy = 80;
+  const startAngle = -90;
+  const clamped = Math.min(100, Math.max(0, pct));
+  const endAngle = startAngle + (clamped / 100) * 360;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const arc = (a: number) => {
+    const rad = toRad(a);
+    return `${cx + R * Math.cos(rad)},${cy + R * Math.sin(rad)}`;
+  };
+  const start = arc(startAngle);
+  const end = arc(endAngle);
+  const large = clamped > 50 ? 1 : 0;
+  const bgEnd = arc(startAngle + 360);
+  return (
+    <svg width={size} height={size} viewBox="0 0 160 115">
+      <path d={`M ${start} A ${R} ${R} 0 1 1 ${bgEnd}`} fill="none" stroke="#e5e7eb" strokeWidth={stroke} strokeLinecap="round" />
+      <path d={`M ${start} A ${R} ${R} 0 ${large} 1 ${end}`} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize="22" fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
+      <text x={cx} y={cy + 8} textAnchor="middle" fontSize="8.5" fill="#6b7280">CAPAIAN</text>
+    </svg>
+  );
+}
+
+// ─── Funnel Table ────────────────────────────────────────────────────────────
+interface FunnelTableProps {
+  lopRows: any[];
+  funnelExpanded: Record<string, boolean>;
+  setFunnelExpanded: (v: Record<string, boolean>) => void;
+  search: string;
+  setSearch: (v: string) => void;
+  fmtNilai: (n: number) => string;
+  fmtRupiahShort: (n: number) => string;
+  amNama: string;
+  amBadge: string;
+}
+
+function FunnelTable({ lopRows, funnelExpanded, setFunnelExpanded, search, setSearch, fmtNilai, amNama, amBadge }: FunnelTableProps) {
+  const phaseColors: Record<string, string> = { F0: "#0ea5e9", F1: "#3b82f6", F2: "#6366f1", F3: "#7c3aed", F4: "#f97316", F5: "#10b981" };
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const r of lopRows) {
+      const key = r.statusF || "Unknown";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [lopRows]);
+
+  const totalNilai = lopRows.reduce((s: number, r: any) => s + (r.nilaiProyek || 0), 0);
+  const lopCount = lopRows.length;
+  const pelangganSet = new Set(lopRows.map((r: any) => r.pelanggan).filter(Boolean));
+  const badge = amBadge;
+
+  const crF5 = lopRows.filter((r: any) => r.statusF === "F5").length;
+  const crPipeline = lopRows.filter((r: any) => ["F3","F4","F5"].includes(r.statusF)).length;
+  const cr = crPipeline > 0 ? (crF5 / crPipeline) * 100 : 0;
+
+  const toggleAll = () => {
+    if (Object.keys(funnelExpanded).length === 0) {
+      setFunnelExpanded(Object.fromEntries(grouped.map(([k]) => [k, true])));
+    } else {
+      setFunnelExpanded({});
+    }
+  };
+
+  if (grouped.length === 0) {
+    return <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">Belum ada data funnel.</div>;
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* Header row */}
+      <div style={{ position: "sticky", top: 0, zIndex: 16, boxShadow: "rgba(0,0,0,0.13) 0px 2px 8px" }}>
+        <div style={{ display: "flex", borderLeft: "4px solid rgb(99,102,241)", borderRight: "2px solid rgb(148,163,184)", borderTop: "2px solid rgb(148,163,184)", borderBottom: "none", background: "hsl(var(--card))", padding: "0.5rem 1rem", alignItems: "center", gap: "0.5rem" }}>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-sm uppercase tracking-wide font-bold text-foreground">{amNama || "AM"}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 bg-blue-100 text-blue-700">{badge}</span>
+            <button onClick={toggleAll} className="ml-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 shrink-0" title="Expand/Collapse semua">
+              <Minimize2 className="w-3 h-3" />
+            </button>
+          </div>
+          <span className="text-sm font-black tabular-nums shrink-0">{lopCount} <span className="font-normal text-xs text-muted-foreground">lop</span></span>
+          <span className="text-sm font-black tabular-nums text-foreground shrink-0">{pelangganSet.size} <span className="font-normal text-xs text-muted-foreground">plg</span></span>
+          <span className="text-sm font-black tabular-nums text-foreground shrink-0">{fmtRupiahShort(totalNilai)}</span>
+          <span className="font-bold text-sm tabular-nums text-emerald-600 shrink-0">{fmtPct(cr)}</span>
+        </div>
+      </div>
+
+      {/* Phase sections */}
+      {grouped.map(([phase, rows]) => {
+        const isOpen = funnelExpanded[phase] !== false;
+        const phaseTotal = rows.reduce((s: number, r: any) => s + (r.nilaiProyek || 0), 0);
+        return (
+          <div key={phase}>
+            <div style={{ position: "sticky", top: "52px", zIndex: 15, cursor: "pointer", borderLeft: `4px solid ${phaseColors[phase] ?? "#888"}`, borderRight: "2px solid rgb(148,163,184)", borderTop: "1px solid hsl(var(--border))", boxShadow: "rgba(0,0,0,0.09) 0px 2px 6px", background: "rgba(253,242,248,0.75)" }}
+              onClick={() => setFunnelExpanded(prev => ({ ...prev, [phase]: !prev[phase] }))}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", paddingLeft: "2.5rem" }}>
+                <ChevronRight className={cn("w-3.5 h-3.5 text-slate-500 transition-transform shrink-0", isOpen && "rotate-90")} />
+                <span className="text-sm font-black uppercase tracking-wide" style={{ color: phaseColors[phase] ?? "#666" }}>
+                  DAFTAR PROYEK {phase}
+                </span>
+                <span className="text-xs font-black text-slate-900 px-1.5 py-0.5 rounded-full" style={{ background: "rgb(242,242,242)" }}>
+                  {rows.length} proyek
+                </span>
+                <div style={{ flex: 1 }} />
+                <span className="text-sm font-black text-foreground tabular-nums shrink-0">{fmtRupiahShort(phaseTotal)}</span>
+              </div>
+            </div>
+
+            {isOpen && (
+              <div style={{ borderLeft: `4px solid ${phaseColors[phase] ?? "#888"}`, borderRight: "2px solid rgb(148,163,184)", borderBottom: "2px solid rgb(148,163,184)" }}>
+                {rows.map((r: any) => (
+                  <div key={r.lopid} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem 1rem", borderTop: "1px solid hsl(var(--border)/0.5)", background: "hsl(var(--card))" }}>
+                    <span className="text-xs text-muted-foreground w-32 truncate shrink-0">{r.pelanggan || "—"}</span>
+                    <span className="text-xs text-foreground flex-1 truncate min-w-0">{r.judulProyek || "—"}</span>
+                    <span className="text-xs font-bold text-foreground tabular-nums shrink-0">{fmtRupiahShort(r.nilaiProyek || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Total row */}
+      <div style={{ display: "flex", borderTop: "2px solid rgb(148,163,184)", borderLeft: "2px solid rgb(148,163,184)", borderRight: "2px solid rgb(148,163,184)", borderBottom: "2px solid rgb(148,163,184)", background: "hsl(var(--card))", padding: "0.5rem 1rem", gap: "1rem", alignItems: "center" }}>
+        <span className="text-sm font-black text-red-700 uppercase tracking-wide flex-1">Total Nilai Proyek — {amNama || "AM"}</span>
+        <span className="text-sm font-black tabular-nums text-red-700 shrink-0">{fmtRupiahShort(totalNilai)}</span>
+      </div>
+    </div>
   );
 }
 
@@ -201,10 +344,18 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
   const [funnelData, setFunnelData] = useState<any>(null);
   const [funnelLoading, setFunnelLoading] = useState(false);
   const [selectedFunnelSnapshot, setSelectedFunnelSnapshot] = useState<number | null>(null);
-  const [funnelExpanded, setFunnelExpanded] = useState(true);
+  const [selectedFunnelTarget, setSelectedFunnelTarget] = useState<string>("FULL");
+  const [selectedKontrak, setSelectedKontrak] = useState<Set<string>>(new Set(["AO", "MO"]));
+  const [selectedStatusFunnel, setSelectedStatusFunnel] = useState<string>("all");
+  const [funnelExpanded, setFunnelExpanded] = useState<Record<string, boolean>>({});
   const [funnelSearch, setFunnelSearch] = useState("");
   const [funnelTablePage, setFunnelTablePage] = useState(1);
   const [funnelTablePageSize] = useState(20);
+  // Popover state
+  const [funnelSnapOpen, setFunnelSnapOpen] = useState(false);
+  const [funnelTargetOpen, setFunnelTargetOpen] = useState(false);
+  const [funnelKontrakOpen, setFunnelKontrakOpen] = useState(false);
+  const [funnelStatusOpen, setFunnelStatusOpen] = useState(false);
 
   const session = getPresentationSession();
   const effectiveNik = nik ?? session?.nik ?? "";
@@ -350,12 +501,20 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
     if (!effectiveNik || embTab !== "salesFunnel") return;
     let cancelled = false;
     setFunnelLoading(true);
-    fetch(`/api/presentation/am-funnel/${effectiveNik}`, { headers: presHeaders() })
+    const params = new URLSearchParams();
+    if (selectedFunnelSnapshot) params.set("import_id", String(selectedFunnelSnapshot));
+    params.set("target_type", selectedFunnelTarget);
+    if (selectedKontrak.size > 0 && selectedKontrak.size < 2) {
+      params.set("kategori_kontrak", [...selectedKontrak].join(","));
+    }
+    if (selectedStatusFunnel !== "all") params.set("status_funnel", selectedStatusFunnel);
+    const qs = params.toString();
+    fetch(`/api/presentation/am-funnel/${effectiveNik}${qs ? `?${qs}` : ""}`, { headers: presHeaders() })
       .then(r => r.json())
       .then(d => { if (!cancelled) { setFunnelData(d); setFunnelLoading(false); } })
       .catch(() => { if (!cancelled) setFunnelLoading(false); });
     return () => { cancelled = true; };
-  }, [effectiveNik, embTab]);
+  }, [effectiveNik, embTab, selectedFunnelSnapshot, selectedFunnelTarget, selectedKontrak, selectedStatusFunnel]);
 
   // Upload photo
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -443,6 +602,244 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
     const filterTotalTarget = filtered.reduce((s, c) => s + c.targetTotal, 0);
     const filterTotalReal = filtered.reduce((s, c) => s + c.realTotal, 0);
     const filterAchRate = filterTotalTarget > 0 ? (filterTotalReal / filterTotalTarget) * 100 : 0;
+
+    const funnelContent = funnelLoading ? (
+      <div className="space-y-4">
+        <div className="h-10 bg-secondary/50 rounded-xl animate-pulse" />
+        <div className="grid grid-cols-4 gap-3"><div className="h-[88px] bg-secondary/50 rounded-xl animate-pulse" /><div className="h-[88px] bg-secondary/50 rounded-xl animate-pulse" /><div className="h-[88px] bg-secondary/50 rounded-xl animate-pulse" /><div className="h-[88px] bg-secondary/50 rounded-xl animate-pulse" /></div>
+        <div className="grid grid-cols-3 gap-3"><div className="h-48 bg-secondary/50 rounded-xl animate-pulse" /><div className="h-48 bg-secondary/50 rounded-xl animate-pulse" /><div className="h-48 bg-secondary/50 rounded-xl animate-pulse" /></div>
+      </div>
+    ) : funnelData ? (
+      <div className="space-y-3">
+        {/* ── Filter Group ── */}
+        <div className="bg-card border border-border rounded-xl p-3">
+          <div className="flex items-end gap-2 flex-nowrap overflow-x-auto">
+            {/* Snapshot */}
+            <div className="flex flex-col gap-1 w-40 shrink-0">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Snapshot</label>
+              <Popover open={funnelSnapOpen} onOpenChange={setFunnelSnapOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                    <span className="flex-1 truncate font-medium text-foreground">{funnelData.snapshots?.find((s: any) => s.id === selectedFunnelSnapshot)?.label ?? funnelData.snapshots?.[0]?.label ?? "Pilih..."}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-0" align="start">
+                  <div className="p-1">
+                    {funnelData.snapshots?.map((s: any) => (
+                      <button key={s.id} onClick={() => { setSelectedFunnelSnapshot(s.id); setFunnelSnapOpen(false); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors", selectedFunnelSnapshot === s.id && "bg-accent font-semibold")}>{s.label}</button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {/* Target */}
+            <div className="flex flex-col gap-1 w-36 shrink-0">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Target</label>
+              <Popover open={funnelTargetOpen} onOpenChange={setFunnelTargetOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                    <span className="flex-1 truncate font-medium text-foreground">{selectedFunnelTarget}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-40 p-0" align="start">
+                  <div className="p-1">
+                    {[["FULL","FULL (HO+BA)"],["HO","HO Only"],["BA","BA Only"]].map(([v,l]) => (
+                      <button key={v} onClick={() => { setSelectedFunnelTarget(v); setFunnelTargetOpen(false); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors", selectedFunnelTarget === v && "bg-accent font-semibold")}>{l}</button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {/* Kategori Kontrak */}
+            <div className="flex flex-col gap-1 w-48 shrink-0">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Kategori</label>
+              <Popover open={funnelKontrakOpen} onOpenChange={setFunnelKontrakOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                    <span className="flex-1 truncate font-medium text-foreground">{selectedKontrak.size === 2 ? "Semua" : [...selectedKontrak].join(", ")}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-0" align="start">
+                  <div className="p-1 space-y-0.5">
+                    {[["AO","AO"],["MO","MO"]].map(([v,l]) => (
+                      <button key={v} onClick={() => { const next = new Set(selectedKontrak); next.has(v) ? next.delete(v) : next.add(v); setSelectedKontrak(next); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors flex items-center gap-2", selectedKontrak.has(v) && "bg-accent font-semibold")}>
+                        <span className={cn("w-4 h-4 border rounded flex items-center justify-center shrink-0", selectedKontrak.has(v) ? "bg-primary border-primary" : "border-border")}>{selectedKontrak.has(v) && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                        <span>{l}</span>
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {/* Status Funnel */}
+            <div className="flex flex-col gap-1 w-36 shrink-0">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Status</label>
+              <Popover open={funnelStatusOpen} onOpenChange={setFunnelStatusOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                    <span className="flex-1 truncate font-medium text-foreground">{selectedStatusFunnel === "all" ? "Semua" : selectedStatusFunnel}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-44 p-0" align="start">
+                  <div className="p-1">
+                    {[["all","Semua"],["ACTIVE","Active"],["INACTIVE","Inactive"],["WON","Won"],["LOST","Lost"]].map(([v,l]) => (
+                      <button key={v} onClick={() => { setSelectedStatusFunnel(v); setFunnelStatusOpen(false); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors", selectedStatusFunnel === v && "bg-accent font-semibold")}>{l}</button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Overview Cards ── */}
+        <div className="grid grid-cols-4 gap-3">
+          <div className="bg-card border border-border rounded-xl p-3">
+            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
+            <div className="text-2xl font-black tabular-nums leading-none text-foreground">{funnelData.totalLop ?? 0}</div>
+            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Total LOP</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
+            <div className="text-2xl font-black tabular-nums leading-none text-blue-600">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</div>
+            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Total Nilai Pipeline</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
+            <div className="text-2xl font-black tabular-nums leading-none text-amber-600">{funnelData.pelangganCount ?? 0}</div>
+            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Pelanggan</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <p className="text-[10px] font-medium leading-none mb-1.5" style={{ color: "#1e1e1e" }}>{funnelData.latestPeriode ?? "-"}</p>
+            <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtPct(funnelData.conversionRate ?? 0)}</div>
+            <p className="text-[10px] font-medium mt-0.5" style={{ color: "#1e1e1e" }}>Conversion Rate</p>
+          </div>
+        </div>
+
+        {/* ── LOP per Fase + Capaian + CR (3 cols) ── */}
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="grid grid-cols-3 gap-4">
+            {/* LOP per Fase */}
+            <div>
+              <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
+              <div className="space-y-2">
+                {(funnelData.byStatus ?? []).filter((s: any) => s.count > 0).map((s: any) => {
+                  const maxCount = Math.max(...(funnelData.byStatus ?? []).map((x: any) => x.count));
+                  const width = maxCount > 0 ? (s.count / maxCount) * 100 : 0;
+                  const phaseColors: Record<string, string> = { F0: "#0ea5e9", F1: "#3b82f6", F2: "#6366f1", F3: "#7c3aed", F4: "#f97316", F5: "#10b981" };
+                  const labelColors: Record<string, string> = { F0: "rgb(3,105,161)", F1: "rgb(29,78,216)", F2: "rgb(67,56,202)", F3: "rgb(91,33,182)", F4: "rgb(194,65,12)", F5: "rgb(6,95,70)" };
+                  return (
+                    <div key={s.status} className="flex items-center gap-2 group" title={s.status + ": " + s.count + " proyek · " + fmtNilai(s.totalNilai)}>
+                      <div className="w-7 shrink-0"><span className="text-sm font-black" style={{ color: labelColors[s.status] ?? "#666", fontFamily: "Inter, sans-serif" }}>{s.status}</span></div>
+                      <div className="flex-1 bg-secondary rounded overflow-hidden relative h-5">
+                        <div className="h-full rounded transition-all duration-500" style={{ width: (width) + "%", backgroundColor: phaseColors[s.status] ?? "#888" }} />
+                        <div className="absolute inset-0 flex items-center pl-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[10px] font-black text-white drop-shadow-sm whitespace-nowrap">{s.count} proyek · {fmtNilai(s.totalNilai)}</span>
+                        </div>
+                      </div>
+                      <span className="text-sm font-black w-16 shrink-0 text-right" style={{ color: labelColors[s.status] ?? "#666", fontFamily: "Inter, sans-serif" }}>
+                        {s.count} <span className="font-semibold text-muted-foreground text-[10px]">LOP</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1.5 mt-3 pt-3 border-t border-border/60">
+                {(funnelData.byStatus ?? []).filter((s: any) => s.count > 0).map((s: any) => {
+                  const labelColors: Record<string, string> = { F0: "rgb(3,105,161)", F1: "rgb(29,78,216)", F2: "rgb(67,56,202)", F3: "rgb(91,33,182)", F4: "rgb(194,65,12)", F5: "rgb(6,95,70)" };
+                  return (
+                    <div key={s.status} className="flex-1 min-w-0 bg-secondary/60 rounded-lg px-2.5 py-2.5 border border-border/50 flex flex-col justify-between">
+                      <span className="text-xs font-black leading-none" style={{ color: labelColors[s.status] ?? "#666", fontFamily: "Inter, sans-serif" }}>{s.status}</span>
+                      <span className="text-[17px] font-black tabular-nums leading-tight text-foreground truncate" style={{ fontFamily: "Inter, sans-serif" }}>{fmtNilai(s.totalNilai)}</span>
+                      <span className="text-[11px] font-bold text-muted-foreground tabular-nums leading-none">{s.count} LOP</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Capaian Real vs Target */}
+            <div className="bg-secondary/40 border border-border rounded-xl p-3 flex flex-col justify-between">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Capaian Real vs Target</h3>
+              <div className="flex items-center gap-3 flex-1">
+                <div className="shrink-0">
+                  <DonutChart pct={funnelData.capaianTotal ?? 0} color="#3b82f6" size={120} stroke={14} />
+                </div>
+                <div className="flex-1 min-w-0 space-y-1" style={{ fontSize: "11px" }}>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Real Pipeline</span>
+                    <span className="font-bold text-foreground tabular-nums shrink-0">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Target {selectedFunnelTarget === "FULL" ? "FULL (HO+BA)" : selectedFunnelTarget === "HO" ? "HO Only" : "BA Only"}</span>
+                    <span className="tabular-nums text-foreground shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
+                  </div>
+                  {(funnelData.capaianTotal ?? 0) >= 100 && (
+                    <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
+                      <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600">Kelebihan</span>
+                      <span className="font-bold tabular-nums shrink-0 text-emerald-600">+{fmtRupiahShort(Math.max(0, (funnelData.totalNilai ?? 0) - (funnelData.targetTotal ?? 0)))}</span>
+                    </div>
+                  )}
+                  {(funnelData.capaianTotal ?? 0) < 100 && (funnelData.targetTotal ?? 0) > 0 && (
+                    <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
+                      <span className="font-bold whitespace-nowrap shrink-0 text-red-600">Kekurangan</span>
+                      <span className="font-bold tabular-nums shrink-0 text-red-600">-{fmtRupiahShort(Math.max(0, (funnelData.targetTotal ?? 0) - (funnelData.totalNilai ?? 0)))}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* Conversion Rate */}
+            <div className="bg-secondary/40 border border-border rounded-xl p-3 flex flex-col justify-between">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Conversion Rate</h3>
+              <div className="flex items-center gap-3 flex-1">
+                <div className="shrink-0">
+                  <DonutChart pct={funnelData.conversionRate ?? 0} color="#10b981" size={120} stroke={14} />
+                </div>
+                <div className="flex-1 min-w-0 space-y-1" style={{ fontSize: "11px" }}>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">F5 (Closed Won)</span>
+                    <span className="font-bold tabular-nums shrink-0" style={{ color: "rgb(16,185,129)" }}>{fmtNilai(funnelData.wonLopNilai ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">F3 + F4 + F5</span>
+                    <span className="tabular-nums text-foreground shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-1 pt-0.5 border-t border-border">
+                    <span className="text-muted-foreground whitespace-nowrap shrink-0">Threshold</span>
+                    <span className="font-bold text-amber-500 shrink-0">≥ 70%</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-1">
+                    <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600">Tercapai</span>
+                    <span className="font-black tabular-nums shrink-0 text-emerald-600">{fmtPct(funnelData.conversionRate ?? 0)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Table ── */}
+        <FunnelTable
+          lopRows={funnelData.lopRows ?? []}
+          funnelExpanded={funnelExpanded}
+          setFunnelExpanded={setFunnelExpanded}
+          search={funnelSearch}
+          setSearch={setFunnelSearch}
+          fmtNilai={fmtNilai}
+          fmtRupiahShort={fmtRupiahShort}
+          amNama={data?.am?.nama ?? ""}
+          amBadge={data?.am?.badge ?? ""}
+        />
+      </div>
+    ) : (
+      <div className="bg-card border border-border rounded-xl p-6 text-center text-sm text-muted-foreground/60 italic">
+        Data funnel tidak tersedia untuk filter yang dipilih.
+      </div>
+    );
 
   return (
       <>
@@ -948,13 +1345,9 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                       </div>
                     </div>
                   )}</div></div>)}
-{/* Tab: Sales Funnel */}
-                {embTab === "salesFunnel" && (
-            <div className="w-full">
-              <div className="text-sm text-muted-foreground/60 italic">Konten Sales Funnel — dalam pengembangan</div>
-            </div>
-          )}
-          {/* Tab: Sales Activity */}
+                {/* Tab: Sales Funnel */}
+                {embTab === "salesFunnel" && funnelContent}
+                {/* Tab: Sales Activity */}
           {embTab === "salesActivity" && (
             <div className="w-full">
               <div className="text-sm text-muted-foreground/60 italic">Konten Sales Activity — dalam pengembangan</div>

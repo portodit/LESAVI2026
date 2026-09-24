@@ -474,7 +474,14 @@ router.post("/am-photo", requirePresentationAuth, upload.single("photo"), async 
 // Returns funnel data for a specific AM: LOP per fase, DPS/DSS capaikan, conversion rate
 router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise<void> => {
   const rawNik = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
-  const { import_id, tahun: tahunParam, divisi: divisiParam } = req.query;
+  const {
+    import_id,
+    tahun: tahunParam,
+    divisi: divisiParam,
+    target_type: targetType,
+    kategori_kontrak: kontrakRaw,
+    status_funnel: statusFunnel,
+  } = req.query;
 
   // Verify AM exists
   const [am] = await db.select().from(accountManagersTable)
@@ -504,6 +511,23 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
   lops = lops.filter(l => ["AO", "MO"].includes((l.projectType || "").toUpperCase()));
   lops = lops.filter(l => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()));
   lops = lops.filter(l => (l.divisi || "").toUpperCase() !== "DGS");
+
+  // Kategori kontrak filter (AO / MO multi-select)
+  if (kontrakRaw) {
+    const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
+    if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
+      lops = lops.filter(l => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+    }
+  }
+
+  // Status funnel filter
+  const sf = String(statusFunnel || "all").toLowerCase();
+  if (sf === "active") {
+    lops = lops.filter(l => !["F5"].includes(l.statusF || ""));
+  } else if (sf === "closedwon") {
+    lops = lops.filter(l => ["F4", "F5"].includes(l.statusF || ""));
+  }
+  // "all" = no filter
 
   // Year filter
   if (tahunParam) {
@@ -539,7 +563,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     totalLop++;
   }
 
-  const byStatus = allPhases.map(p => statusMap[p]).filter(s => s.count > 0);
+  const byStatus = allPhases.map(p => statusMap[p]).filter(s => s.count > 0 || allPhases.includes(p));
 
   // DPS vs DSS split (based on divisi field)
   let dpsNilai = 0, dpsLop = 0;
@@ -550,17 +574,23 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     else if (div === "DSS") { dssNilai += l.nilaiProyek || 0; dssLop++; }
   }
 
-  // Conversion rate: (F4 + F5) / (F0 + F1 + F2 + F3 + F4 + F5)
-  const won = (statusMap["F4"]?.count || 0) + (statusMap["F5"]?.count || 0);
-  const conversionRate = totalLop > 0 ? (won / totalLop) * 100 : 0;
+  // Conversion rate: F5 / (F0+F1+F2+F3+F4+F5) [F4 = negotiation, F5 = closed]
+  const won = (statusMap["F5"]?.count || 0);
+  const inPipeline = (statusMap["F0"]?.count || 0) + (statusMap["F1"]?.count || 0) + (statusMap["F2"]?.count || 0) + (statusMap["F3"]?.count || 0) + (statusMap["F4"]?.count || 0);
+  const conversionRate = totalLop > 0 ? (won / (won + inPipeline)) * 100 : 0;
 
-  // DPS conversion
-  const dpsWon = lops.filter(l => (l.divisi || "").toUpperCase() === "DPS" && ["F4", "F5"].includes(l.statusF || "")).length;
-  const dpsConversionRate = dpsLop > 0 ? (dpsWon / dpsLop) * 100 : 0;
+  // Pipeline for CR: F3+F4+F5 (eligible for closing)
+  const pipelineEligible = (statusMap["F3"]?.count || 0) + (statusMap["F4"]?.count || 0) + (statusMap["F5"]?.count || 0);
+  const pipelineEligibleNilai = (statusMap["F3"]?.totalNilai || 0) + (statusMap["F4"]?.totalNilai || 0) + (statusMap["F5"]?.totalNilai || 0);
 
-  // DSS conversion
-  const dssWon = lops.filter(l => (l.divisi || "").toUpperCase() === "DSS" && ["F4", "F5"].includes(l.statusF || "")).length;
-  const dssConversionRate = dssLop > 0 ? (dssWon / dssLop) * 100 : 0;
+  // DPS / DSS CR (same formula)
+  const dpsWonLop = lops.filter(l => (l.divisi || "").toUpperCase() === "DPS" && (l.statusF || "") === "F5").length;
+  const dpsPipeline = lops.filter(l => (l.divisi || "").toUpperCase() === "DPS" && ["F0", "F1", "F2", "F3", "F4"].includes(l.statusF || "")).length;
+  const dpsConversionRate = (dpsWonLop + dpsPipeline) > 0 ? (dpsWonLop / (dpsWonLop + dpsPipeline)) * 100 : 0;
+
+  const dssWonLop = lops.filter(l => (l.divisi || "").toUpperCase() === "DSS" && (l.statusF || "") === "F5").length;
+  const dssPipeline = lops.filter(l => (l.divisi || "").toUpperCase() === "DSS" && ["F0", "F1", "F2", "F3", "F4"].includes(l.statusF || "")).length;
+  const dssConversionRate = (dssWonLop + dssPipeline) > 0 ? (dssWonLop / (dssWonLop + dssPipeline)) * 100 : 0;
 
   // AM funnel targets
   const lookupYear = tahunParam ? Number(tahunParam) : new Date().getFullYear();
@@ -575,10 +605,17 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
   let targetDss = amTargets[0]?.targetValueDss ?? null;
   let targetTotal = amTargets[0]?.targetValue ?? null;
 
+  // Target type adjustments (if "HO" or "BA" only)
+  if (targetType === "HO" && targetDps) targetDps = targetDps;
+  if (targetType === "BA" && targetDss) targetDss = targetDss;
+
   // Capaian rates
   const capaikanDps = targetDps && targetDps > 0 ? (dpsNilai / targetDps) * 100 : null;
   const capaikanDss = targetDss && targetDss > 0 ? (dssNilai / targetDss) * 100 : null;
   const capaikanTotal = targetTotal && targetTotal > 0 ? (totalNilai / targetTotal) * 100 : null;
+
+  // Unique pelanggan count
+  const uniquePelanggan = new Set(lops.map(l => l.pelanggan).filter(Boolean)).size;
 
   // Latest snapshot info
   const currentImport = funnelImports.find(imp => imp.id === targetImportId);
@@ -612,6 +649,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     statusF: l.statusF,
     proses: l.proses,
     reportDate: l.reportDate,
+    projectType: l.projectType,
   }));
 
   res.json({
@@ -623,6 +661,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     totalNilai,
     targetTotal,
     capaikanTotal,
+    pelangganCount: uniquePelanggan,
     dps: {
       nilai: dpsNilai,
       lop: dpsLop,
@@ -638,6 +677,10 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
       conversionRate: dssConversionRate,
     },
     conversionRate,
+    pipelineEligible,
+    pipelineEligibleNilai,
+    wonLop: won,
+    wonLopNilai: statusMap["F5"]?.totalNilai || 0,
     lopRows,
   });
 });
