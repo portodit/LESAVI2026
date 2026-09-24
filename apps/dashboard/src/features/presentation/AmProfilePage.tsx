@@ -698,7 +698,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
 
         {/* ── LOP per Fase + Metrics (3 cols) ── */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 280px" }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
             {/* LOP per Fase */}
             <div>
               <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
@@ -735,6 +735,11 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     </div>
                   );
                 })}
+                <div className="flex-1 min-w-0 bg-rose-100 rounded-lg px-2.5 py-2.5 border border-rose-200 flex flex-col justify-between">
+                  <span className="text-xs font-black leading-none text-rose-600">TOTAL</span>
+                  <span className="text-[17px] font-black tabular-nums leading-tight text-foreground truncate" style={{ fontFamily: "Inter, sans-serif" }}>{fmtNilai(funnelData.totalNilai ?? 0)}</span>
+                  <span className="text-[11px] font-bold text-muted-foreground tabular-nums leading-none">{funnelData.totalLop ?? 0} LOP</span>
+                </div>
               </div>
             </div>
             {/* Capaian + Conversion Rate (stacked) */}
