@@ -1,14 +1,18 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import {
   Loader2, X, Upload, TrendingUp, ChevronDown, Check, Target,
   TrendingDown, ChevronLeft, ChevronRight, Users, Trophy, CreditCard, MapPin,
-  BarChart2, Filter, Activity, TrendingUp, Search, Minimize2
+  BarChart2, Filter, Activity, Search, Minimize2, ChevronsUp, ChevronsDown,
+  ArrowRight, PlusCircle, AlertTriangle, MinusCircle
 } from "lucide-react";
-import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Bar, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getPresentationSession } from "@/shared/hooks/use-presentation-auth";
 import { cn, formatRupiahFull } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
+import { Badge } from "@/shared/ui/badge";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 const MONTHS_LABEL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -23,23 +27,391 @@ const DIVISI_OPTIONS_EMB = [
   { value: "DPS", label: "DPS" },
   { value: "DSS", label: "DSS" },
 ];
+const MONTHS_FULL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtRupiah = (n: number) => formatRupiahFull(n);
 const fmtRupiahShort = (n: number) => {
-  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000_000_000) return `Rp ${(n / 1_000_000_000_000).toFixed(1)}T`;
+  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}JT`;
   if (n >= 1_000) return `Rp ${(n / 1_000).toFixed(0)}Rb`;
   return `Rp ${n.toFixed(0)}`;
 };
 const fmtNilai = (n: number) => {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000_000_000) return `${(n / 1_000_000_000_000).toFixed(1)}T`;
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}JT`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}Rb`;
   return `${n.toFixed(0)}`;
 };
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+
+// ─── Trend Chart Custom Tooltip ─────────────────────────────────────────────────
+const TrendTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  const real = payload.find((p: any) => p.dataKey === "real");
+  const target = payload.find((p: any) => p.dataKey === "target");
+  const ach = payload.find((p: any) => p.dataKey === "ach");
+  return (
+    <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-lg" style={{ fontSize: 11 }}>
+      <p className="font-bold mb-1.5">{label}</p>
+      {real && <p className="text-green-600">Real: <span className="font-semibold">{fmtRupiahShort(real.value)}</span></p>}
+      {target && <p className="text-blue-600">Target: <span className="font-semibold">{fmtRupiahShort(target.value)}</span></p>}
+      {ach && <p className="text-red-600">Ach %: <span className="font-semibold">{ach.value.toFixed(1)}%</span></p>}
+    </div>
+  );
+};
+
+// ─── Phase Color Helpers ───────────────────────────────────────────────────────
+const PHASE_COLORS_MAP: Record<string, string> = {
+  F0: "#0ea5e9", F1: "#3b82f6", F2: "#6366f1",
+  F3: "#7c3aed", F4: "#f97316", F5: "#10b981",
+};
+const PHASE_TEXT_COLORS: Record<string, string> = {
+  F0: "text-sky-600", F1: "text-blue-600", F2: "text-indigo-600",
+  F3: "text-violet-600", F4: "text-orange-600", F5: "text-emerald-600",
+};
+const PHASE_BG_COLORS: Record<string, string> = {
+  F0: "bg-sky-100 text-sky-700", F1: "bg-blue-100 text-blue-700", F2: "bg-indigo-100 text-indigo-700",
+  F3: "bg-violet-100 text-violet-700", F4: "bg-orange-100 text-orange-700", F5: "bg-emerald-100 text-emerald-700",
+};
+const PHASE_ACCENT_COLORS: Record<string, string> = {
+  F0: "border-l-sky-400", F1: "border-l-blue-400", F2: "border-l-indigo-400",
+  F3: "border-l-violet-400", F4: "border-l-orange-400", F5: "border-l-emerald-400",
+};
+
+// ─── Pergerakan Funnel Item Row (card style) ───────────────────────────────────
+interface PergerakanItem {
+  lopid: string;
+  judulProyek: string;
+  pelanggan: string;
+  nilaiProyek: number;
+  statusF: string;
+  prevStatusF?: string;
+  divisi: string | null;
+  kategoriKontrak: string | null;
+  reportDate: string | null;
+  monthSubs: number | null;
+  isNew?: boolean;
+}
+
+function PergerakanItemRow({ item, variant, index }: { item: PergerakanItem; variant: "new" | "changed" | "stagnant"; index: number }) {
+  const durasiLabel = (!item.monthSubs || item.monthSubs <= 0)
+    ? "–"
+    : item.monthSubs % 12 === 0
+      ? `${item.monthSubs / 12} Thn`
+      : `${item.monthSubs} Bln`;
+
+  const divisiColor = (d: string | null) => {
+    if (!d) return "bg-gray-100 text-gray-600";
+    if (d.toUpperCase() === "DPS") return "bg-blue-100 text-blue-800 font-bold";
+    if (d.toUpperCase() === "DSS") return "bg-purple-100 text-purple-800 font-bold";
+    return "bg-gray-100 text-gray-600";
+  };
+
+  const phaseBg = PHASE_BG_COLORS[item.statusF] ?? "bg-gray-100 text-gray-700";
+  const prevPhaseBg = item.prevStatusF ? (PHASE_BG_COLORS[item.prevStatusF] ?? "bg-gray-100 text-gray-700") : "";
+  const accentColor = PHASE_ACCENT_COLORS[item.statusF] ?? "border-l-gray-400";
+
+  const statusBadge = variant === "new"
+    ? { label: "BARU", bg: "bg-blue-600", text: "text-white" }
+    : variant === "changed"
+    ? { label: "BERUBAH", bg: "bg-amber-500", text: "text-white" }
+    : { label: "STAGNAN", bg: "bg-gray-800", text: "text-white" };
+
+  const reportDate = item.reportDate
+    ? new Date(item.reportDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+    : "–";
+
+  const cardBorder = variant === "new"
+    ? "border-blue-200"
+    : variant === "changed"
+    ? "border-amber-200"
+    : "border-gray-200";
+
+  return (
+    <div className={cn(
+      "rounded-2xl border bg-white shadow-sm overflow-hidden",
+      "border-l-4",
+      accentColor,
+      cardBorder
+    )}>
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        {/* Number */}
+        <span className="text-sm font-bold w-6 text-right shrink-0" style={{ color: "#1e1e1e" }}>{index}</span>
+
+        {/* Divider */}
+        <div className="w-px h-8 bg-gray-200 shrink-0" />
+
+        {/* LOP ID + phase */}
+        <div className="flex flex-col gap-1 w-[115px] shrink-0">
+          <span className="font-mono text-xs font-extrabold text-gray-900">{item.lopid}</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {variant === "changed" && item.prevStatusF && (
+              <>
+                <span className={cn("inline-flex items-center px-1 py-0.5 rounded text-[10px] font-bold", prevPhaseBg)}>LOP {item.prevStatusF}</span>
+                <span className="text-gray-400 text-xs">→</span>
+              </>
+            )}
+            <span className={cn("inline-flex items-center px-1 py-0.5 rounded text-[10px] font-bold", phaseBg)}>LOP {item.statusF}</span>
+          </div>
+        </div>
+
+        {/* Judul proyek */}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-gray-900 leading-snug line-clamp-2">{item.judulProyek}</div>
+        </div>
+
+        {/* Pelanggan */}
+        <div className="w-[125px] shrink-0">
+          <div className="text-xs font-bold text-gray-800 truncate">{item.pelanggan}</div>
+          <div className="flex items-center gap-1 mt-0.5">
+            {item.divisi && (
+              <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold", divisiColor(item.divisi))}>
+                {item.divisi}
+              </span>
+            )}
+            <span className="text-[10px] text-gray-700 font-medium">{item.kategoriKontrak ?? "–"}</span>
+          </div>
+        </div>
+
+        {/* Nilai */}
+        <div className="w-[150px] text-right shrink-0">
+          <div className="text-sm font-black text-gray-900 tabular-nums">{formatRupiahFull(item.nilaiProyek)}</div>
+          <div className="text-[11px] text-gray-700 font-medium mt-0.5">{reportDate} · {durasiLabel}</div>
+        </div>
+
+        {/* Status badge */}
+        <div className="w-[80px] text-right shrink-0">
+          <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black shrink-0", statusBadge.bg, statusBadge.text)}>
+            {statusBadge.label}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pergerakan Funnel Section ───────────────────────────────────────────────
+function PergerakanSection({
+  snapshotComparison,
+  funnelData,
+  amNama,
+}: {
+  snapshotComparison: ReturnType<typeof import("./AmProfilePage").PergerakanSection>;
+  funnelData: any;
+  amNama: string;
+}) {
+  const { newLops, changedStatus, stagnanLops, stagnanCount, prevCR, crDelta, currCR, totalTercakup } = snapshotComparison;
+  const currentSnapshotLabel = funnelData?.snapshots?.find((s: any) => s.id === funnelData.selectedSnapshotId)?.label ?? "";
+  const prevSnapshotLabel = funnelData?.snapshots?.find((s: any) => s.id === funnelData.prevSnapshotId)?.label ?? "";
+
+  // Count by kategoriKontrak for each group
+  const countByKat = (lops: any[]) => {
+    const counts: Record<string, number> = {};
+    for (const l of lops) {
+      const k = l.kategoriKontrak ?? "(kosong)";
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return counts;
+  };
+  const fmtKat = (counts: Record<string, number>) => {
+    const parts: string[] = [];
+    if (counts["GTMA"]) parts.push(`${counts["GTMA"]} GTMA`);
+    if (counts["Own Channel"]) parts.push(`${counts["Own Channel"]} Own Channel`);
+    if (counts["New GTMA"]) parts.push(`${counts["New GTMA"]} New GTMA`);
+    if (counts["(kosong)"]) parts.push(`${counts["(kosong)"]} Uncategorized`);
+    const uncategorized = Object.entries(counts).filter(([k]) => !["GTMA", "Own Channel", "New GTMA", "(kosong)"].includes(k));
+    for (const [k, v] of uncategorized) parts.push(`${v} ${k}`);
+    return parts.length > 0 ? `(${parts.join(", ")})` : "";
+  };
+
+  const stagnanByKat = countByKat(stagnanLops);
+  const newByKat = countByKat(newLops);
+  const changedByKat = countByKat(changedStatus);
+  const stagnanBreakdown = fmtKat(stagnanByKat);
+  const stagnanSuffix = stagnanBreakdown
+    ? `${stagnanBreakdown}${newLops.length > 0 || changedStatus.length > 0 ? ` — ${newLops.length > 0 ? `${fmtKat(newByKat)} LOP baru${changedStatus.length > 0 ? " dan" : ""}` : ""}${changedStatus.length > 0 ? ` ${fmtKat(changedByKat)} LOP berubah` : ""}` : ""}.`
+    : ".";
+
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
+    new: newLops.length > 0,
+    changed: changedStatus.length > 0,
+    stagnant: stagnanCount > 0,
+  });
+
+  if (!prevSnapshotLabel) return null;
+
+  const toggleCategory = (key: string) =>
+    setOpenCategories(prev => ({ ...prev, [key]: !prev[key] }));
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-4 border-b border-gray-200">
+        <h2 className="text-base font-bold text-gray-900 leading-tight">
+          Laporan Pergerakan Funnel
+        </h2>
+        <p className="text-xs text-gray-800 mt-2 leading-relaxed">
+          Berikut adalah laporan Perkembangan LOP berdasarkan data dari snapshot terbaru{" "}
+          <span className="font-bold">{currentSnapshotLabel}</span> (#{funnelData.selectedSnapshotId}) dibandingkan dengan snapshot sebelumnya{" "}
+          <span className="font-bold">{prevSnapshotLabel}</span> (#{funnelData.prevSnapshotId}). Berdasarkan hasil analisis, kak{" "}
+          <span className="font-semibold">{amNama}</span>, memiliki total{" "}
+          <span className="font-semibold">{totalTercakup} LOP</span> hingga saat ini, yang terbagi ke dalam{" "}
+          <span className="font-semibold">{newLops.length} LOP baru</span> yang ditambahkan,{" "}
+          <span className="font-semibold">{changedStatus.length} LOP</span> yang mengalami
+          pergerakan status, dan{" "}
+          <span className="font-semibold">{stagnanCount} LOP</span> yang masih stagnan
+          pergerakannya {stagnanSuffix} Berdasarkan capaian funneling saat ini kak{" "}
+          <span className="font-semibold">{amNama}</span> memiliki CR sebesar{" "}
+          <span className="font-semibold">{fmtPct(currCR)}</span>.
+        </p>
+      </div>
+
+      {/* Summary Pills */}
+      <div className="flex border-b border-gray-200">
+        {[
+          { key: "new", label: "LOP Baru", count: newLops.length, icon: PlusCircle, color: "text-blue-600", bg: "bg-blue-50", hover: "hover:bg-blue-100" },
+          { key: "changed", label: "Status Berubah", count: changedStatus.length, icon: ArrowRight, color: "text-amber-600", bg: "bg-amber-50", hover: "hover:bg-amber-100" },
+          { key: "stagnant", label: "Belum Bergerak", count: stagnanCount, icon: MinusCircle, color: "text-orange-600", bg: "bg-orange-50", hover: "hover:bg-orange-100" },
+        ].map(({ key, label, count, icon: Icon, color, bg, hover }) => (
+          <button
+            key={key}
+            onClick={() => toggleCategory(key)}
+            className={cn(
+              "flex-1 flex items-center gap-3 px-4 py-3.5 transition-colors border-r last:border-r-0 border-gray-200",
+              bg, hover,
+              openCategories[key] && "ring-1 ring-inset ring-gray-300"
+            )}
+          >
+            <Icon className={cn("w-5 h-5 shrink-0", color)} />
+            <div className="text-left min-w-0">
+              <div className={cn("text-[11px] font-bold uppercase tracking-wide", color)}>{label}</div>
+              <div className={cn("text-2xl font-extrabold tabular-nums leading-none", color)}>{count}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Content Area */}
+      <CardContent className="p-0">
+        {/* LOP Baru */}
+        {newLops.length > 0 && (
+          <CategorySection
+            title={`LOP Baru Muncul — ${newLops.length} proyek`}
+            description="Tidak ada di snapshot sebelumnya"
+            icon={<PlusCircle className="w-3.5 h-3.5 text-blue-600" />}
+            count={newLops.length}
+            isOpen={openCategories["new"]}
+            onToggle={() => toggleCategory("new")}
+            accentClass="border-l-blue-400"
+            headerBg="bg-blue-50/70"
+          >
+            {newLops.map((l: any, i: number) => (
+              <PergerakanItemRow key={l.lopid} item={{ ...l, isNew: true }} variant="new" index={i + 1} />
+            ))}
+          </CategorySection>
+        )}
+
+        {/* Status Berubah */}
+        {changedStatus.length > 0 && (
+          <CategorySection
+            title={`Status Berubah — ${changedStatus.length} proyek`}
+            description="Mengalami pergeseran fase"
+            icon={<ArrowRight className="w-3.5 h-3.5 text-amber-600" />}
+            count={changedStatus.length}
+            isOpen={openCategories["changed"]}
+            onToggle={() => toggleCategory("changed")}
+            accentClass="border-l-amber-400"
+            headerBg="bg-amber-50/70"
+          >
+            {changedStatus.map((l: any, i: number) => {
+              const prev = (funnelData?.prevLops ?? []).find((p: any) => p.lopid === l.lopid);
+              return (
+                <PergerakanItemRow key={l.lopid} item={{ ...l, prevStatusF: prev?.statusF }} variant="changed" index={i + 1} />
+              );
+            })}
+          </CategorySection>
+        )}
+
+        {/* Belum Bergerak */}
+        {stagnanCount > 0 && (
+          <CategorySection
+            title={`Belum Bergerak — ${stagnanCount} proyek`}
+            description="Status tetap sejak snapshot sebelumnya"
+            icon={<AlertTriangle className="w-3.5 h-3.5 text-gray-500" />}
+            count={stagnanCount}
+            isOpen={openCategories["stagnant"]}
+            onToggle={() => toggleCategory("stagnant")}
+            accentClass="border-l-gray-400"
+            headerBg="bg-gray-50/70"
+          >
+            {stagnanLops.map((l: any, i: number) => (
+              <PergerakanItemRow key={l.lopid} item={l} variant="stagnant" index={i + 1} />
+            ))}
+          </CategorySection>
+        )}
+
+        {/* Empty state */}
+        {newLops.length === 0 && changedStatus.length === 0 && stagnanCount === 0 && (
+          <div className="px-5 py-8 text-center">
+            <div className="text-sm font-semibold text-gray-500">Tidak ada data perubahan yang terdeteksi</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Category Accordion (flat list) ─────────────────────────────────────────────
+function CategorySection({
+  title,
+  description,
+  icon,
+  accentClass,
+  headerBg,
+  count,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  accentClass: string;
+  headerBg: string;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Collapsible open={isOpen} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <button className={cn(
+          "w-full flex items-center gap-3 px-5 py-3 text-left transition-colors border-l-[4px]",
+          accentClass,
+          headerBg
+        )}>
+          <span className="shrink-0">{icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-black text-black">{title}</div>
+            <div className="text-xs font-medium text-gray-600">{description}</div>
+          </div>
+          <span className="text-sm font-black text-black bg-white border border-gray-300 px-2 py-0.5 rounded-full shrink-0">{count}</span>
+          <ChevronDown className={cn("w-4 h-4 text-gray-700 shrink-0 transition-transform duration-200", isOpen && "rotate-180")} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="max-h-[480px] overflow-y-auto bg-white/50 p-3 space-y-2">
+          {children}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AmProfile { nik: string; nama: string; divisi: string | null; badge: string | null; witel: string | null; photoUrl: string | null; }
@@ -47,7 +419,7 @@ interface CustomerRow { pelanggan: string; nip: string | null; divisi: string | 
 interface CustomerRowDetail extends CustomerRow { bulan: number; tahun: number; }
 interface Snapshot { id: number; label: string; period: string | null; snapshotDate: string | null; }
 interface AmProfileFilters { availableBulan: number[]; selectedBulan: number[]; tipeRevenue: string; }
-interface AmProfileResponse { am: AmProfile; snapshots: Snapshot[]; customers: CustomerRow[]; selectedSnapshotId: number | null; filters: AmProfileFilters; customerRows: CustomerRowDetail[]; summary: { totalTarget: number; totalReal: number; achRate: number; periodText: string; customerCount: number; }; }
+interface AmProfileResponse { am: AmProfile; snapshots: Snapshot[]; customers: CustomerRow[]; selectedSnapshotId: number | null; filters: AmProfileFilters; customerRows: CustomerRowDetail[]; summary: { totalTarget: number; totalReal: number; achRate: number; periodText: string; customerCount: number; cmAchRate: number; cmTarget: number; cmReal: number; }; }
 interface RankData { myRank: number | null; myAchRate: number | null; totalCount: number; bulan?: number; tahun?: number; }
 type TabId = "performansi" | "salesFunnel" | "salesActivity" | "prognosa";
 interface Props { nik?: string; embedded?: boolean; onAmLoaded?: (am: AmProfile) => void; }
@@ -79,8 +451,10 @@ function Sparkline({ values, color = "#10b981", fill = true }: { values: number[
 
 // ─── Donut Chart ─────────────────────────────────────────────────────────────
 function DonutChart({ pct, color = "#3b82f6", size = 150, stroke = 18 }: { pct: number; color?: string; size?: number; stroke?: number }) {
-  const R = 54;
-  const cx = 80, cy = 80;
+  // Scale viewBox so SVG is crisp at any prop size
+  const scale = size / 120;
+  const R = 54 * scale;
+  const cx = 80 * scale, cy = 80 * scale;
   const startAngle = -90;
   const clamped = Math.min(100, Math.max(0, pct));
   const endAngle = startAngle + (clamped / 100) * 360;
@@ -93,12 +467,28 @@ function DonutChart({ pct, color = "#3b82f6", size = 150, stroke = 18 }: { pct: 
   const end = arc(endAngle);
   const large = clamped > 50 ? 1 : 0;
   const bgEnd = arc(startAngle + 360);
+  const fontSize = Math.round(22 * scale);
+  const labelFontSize = Math.round(8.5 * scale);
+  const sw = stroke * scale;
+  // viewBox: center arc vertically with enough room for stroke caps and label
+  const arcTop = cy - R - sw / 2;
+  const arcBot = cy + R + sw / 2;
+  const vbTop = Math.floor(arcTop);
+  const vbBot = Math.ceil(arcBot + 15); // extra buffer for stroke cap + label
+  const vbH = vbBot - vbTop;
+  const vbW = Math.ceil(160 * scale);
   return (
-    <svg width={size} height={size} viewBox="0 0 160 115">
-      <path d={`M ${start} A ${R} ${R} 0 1 1 ${bgEnd}`} fill="none" stroke="#e5e7eb" strokeWidth={stroke} strokeLinecap="round" />
-      <path d={`M ${start} A ${R} ${R} 0 ${large} 1 ${end}`} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />
-      <text x={cx} y={cy - 8} textAnchor="middle" fontSize="22" fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
-      <text x={cx} y={cy + 8} textAnchor="middle" fontSize="8.5" fill="#6b7280">CAPAIAN</text>
+    <svg width={size} height={size * vbH / vbW} viewBox={`0 0 ${vbW} ${vbH}`} style={{ display: "block" }}>
+      {/* Full background arc — always visible */}
+      <path d={`M ${start} A ${R} ${R} 0 1 1 ${bgEnd}`} fill="none" stroke="#e5e7eb" strokeWidth={sw} strokeLinecap="round" />
+      {/* Colored arc — if 0%, show a tiny arc so it's never empty */}
+      {clamped > 0 ? (
+        <path d={`M ${start} A ${R} ${R} 0 ${large} 1 ${end}`} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      ) : (
+        <path d={`M ${arc(startAngle)} A ${R} ${R} 0 0 1 ${arc(startAngle + 8)}`} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      )}
+      <text x={cx} y={cy - fontSize * 0.3} textAnchor="middle" fontSize={fontSize} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
+      <text x={cx} y={cy + labelFontSize * 1.2} textAnchor="middle" fontSize={labelFontSize} fill="#6b7280">CAPAIAN</text>
     </svg>
   );
 }
@@ -106,109 +496,526 @@ function DonutChart({ pct, color = "#3b82f6", size = 150, stroke = 18 }: { pct: 
 // ─── Funnel Table ────────────────────────────────────────────────────────────
 interface FunnelTableProps {
   lopRows: any[];
+  funnelData: any;
+  propTotalNilai: number;
+  propTotalLop: number;
   funnelExpanded: Record<string, boolean>;
-  setFunnelExpanded: (v: Record<string, boolean>) => void;
+  setFunnelExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
   search: string;
   setSearch: (v: string) => void;
-  fmtNilai: (n: number) => string;
-  fmtRupiahShort: (n: number) => string;
   amNama: string;
-  amBadge: string;
 }
 
-function FunnelTable({ lopRows, funnelExpanded, setFunnelExpanded, search, setSearch, fmtNilai, amNama, amBadge }: FunnelTableProps) {
-  const phaseColors: Record<string, string> = { F0: "#0ea5e9", F1: "#3b82f6", F2: "#6366f1", F3: "#7c3aed", F4: "#f97316", F5: "#10b981" };
+const FS_MONTH_NUMS_ID = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+const FS_MONTHS_ID: Record<string, string> = { "01":"Januari","02":"Februari","03":"Maret","04":"April","05":"Mei","06":"Juni","07":"Juli","08":"Agustus","09":"September","10":"Oktober","11":"November","12":"Desember" };
+
+function FunnelTable({ lopRows, funnelData, propTotalNilai, propTotalLop, funnelExpanded, setFunnelExpanded, search, setSearch, amNama }: FunnelTableProps) {
+  const [filterDurasi, setFilterDurasi] = useState<"all"|"single_year"|"multi_year">("all");
+  const [filterDurasiOpen, setFilterDurasiOpen] = useState(false);
+  const [filterPeriodeOpen, setFilterPeriodeOpen] = useState(false);
+  const [filterPeriodeYears, setFilterPeriodeYears] = useState<Set<string>>(new Set());
+  const [filterPeriodeMonths, setFilterPeriodeMonths] = useState<Set<string>>(new Set());
+  const [expandedPeriodeYears, setExpandedPeriodeYears] = useState<Set<string>>(new Set());
+  const [filterTahunOpen, setFilterTahunOpen] = useState(false);
+  const [filterTahun, setFilterTahun] = useState<Set<string>>(new Set());
+
+  const triggerRefDurasi = useRef<HTMLDivElement>(null);
+  const dropRefDurasi = useRef<HTMLDivElement>(null);
+  const triggerRefPeriode = useRef<HTMLDivElement>(null);
+  const dropRefPeriode = useRef<HTMLDivElement>(null);
+  const triggerRefTahun = useRef<HTMLDivElement>(null);
+  const dropRefTahun = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (triggerRefDurasi.current && !triggerRefDurasi.current.contains(e.target as Node) && dropRefDurasi.current && !dropRefDurasi.current.contains(e.target as Node)) setFilterDurasiOpen(false);
+      if (triggerRefPeriode.current && !triggerRefPeriode.current.contains(e.target as Node) && dropRefPeriode.current && !dropRefPeriode.current.contains(e.target as Node)) setFilterPeriodeOpen(false);
+      if (triggerRefTahun.current && !triggerRefTahun.current.contains(e.target as Node) && dropRefTahun.current && !dropRefTahun.current.contains(e.target as Node)) setFilterTahunOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // Build available years from lopRows reportDate
+  const availablePeriodeYears = useMemo(() => {
+    const years = new Set<string>();
+    (lopRows as any[]).forEach((l: any) => {
+      if (l.reportDate) years.add(String(l.reportDate).slice(0, 4));
+    });
+    return [...years].sort().reverse();
+  }, [lopRows]);
+
+  // Tahun Anggaran options from funnelData API
+  const availableTahunOptions = useMemo(() => {
+    const ta = funnelData?.availableTahunAnggaran;
+    if (Array.isArray(ta) && ta.length > 0) return [...ta].sort().reverse().map(String);
+    return [];
+  }, [funnelData]);
+
+  // Compute month options per year from lopRows
+  const availableMonthsByYear = useMemo(() => {
+    const result: Record<string, Set<string>> = {};
+    (lopRows as any[]).forEach((l: any) => {
+      if (!l.reportDate) return;
+      const y = String(l.reportDate).slice(0, 4);
+      const m = String(l.reportDate).slice(5, 7);
+      if (!result[y]) result[y] = new Set();
+      result[y].add(m);
+    });
+    return result;
+  }, [lopRows]);
+
+  const filteredRows = useMemo(() => {
+    let rows = lopRows;
+    if (search?.trim()) {
+      const q = search.toLowerCase();
+      rows = rows.filter((r: any) =>
+        (r.pelanggan || "").toLowerCase().includes(q) ||
+        (r.judulProyek || "").toLowerCase().includes(q) ||
+        (r.lopid || "").toLowerCase().includes(q)
+      );
+    }
+    if (filterDurasi === "multi_year") {
+      rows = rows.filter((r: any) => (r.monthSubs || 0) > 12);
+    } else if (filterDurasi === "single_year") {
+      rows = rows.filter((r: any) => (r.monthSubs || 0) <= 12);
+    }
+    // Filter by tahun anggaran
+    if (filterTahun.size > 0) {
+      rows = rows.filter((r: any) => {
+        const ta = r.tahunAnggaran ? String(r.tahunAnggaran) : null;
+        return ta && filterTahun.has(ta);
+      });
+    }
+    // Filter by periode (reportDate year/month)
+    if (filterPeriodeYears.size > 0 || filterPeriodeMonths.size > 0) {
+      rows = rows.filter((r: any) => {
+        if (!r.reportDate) return false;
+        const y = String(r.reportDate).slice(0, 4);
+        const m = String(r.reportDate).slice(5, 7);
+        if (filterPeriodeYears.size > 0 && !filterPeriodeYears.has(y)) return false;
+        if (filterPeriodeMonths.size > 0 && !filterPeriodeMonths.has(m)) return false;
+        return true;
+      });
+    }
+    return rows;
+  }, [lopRows, search, filterDurasi, filterPeriodeYears, filterPeriodeMonths]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, any[]>();
-    for (const r of lopRows) {
+    for (const r of filteredRows) {
       const key = r.statusF || "Unknown";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(r);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [lopRows]);
+  }, [filteredRows]);
 
-  const totalNilai = lopRows.reduce((s: number, r: any) => s + (r.nilaiProyek || 0), 0);
-  const lopCount = lopRows.length;
-  const pelangganSet = new Set(lopRows.map((r: any) => r.pelanggan).filter(Boolean));
-  const badge = amBadge;
-
-  const crF5 = lopRows.filter((r: any) => r.statusF === "F5").length;
-  const crPipeline = lopRows.filter((r: any) => ["F3","F4","F5"].includes(r.statusF)).length;
-  const cr = crPipeline > 0 ? (crF5 / crPipeline) * 100 : 0;
-
-  const toggleAll = () => {
-    if (Object.keys(funnelExpanded).length === 0) {
-      setFunnelExpanded(Object.fromEntries(grouped.map(([k]) => [k, true])));
-    } else {
-      setFunnelExpanded({});
-    }
-  };
+  const totalNilai = filteredRows.reduce((s: number, r: any) => s + (r.nilaiProyek || 0), 0);
 
   if (grouped.length === 0) {
     return <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">Belum ada data funnel.</div>;
   }
 
+  const durasiLabel = filterDurasi === "all" ? "Semua Durasi" : filterDurasi === "single_year" ? "Nilai per Tahun" : "Multi Year (>12 bln)";
+  const periodePrimaryYear = [...filterPeriodeYears].sort().reverse()[0] || availablePeriodeYears[0] || "";
+  const allPeriodeSelected = filterPeriodeYears.size === 0 && filterPeriodeMonths.size === 0;
+  const currentPeriodeDisplay = allPeriodeSelected ? "Semua" : filterPeriodeYears.size === 1 && filterPeriodeMonths.size === 0 ? `${periodePrimaryYear}` : `${filterPeriodeYears.size} tahun${filterPeriodeMonths.size > 0 ? ` · ${filterPeriodeMonths.size} bln` : ""}`;
+
+  const openDurasi = () => {
+    if (triggerRefDurasi.current) { const r = triggerRefDurasi.current.getBoundingClientRect(); setPosD({ top: r.bottom + 4, left: r.left, minW: 180 }); }
+    setFilterDurasiOpen(o => !o);
+  };
+  const [posD, setPosD] = useState({ top: 0, left: 0, minW: 180 });
+  const openPeriode = () => {
+    if (triggerRefPeriode.current) { const r = triggerRefPeriode.current.getBoundingClientRect(); setPosP({ top: r.bottom + 4, left: r.left, minW: 220 }); }
+    if (filterPeriodeYears.size > 0) setExpandedPeriodeYears(new Set([...filterPeriodeYears].sort().reverse()[0]));
+    setFilterPeriodeOpen(o => !o);
+  };
+  const [posP, setPosP] = useState({ top: 0, left: 0, minW: 220 });
+  const openTahun = () => {
+    if (triggerRefTahun.current) { const r = triggerRefTahun.current.getBoundingClientRect(); setPosT({ top: r.bottom + 4, left: r.left, minW: 200 }); }
+    setFilterTahunOpen(o => !o);
+  };
+  const [posT, setPosT] = useState({ top: 0, left: 0, minW: 200 });
+  const tahunLabel = filterTahun.size === 0 ? "Semua" : filterTahun.size === 1 ? [...filterTahun][0] : `${filterTahun.size} tahun`;
+
+  const togglePeriodeYear = (y: string) => {
+    const n = new Set(filterPeriodeYears);
+    if (n.has(y)) n.delete(y); else n.add(y);
+    setFilterPeriodeYears(n);
+    if (!n.has(y)) { const m = new Set(filterPeriodeMonths); m.clear(); setFilterPeriodeMonths(m); }
+  };
+  const togglePeriodeMonth = (m: string) => {
+    const n = new Set(filterPeriodeMonths);
+    if (n.has(m)) n.delete(m); else n.add(m);
+    setFilterPeriodeMonths(n);
+  };
+
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Header row */}
-      <div style={{ position: "sticky", top: 0, zIndex: 16, boxShadow: "rgba(0,0,0,0.13) 0px 2px 8px" }}>
-        <div style={{ display: "flex", borderLeft: "4px solid rgb(99,102,241)", borderRight: "2px solid rgb(148,163,184)", borderTop: "2px solid rgb(148,163,184)", borderBottom: "none", background: "hsl(var(--card))", padding: "0.5rem 1rem", alignItems: "center", gap: "0.5rem" }}>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-sm uppercase tracking-wide font-bold text-foreground">{amNama || "AM"}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 bg-blue-100 text-blue-700">{badge}</span>
-            <button onClick={toggleAll} className="ml-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 shrink-0" title="Expand/Collapse semua">
-              <Minimize2 className="w-3 h-3" />
-            </button>
+      {/* ── Overview Cards ── */}
+      <div className="grid grid-cols-4 gap-3 p-3">
+        {/* Target Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+          <div className="flex-1 flex flex-col justify-between min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider leading-none" style={{color:"#1e1e1e"}}>Target</div>
+            <div className="text-2xl font-black tabular-nums leading-none" style={{color:"#1e1e1e"}}>{funnelData?.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</div>
+            <div className="text-[10px] font-medium leading-none text-slate-400">{funnelData?.snapshots?.[0]?.label ?? "—"}</div>
           </div>
-          <span className="text-sm font-black tabular-nums shrink-0">{lopCount} <span className="font-normal text-xs text-muted-foreground">lop</span></span>
-          <span className="text-sm font-black tabular-nums text-foreground shrink-0">{pelangganSet.size} <span className="font-normal text-xs text-muted-foreground">plg</span></span>
-          <span className="text-sm font-black tabular-nums text-foreground shrink-0">{fmtRupiahShort(totalNilai)}</span>
-          <span className="font-bold text-sm tabular-nums text-emerald-600 shrink-0">{fmtPct(cr)}</span>
+          <div className="flex items-center pl-3">
+            <svg width="60" height="40" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gradTarget" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3"/>
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,36 L10,30 L20,32 L30,26 L40,22 L50,18 L60,12 L60,40 L0,40 Z" fill="url(#gradTarget)"/>
+              <polyline points="0,36 10,30 20,32 30,26 40,22 50,18 60,12" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <circle cx="60" cy="12" r="3" fill="#6366f1"/>
+            </svg>
+          </div>
+        </div>
+        {/* Realisasi Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+          <div className="flex-1 flex flex-col justify-between min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider leading-none" style={{color:"#1e1e1e"}}>Realisasi</div>
+            <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{propTotalNilai ? fmtRupiahShort(propTotalNilai) : "—"}</div>
+            <div className="text-[10px] font-medium leading-none text-slate-400">{'—'}</div>
+          </div>
+          <div className="flex items-center pl-3">
+            <svg width="60" height="40" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gradRealisasi" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.3"/>
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,36 L10,30 L20,26 L30,22 L40,16 L50,12 L60,8 L60,40 L0,40 Z" fill="url(#gradRealisasi)"/>
+              <polyline points="0,36 10,30 20,26 30,22 40,16 50,12 60,8" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <circle cx="60" cy="8" r="3" fill="#10b981"/>
+            </svg>
+          </div>
+        </div>
+        {/* LOP Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+          <div className="flex-1 flex flex-col justify-between min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider leading-none" style={{color:"#1e1e1e"}}>LOP</div>
+            <div className="text-2xl font-black tabular-nums leading-none" style={{color:"#1e1e1e"}}>{propTotalLop ?? "—"}</div>
+            <div className="text-[10px] font-medium leading-none text-slate-400">proyek</div>
+          </div>
+          <div className="flex items-center pl-3">
+            <svg width="60" height="40" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gradLop" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3"/>
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,36 L10,32 L20,28 L30,24 L40,20 L50,16 L60,12 L60,40 L0,40 Z" fill="url(#gradLop)"/>
+              <polyline points="0,36 10,32 20,28 30,24 40,20 50,16 60,12" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <circle cx="60" cy="12" r="3" fill="#6366f1"/>
+            </svg>
+          </div>
+        </div>
+        {/* CR Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+          <div className="flex-1 flex flex-col justify-between min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider leading-none" style={{color:"#1e1e1e"}}>Conversion Rate</div>
+            <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{funnelData?.pipelineEligibleNilai > 0 ? fmtPct((funnelData.wonLopNilai / funnelData.pipelineEligibleNilai) * 100) : "—"}</div>
+            <div className="text-[10px] font-medium leading-none text-slate-400">F5 ÷ F3+F4+F5</div>
+          </div>
+          <div className="flex items-center pl-3">
+            <svg width="60" height="40" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gradCR" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.3"/>
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,36 L10,33 L20,30 L30,27 L40,23 L50,19 L60,15 L60,40 L0,40 Z" fill="url(#gradCR)"/>
+              <polyline points="0,36 10,33 20,30 30,27 40,23 50,19 60,15" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <circle cx="60" cy="15" r="3" fill="#10b981"/>
+            </svg>
+          </div>
         </div>
       </div>
 
-      {/* Phase sections */}
+      {/* ── Filter Row (sticky) ── */}
+      <div style={{position:"sticky",top:0,zIndex:16,boxShadow:"rgba(0,0,0,0.13) 0px 2px 8px"}}>
+        <div className="bg-secondary/30 flex flex-wrap items-end gap-3 p-3">
+          {/* Durasi Kontrak */}
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider leading-none" style={{ color: "#1e1e1e" }}>Durasi Kontrak</label>
+            <div className="relative" ref={triggerRefDurasi}>
+              <button onClick={openDurasi}
+                className="h-8 px-2.5 bg-background border border-border rounded-lg text-xs flex items-center gap-1.5 hover:bg-secondary/50 transition-colors whitespace-nowrap">
+                <span className="font-medium text-foreground">{durasiLabel}</span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+              </button>
+              {filterDurasiOpen && createPortal(
+                <div ref={dropRefDurasi} style={{position:"fixed",top:posD.top,left:posD.left,minWidth:posD.minW,zIndex:9999}}
+                  className="bg-card border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
+                  {[{value:"all",label:"Semua Durasi"},{value:"single_year",label:"Nilai per Tahun"},{value:"multi_year",label:"Multi Year (>12 bln)"}].map(opt=>(
+                    <button key={opt.value} onClick={()=>{setFilterDurasi(opt.value as typeof filterDurasi);setFilterDurasiOpen(false);}}
+                      className={cn("w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2",
+                        opt.value===filterDurasi?"font-semibold text-primary bg-primary/5":"text-foreground")}>
+                      {opt.value===filterDurasi&&<span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0"/>}
+                      {opt.value!==filterDurasi&&<span className="w-1.5 shrink-0"/>}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>, document.body
+              )}
+            </div>
+          </div>
+
+          {/* Periode */}
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider leading-none" style={{ color: "#1e1e1e" }}>Periode</label>
+            <div className="relative" ref={triggerRefPeriode}>
+              <button onClick={openPeriode}
+                className="h-8 px-2.5 bg-background border border-border rounded-lg text-xs flex items-center gap-1.5 hover:bg-secondary/50 transition-colors whitespace-nowrap">
+                <span className="font-medium text-foreground">{currentPeriodeDisplay}</span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+              </button>
+              {filterPeriodeOpen && createPortal(
+                <div ref={dropRefPeriode} style={{position:"fixed",top:posP.top,left:posP.left,minWidth:posP.minW,zIndex:9999}}
+                  className="bg-card border border-border rounded-xl shadow-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Periode</span>
+                    <div className="flex gap-1.5">
+                      <button onClick={()=>{setFilterPeriodeYears(new Set());setFilterPeriodeMonths(new Set());}} className="text-[11px] text-primary font-semibold hover:underline">Reset</button>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto py-1">
+                    {availablePeriodeYears.map(y=>{
+                      const months = availableMonthsByYear[y] ? [...availableMonthsByYear[y]] : [];
+                      const isYearExpanded = expandedPeriodeYears.has(y);
+                      const allMonths = FS_MONTH_NUMS_ID;
+                      return (
+                        <div key={y}>
+                          <div className="flex items-center gap-1 px-2 py-1.5 hover:bg-secondary/40 transition-colors">
+                            <button type="button" onClick={()=>{
+                              const n=new Set(expandedPeriodeYears);
+                              if(n.has(y)) n.delete(y); else n.add(y);
+                              setExpandedPeriodeYears(n);
+                            }} className="p-0.5 text-muted-foreground hover:text-foreground shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("lucide lucide-chevron-right w-3 h-3 transition-transform", isYearExpanded && "rotate-90")} aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                            </button>
+                            <button onClick={()=>togglePeriodeYear(y)} className="flex items-center gap-2 flex-1 cursor-pointer select-none">
+                              <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center",filterPeriodeYears.has(y)?"bg-primary border-primary":"border-border")}>
+                                {filterPeriodeYears.has(y)&&<span className="text-white text-[8px] font-black">✓</span>}
+                              </span>
+                              <span className="text-sm font-semibold text-foreground">{y}</span>
+                            </button>
+                          </div>
+                          {isYearExpanded && allMonths.map(m=>{
+                            const monthKey = `${y}-${m}`;
+                            const hasData = months.includes(m);
+                            const isMonthSelected = filterPeriodeMonths.has(m) && filterPeriodeYears.has(y);
+                            return (
+                              <div key={m} className={cn("flex items-center gap-1 px-2 py-1.5 transition-colors", hasData ? "hover:bg-secondary/40" : "opacity-40")}>
+                                <div className="w-5 shrink-0"/>
+                                <button onClick={()=>hasData && togglePeriodeMonth(m)} className={cn("flex items-center gap-2 flex-1 cursor-pointer select-none", !hasData && "cursor-default")}>
+                                  <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center",isMonthSelected?"bg-primary border-primary":"border-border")}>
+                                    {isMonthSelected&&<span className="text-white text-[8px] font-black">✓</span>}
+                                  </span>
+                                  <span className="text-sm text-foreground">{FS_MONTHS_ID[m]}</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>, document.body
+              )}
+            </div>
+          </div>
+
+          {/* Tahun Anggara */}
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider leading-none" style={{ color: "#1e1e1e" }}>Tahun Anggaran</label>
+            <div className="relative" ref={triggerRefTahun}>
+              <button onClick={openTahun}
+                className="h-8 px-2.5 bg-background border border-border rounded-lg text-xs flex items-center gap-1.5 hover:bg-secondary/50 transition-colors whitespace-nowrap">
+                <span className="font-medium text-foreground">{tahunLabel}</span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+              </button>
+              {filterTahunOpen && createPortal(
+                <div ref={dropRefTahun} style={{position:"fixed",top:posT.top,left:posT.left,minWidth:posT.minW,zIndex:9999}}
+                  className="bg-card border border-border rounded-xl shadow-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tahun Anggaran</span>
+                    <div className="flex gap-1.5">
+                      <button onClick={()=>setFilterTahun(new Set(availableTahunOptions))} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
+                      <button onClick={()=>setFilterTahun(new Set())} className="text-[11px] text-muted-foreground font-semibold hover:underline">Kosongkan</button>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto py-1">
+                    {availableTahunOptions.map(t=>(
+                      <button key={t} onClick={()=>{
+                        const n=new Set(filterTahun);
+                        if(n.has(t)) n.delete(t); else n.add(t);
+                        setFilterTahun(n);
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
+                        <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center",filterTahun.has(t)?"bg-primary border-primary":"border-border")}>
+                          {filterTahun.has(t)&&<span className="text-white text-[8px] font-black">✓</span>}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">{t}</span>
+                      </button>
+                    ))}
+                    {availableTahunOptions.length === 0 && (
+                      <div className="px-3 py-4 text-xs text-muted-foreground text-center">Tidak ada data</div>
+                    )}
+                  </div>
+                </div>, document.body
+              )}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="flex flex-col gap-1 flex-1 min-w-40 shrink-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider leading-none" style={{ color: "#1e1e1e" }}>Pencarian</label>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground shrink-0 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Cari LOP..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-8 w-full pl-7 pr-2.5 bg-background border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Phase Tables ── */}
       {grouped.map(([phase, rows]) => {
-        const isOpen = funnelExpanded[phase] !== false;
+        const isOpen = funnelExpanded[phase] === true;
         const phaseTotal = rows.reduce((s: number, r: any) => s + (r.nilaiProyek || 0), 0);
+        const phaseColors: Record<string, string> = { F0: "#93c5fd", F1: "#3b82f6", F2: "#6366f1", F3: "#6366f1", F4: "#8b5cf6", F5: "#10b981" };
+        const phaseTextColors: Record<string, string> = { F0: "#0369a1", F1: "#1d4ed8", F2: "#4338ca", F3: "#4338ca", F4: "#5b21b6", F5: "#065f46" };
+        const bgPhase = phaseColors[phase] ?? "#888";
+        const textPhase = phaseTextColors[phase] ?? "#666";
+
         return (
           <div key={phase}>
-            <div style={{ position: "sticky", top: "52px", zIndex: 15, cursor: "pointer", borderLeft: `4px solid ${phaseColors[phase] ?? "#888"}`, borderRight: "2px solid rgb(148,163,184)", borderTop: "1px solid hsl(var(--border))", boxShadow: "rgba(0,0,0,0.09) 0px 2px 6px", background: "rgba(253,242,248,0.75)" }}
-              onClick={() => setFunnelExpanded(prev => ({ ...prev, [phase]: !prev[phase] }))}>
+            {/* Phase header — sticky */}
+            <div style={{
+              position: "sticky", top: "52px", zIndex: 15, cursor: "pointer",
+              background: "rgba(253,242,248,0.75)",
+              borderLeft: `4px solid ${bgPhase}`,
+              boxShadow: "rgba(0,0,0,0.09) 0px 2px 6px",
+            }}
+              onClick={() => setFunnelExpanded(prev => ({ ...prev, [phase]: isOpen ? false : true }))}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", paddingLeft: "2.5rem" }}>
                 <ChevronRight className={cn("w-3.5 h-3.5 text-slate-500 transition-transform shrink-0", isOpen && "rotate-90")} />
-                <span className="text-sm font-black uppercase tracking-wide" style={{ color: phaseColors[phase] ?? "#666" }}>
+                <span className="text-sm font-black uppercase tracking-wide" style={{ color: textPhase }}>
                   DAFTAR PROYEK {phase}
                 </span>
                 <span className="text-xs font-black text-slate-900 px-1.5 py-0.5 rounded-full" style={{ background: "rgb(242,242,242)" }}>
                   {rows.length} proyek
                 </span>
                 <div style={{ flex: 1 }} />
-                <span className="text-sm font-black text-foreground tabular-nums shrink-0">{fmtRupiahShort(phaseTotal)}</span>
+                <span className="text-sm font-black text-foreground tabular-nums shrink-0">{fmtRupiah(phaseTotal)}</span>
               </div>
             </div>
 
+            {/* Phase table — collapsible */}
             {isOpen && (
-              <div style={{ borderLeft: `4px solid ${phaseColors[phase] ?? "#888"}`, borderRight: "2px solid rgb(148,163,184)", borderBottom: "2px solid rgb(148,163,184)" }}>
-                {rows.map((r: any) => (
-                  <div key={r.lopid} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem 1rem", borderTop: "1px solid hsl(var(--border)/0.5)", background: "hsl(var(--card))" }}>
-                    <span className="text-xs text-muted-foreground w-32 truncate shrink-0">{r.pelanggan || "—"}</span>
-                    <span className="text-xs text-foreground flex-1 truncate min-w-0">{r.judulProyek || "—"}</span>
-                    <span className="text-xs font-bold text-foreground tabular-nums shrink-0">{fmtRupiahShort(r.nilaiProyek || 0)}</span>
-                  </div>
-                ))}
+              <div>
+                <table className="text-left text-sm" style={{ tableLayout: "fixed", borderCollapse: "collapse", width: "100%" }}>
+                  <colgroup>
+                    <col style={{ width: "25%" }} />
+                    <col style={{ width: "80px" }} />
+                    <col style={{ width: "75px" }} />
+                    <col style={{ width: "210px" }} />
+                    <col style={{ width: "200px" }} />
+                    <col style={{ width: "130px" }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="bg-slate-200 border-y border-slate-400">
+                      <td className="px-4 py-2 pl-16 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Nama Proyek</td>
+                      <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Kategori</td>
+                      <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Durasi</td>
+                      <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">LOP ID</td>
+                      <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Pelanggan &amp; Divisi</td>
+                      <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider text-right overflow-hidden">Nilai</td>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r: any) => {
+                      const durasiLabel = (!r.monthSubs || r.monthSubs <= 0) ? "–" : r.monthSubs % 12 === 0 ? `${r.monthSubs / 12} TAHUN` : `${r.monthSubs} BULAN`;
+                      const katColor = (k: string | null) => {
+                        if (k === "GTMA") return "bg-cyan-100 border border-cyan-300 text-cyan-800";
+                        if (k === "Own Channel") return "bg-violet-100 border border-violet-300 text-violet-800";
+                        if (k === "International") return "bg-amber-100 border border-amber-300 text-amber-800";
+                        return "bg-slate-100 border border-slate-300 text-slate-700";
+                      };
+                      const divisiColor = (d: string | null) => {
+                        if (!d) return "";
+                        if (d.toUpperCase() === "DPS") return "bg-blue-50 text-blue-700 border-blue-200";
+                        if (d.toUpperCase() === "DSS") return "bg-purple-50 text-purple-700 border-purple-200";
+                        return "bg-slate-100 text-slate-600 border-slate-300";
+                      };
+                      return (
+                        <tr key={r.lopid} className="hover:bg-pink-50 transition-colors border-b border-slate-100">
+                          <td className="px-4 py-2.5 pl-16 overflow-hidden">
+                            <div className="text-sm text-foreground font-bold leading-tight line-clamp-2" title={r.judulProyek}>{r.judulProyek}</div>
+                          </td>
+                          <td className="px-3 py-2.5 overflow-hidden">
+                            {r.kategoriKontrak
+                              ? <span className={cn("inline-block px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap", katColor(r.kategoriKontrak))}>{r.kategoriKontrak}</span>
+                              : <span className="text-muted-foreground text-xs">–</span>}
+                          </td>
+                          <td className="px-3 py-2.5 overflow-hidden">
+                            <span className="text-sm font-bold text-teal-700 dark:text-teal-400 whitespace-nowrap">{durasiLabel}</span>
+                          </td>
+                          <td className="px-3 py-2.5 overflow-hidden">
+                            <span className="font-mono text-xs font-semibold text-slate-600 truncate block">{r.lopid}</span>
+                          </td>
+                          <td className="px-3 py-2.5 overflow-hidden">
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              <span className="text-sm text-foreground font-semibold truncate" title={r.pelanggan}>{r.pelanggan}</span>
+                              {r.divisi && <span className={cn("inline-flex items-center self-start px-1.5 py-0.5 rounded text-[10px] font-black uppercase border", divisiColor(r.divisi))}>{r.divisi}</span>}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-xs font-bold text-foreground overflow-hidden">{fmtRupiah(r.nilaiProyek || 0)}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="bg-red-50 border-t border-red-200">
+                      <td colSpan={5} className="px-4 py-2 pl-16 overflow-hidden"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
+                      <td className="px-3 py-2 text-right tabular-nums text-sm font-black text-red-800 overflow-hidden">{fmtRupiah(phaseTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
         );
       })}
 
-      {/* Total row */}
-      <div style={{ display: "flex", borderTop: "2px solid rgb(148,163,184)", borderLeft: "2px solid rgb(148,163,184)", borderRight: "2px solid rgb(148,163,184)", borderBottom: "2px solid rgb(148,163,184)", background: "hsl(var(--card))", padding: "0.5rem 1rem", gap: "1rem", alignItems: "center" }}>
+      {/* ── Total Row ── */}
+      <div style={{
+        display: "flex",
+        borderTop: "2px solid rgb(148,163,184)",
+        borderLeft: "2px solid rgb(148,163,184)",
+        borderRight: "2px solid rgb(148,163,184)",
+        borderBottom: "2px solid rgb(148,163,184)",
+        background: "hsl(var(--card))",
+        padding: "0.5rem 1rem",
+        gap: "1rem",
+        alignItems: "center"
+      }}>
         <span className="text-sm font-black text-red-700 uppercase tracking-wide flex-1">Total Nilai Proyek — {amNama || "AM"}</span>
-        <span className="text-sm font-black tabular-nums text-red-700 shrink-0">{fmtRupiahShort(totalNilai)}</span>
+        <span className="text-sm font-black tabular-nums text-red-700 shrink-0">{fmtRupiah(totalNilai)}</span>
       </div>
     </div>
   );
@@ -301,8 +1108,9 @@ function CheckboxDropdown({ label, options, selected, onChange, labelFn, summary
   );
 }
 
-// ─── Badge ───────────────────────────────────────────────────────────────────
-function Badge({ badge }: { badge: string | null }) {
+// ─── Rank Badge ─────────────────────────────────────────────────────────────────
+// Badge for AM rank tier (Platinum/Gold/Silver/Bronze) — distinct from UI Badge
+function RankBadge({ badge }: { badge: string | null }) {
   if (!badge) return null;
   const map: Record<string, string> = { Platinum: "bg-slate-400", Gold: "bg-yellow-500", Silver: "bg-slate-300", Bronze: "bg-orange-400", Default: "bg-red-500" };
   return <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded text-white uppercase tracking-wide", map[badge] ?? map.Default)}>{badge}</span>;
@@ -344,21 +1152,116 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
   const [funnelData, setFunnelData] = useState<any>(null);
   const [funnelLoading, setFunnelLoading] = useState(false);
   const [selectedFunnelSnapshot, setSelectedFunnelSnapshot] = useState<number | null>(null);
-  const [selectedFunnelTarget, setSelectedFunnelTarget] = useState<string>("FULL");
   const [selectedKontrak, setSelectedKontrak] = useState<Set<string>>(new Set(["AO", "MO"]));
-  const [selectedStatusFunnel, setSelectedStatusFunnel] = useState<string>("all");
+  // Kategori kontrak filter (same default as /presentation: exclude "New GTMA")
+  const [filterKatKontrak, setFilterKatKontrak] = useState<Set<string>>(new Set(["GTMA", "Own Channel"]));
   const [funnelExpanded, setFunnelExpanded] = useState<Record<string, boolean>>({});
   const [funnelSearch, setFunnelSearch] = useState("");
   const [funnelTablePage, setFunnelTablePage] = useState(1);
   const [funnelTablePageSize] = useState(20);
   // Popover state
   const [funnelSnapOpen, setFunnelSnapOpen] = useState(false);
-  const [funnelTargetOpen, setFunnelTargetOpen] = useState(false);
   const [funnelKontrakOpen, setFunnelKontrakOpen] = useState(false);
-  const [funnelStatusOpen, setFunnelStatusOpen] = useState(false);
+  const [funnelKatKontrakOpen, setFunnelKatKontrakOpen] = useState(false);
 
   const session = getPresentationSession();
   const effectiveNik = nik ?? session?.nik ?? "";
+
+  // Compute filtered funnel metrics (kategoriKontrak filter, same as /presentation)
+  const filteredFunnelMetrics = useMemo(() => {
+    const rawLops = funnelData?.lopRows ?? [];
+    let filtered = rawLops;
+
+    // Apply kategoriKontrak filter (same as /presentation frontend filter)
+    if (filterKatKontrak.size > 0) {
+      filtered = filtered.filter((l: any) => !l.kategoriKontrak || filterKatKontrak.has(l.kategoriKontrak));
+    }
+
+    // Recompute byStatus
+    const allPhases = ["F0", "F1", "F2", "F3", "F4", "F5"];
+    const statusMap: Record<string, { status: string; count: number; totalNilai: number }> = {};
+    for (const p of allPhases) statusMap[p] = { status: p, count: 0, totalNilai: 0 };
+    let totalNilai = 0, totalLop = 0, wonLop = 0, pipelineEligible = 0, pipelineEligibleNilai = 0;
+    for (const l of filtered) {
+      const s = l.statusF || "Unknown";
+      if (!statusMap[s]) statusMap[s] = { status: s, count: 0, totalNilai: 0 };
+      statusMap[s].count++;
+      statusMap[s].totalNilai += l.nilaiProyek || 0;
+      totalNilai += l.nilaiProyek || 0;
+      totalLop++;
+      if ((l.statusF || "") === "F5") { wonLop++; }
+      if (["F3", "F4", "F5"].includes(l.statusF || "")) { pipelineEligible++; pipelineEligibleNilai += l.nilaiProyek || 0; }
+    }
+    const byStatus = allPhases.map(p => statusMap[p]);
+    const conversionRate = (wonLop + pipelineEligible) > 0 ? (wonLop / (wonLop + pipelineEligible)) * 100 : 0;
+
+    return {
+      filteredLops: filtered,
+      filteredByStatus: byStatus,
+      filteredTotalNilai: totalNilai,
+      filteredTotalLop: totalLop,
+      filteredWonLopNilai: funnelData?.wonLopNilai ?? 0,
+      filteredPipelineEligibleNilai: pipelineEligibleNilai,
+      filteredConversionRate: conversionRate,
+    };
+  }, [funnelData, filterKatKontrak]);
+
+  // Comparison: current vs previous snapshot (for "Perubahan" card)
+  const snapshotComparison = useMemo(() => {
+    const currLops = filteredFunnelMetrics.filteredLops;
+    const prevLops: any[] = funnelData?.prevLops ?? [];
+    const prevMap = new Map(prevLops.map((l: any) => [l.lopid, l]));
+    const currMap = new Map(currLops.map((l: any) => [l.lopid, l]));
+
+    // LOP baru: ada di curr, tidak ada di prev
+    const newLops = currLops.filter((l: any) => !prevMap.has(l.lopid));
+    // LOP berubah status: ada di keduanya, status beda
+    const changedStatus = currLops.filter((l: any) => {
+      const prev = prevMap.get(l.lopid);
+      return prev && prev.statusF !== l.statusF;
+    });
+    // F5 won baru: ada di curr sebagai F5, ada di prev sebagai non-F5
+    const newF5 = currLops.filter((l: any) => {
+      const prev = prevMap.get(l.lopid);
+      return l.statusF === "F5" && prev && prev.statusF !== "F5";
+    });
+    // LOP stagnan: LOP yang ada di prev & curr, tidak berubah status (termasuk F5)
+    const stagnanLops = prevLops.filter((l: any) => {
+      return currMap.has(l.lopid);
+    });
+    const stagnanCount = stagnanLops.length;
+
+    // Prev CR (value-based: F5 ÷ (F3+F4+F5) based on nilai — same as slide 3)
+    const prevWonNilai = prevLops.filter((l: any) => l.statusF === "F5").reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+    const prevPipelineNilai = prevLops.filter((l: any) => ["F3", "F4", "F5"].includes(l.statusF || "")).reduce((s: number, l: any) => s + (l.nilaiProyek || 0), 0);
+    const prevCR = prevPipelineNilai > 0 ? (prevWonNilai / prevPipelineNilai) * 100 : 0;
+    // Curr CR (value-based — same formula as slide 3 Detail Funnel per AM)
+    const currWonNilai = funnelData?.wonLopNilai ?? 0;
+    const currPipelineNilai = funnelData?.pipelineEligibleNilai ?? 0;
+    const currCR = currPipelineNilai > 0 ? (currWonNilai / currPipelineNilai) * 100 : 0;
+    const crDelta = currCR - prevCR;
+
+    const totalTercakup = currLops.length;
+    return { newLops, changedStatus, newF5, stagnanLops, stagnanCount, prevCR, crDelta, currCR, totalTercakup };
+  }, [filteredFunnelMetrics, funnelData]);
+
+  // Count LOPs by kategoriKontrak (from unfiltered lopRows) for dropdown badge
+  const katKontrakCounts = useMemo(() => {
+    const rows = funnelData?.lopRows ?? [];
+    const counts: Record<string, number> = {};
+    for (const l of rows) {
+      const k = l.kategoriKontrak ?? "(kosong)";
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return counts;
+  }, [funnelData]);
+
+  const KONTRAK_OPTIONS = [
+    { value: "GTMA", label: "GTMA" },
+    { value: "Own Channel", label: "Own Channel" },
+    { value: "New GTMA", label: "New GTMA" },
+    { value: "Uncategorized", label: "Uncategorized" },
+  ];
 
   // Computed available periodes: ALL 12 months (for dropdown options), derived from selected snapshot's tahun
   const availablePeriodes = useMemo(() => {
@@ -503,18 +1406,16 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
     setFunnelLoading(true);
     const params = new URLSearchParams();
     if (selectedFunnelSnapshot) params.set("import_id", String(selectedFunnelSnapshot));
-    params.set("target_type", selectedFunnelTarget);
     if (selectedKontrak.size > 0 && selectedKontrak.size < 2) {
       params.set("kategori_kontrak", [...selectedKontrak].join(","));
     }
-    if (selectedStatusFunnel !== "all") params.set("status_funnel", selectedStatusFunnel);
     const qs = params.toString();
     fetch(`/api/presentation/am-funnel/${effectiveNik}${qs ? `?${qs}` : ""}`, { headers: presHeaders() })
       .then(r => r.json())
       .then(d => { if (!cancelled) { setFunnelData(d); setFunnelLoading(false); } })
       .catch(() => { if (!cancelled) setFunnelLoading(false); });
     return () => { cancelled = true; };
-  }, [effectiveNik, embTab, selectedFunnelSnapshot, selectedFunnelTarget, selectedKontrak, selectedStatusFunnel]);
+  }, [effectiveNik, embTab, selectedFunnelSnapshot, selectedKontrak]);
 
   // Upload photo
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -571,6 +1472,31 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
     };
   }, [data]);
 
+  // Trend chart data: bar chart of Real/Target per bulan, line of Ach%
+  const trendData = useMemo(() => {
+    const rows = data?.customerRows ?? [];
+    // Get year from latest selected periode
+    const tahun = latestPeriode ? parseInt(latestPeriode.split("-")[0]) : new Date().getFullYear();
+    // Aggregate by bulan — only for rows in selectedPeriodes
+    const byBulan: Record<number, { target: number; real: number }> = {};
+    for (const r of rows) {
+      if (r.tahun !== tahun) continue;
+      if (!byBulan[r.bulan]) byBulan[r.bulan] = { target: 0, real: 0 };
+      byBulan[r.bulan].target += r.targetTotal ?? 0;
+      byBulan[r.bulan].real += r.realTotal ?? 0;
+    }
+    // Build data for selected periods only, sorted by bulan
+    return [...selectedPeriodes]
+      .filter(p => parseInt(p.split("-")[0]) === tahun)
+      .map(p => {
+        const bulan = parseInt(p.split("-")[1]);
+        const { target, real } = byBulan[bulan] ?? { target: 0, real: 0 };
+        const ach = target > 0 ? parseFloat(((real / target) * 100).toFixed(1)) : 0;
+        return { month: MONTHS_SHORT[bulan - 1], bulan, target, real, ach };
+      })
+      .sort((a, b) => a.bulan - b.bulan);
+  }, [data, latestPeriode, selectedPeriodes]);
+
   // YTD achievement from monthly data
   const ytdAch = useMemo(() => {
     const { targetValues, realValues } = monthlyData;
@@ -616,7 +1542,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           <div className="flex items-end gap-2 flex-nowrap overflow-x-auto">
             {/* Snapshot */}
             <div className="flex flex-col gap-1 w-40 shrink-0">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Snapshot</label>
+              <label className="text-xs font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Snapshot</label>
               <Popover open={funnelSnapOpen} onOpenChange={setFunnelSnapOpen}>
                 <PopoverTrigger asChild>
                   <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
@@ -633,28 +1559,9 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 </PopoverContent>
               </Popover>
             </div>
-            {/* Target */}
-            <div className="flex flex-col gap-1 w-36 shrink-0">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Target</label>
-              <Popover open={funnelTargetOpen} onOpenChange={setFunnelTargetOpen}>
-                <PopoverTrigger asChild>
-                  <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
-                    <span className="flex-1 truncate font-medium text-foreground">{selectedFunnelTarget}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-40 p-0" align="start">
-                  <div className="p-1">
-                    {[["FULL","FULL (HO+BA)"],["HO","HO Only"],["BA","BA Only"]].map(([v,l]) => (
-                      <button key={v} onClick={() => { setSelectedFunnelTarget(v); setFunnelTargetOpen(false); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors", selectedFunnelTarget === v && "bg-accent font-semibold")}>{l}</button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
             {/* Kategori Kontrak */}
             <div className="flex flex-col gap-1 w-48 shrink-0">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Kategori</label>
+              <label className="text-xs font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Kategori</label>
               <Popover open={funnelKontrakOpen} onOpenChange={setFunnelKontrakOpen}>
                 <PopoverTrigger asChild>
                   <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
@@ -674,21 +1581,31 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 </PopoverContent>
               </Popover>
             </div>
-            {/* Status Funnel */}
-            <div className="flex flex-col gap-1 w-36 shrink-0">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Status</label>
-              <Popover open={funnelStatusOpen} onOpenChange={setFunnelStatusOpen}>
+            {/* Kategori Kontrak (kategoriKontrak filter — GTMA/Own Channel/New GTMA) */}
+            <div className="flex flex-col gap-1 w-48 shrink-0">
+              <label className="text-xs font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Kontrak</label>
+              <Popover open={funnelKatKontrakOpen} onOpenChange={setFunnelKatKontrakOpen}>
                 <PopoverTrigger asChild>
                   <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
-                    <span className="flex-1 truncate font-medium text-foreground">{selectedStatusFunnel === "all" ? "Semua" : selectedStatusFunnel}</span>
+                    <span className="flex-1 truncate font-medium text-foreground">
+                      {filterKatKontrak.size === KONTRAK_OPTIONS.length ? "Semua" : filterKatKontrak.size === 2 ? "GTMA & Own Channel" : [...filterKatKontrak].join(", ")}
+                    </span>
+                    <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{filteredFunnelMetrics.filteredTotalLop ?? 0}</span>
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-44 p-0" align="start">
-                  <div className="p-1">
-                    {[["all","Semua"],["ACTIVE","Active"],["INACTIVE","Inactive"],["WON","Won"],["LOST","Lost"]].map(([v,l]) => (
-                      <button key={v} onClick={() => { setSelectedStatusFunnel(v); setFunnelStatusOpen(false); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors", selectedStatusFunnel === v && "bg-accent font-semibold")}>{l}</button>
-                    ))}
+                <PopoverContent className="w-56 p-0" align="start">
+                  <div className="p-1 space-y-0.5">
+                    {KONTRAK_OPTIONS.map(({ value, label }) => {
+                      const count = katKontrakCounts[value] ?? 0;
+                      return (
+                        <button key={value} onClick={() => { const next = new Set(filterKatKontrak); next.has(value) ? next.delete(value) : next.add(value); setFilterKatKontrak(next); }} className={cn("w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors flex items-center gap-2", filterKatKontrak.has(value) && "bg-accent font-semibold")}>
+                          <span className={cn("w-4 h-4 border rounded flex items-center justify-center shrink-0", filterKatKontrak.has(value) ? "bg-primary border-primary" : "border-border")}>{filterKatKontrak.has(value) && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                          <span className="flex-1">{label}</span>
+                          <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{count}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -698,13 +1615,13 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
 
         {/* ── LOP per Fase + Metrics (3 cols) ── */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1.3fr 1fr 1fr" }}>
             {/* LOP per Fase */}
             <div>
               <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
               <div className="space-y-2">
-                {(funnelData.byStatus ?? []).filter((s: any) => s.count > 0).map((s: any) => {
-                  const maxCount = Math.max(...(funnelData.byStatus ?? []).map((x: any) => x.count));
+                {(filteredFunnelMetrics.filteredByStatus ?? []).map((s: any) => {
+                  const maxCount = Math.max(...(filteredFunnelMetrics.filteredByStatus ?? []).map((x: any) => x.count));
                   const width = maxCount > 0 ? (s.count / maxCount) * 100 : 0;
                   const phaseColors: Record<string, string> = { F0: "#0ea5e9", F1: "#3b82f6", F2: "#6366f1", F3: "#7c3aed", F4: "#f97316", F5: "#10b981" };
                   const labelColors: Record<string, string> = { F0: "rgb(3,105,161)", F1: "rgb(29,78,216)", F2: "rgb(67,56,202)", F3: "rgb(91,33,182)", F4: "rgb(194,65,12)", F5: "rgb(6,95,70)" };
@@ -725,7 +1642,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 })}
               </div>
               <div className="flex gap-1.5 mt-3 pt-3 border-t border-border/60">
-                {(funnelData.byStatus ?? []).filter((s: any) => s.count > 0).map((s: any) => {
+                {(filteredFunnelMetrics.filteredByStatus ?? []).map((s: any) => {
                   const labelColors: Record<string, string> = { F0: "rgb(3,105,161)", F1: "rgb(29,78,216)", F2: "rgb(67,56,202)", F3: "rgb(91,33,182)", F4: "rgb(194,65,12)", F5: "rgb(6,95,70)" };
                   return (
                     <div key={s.status} className="flex-1 min-w-0 bg-secondary/60 rounded-lg px-2.5 py-2.5 border border-border/50 flex flex-col justify-between">
@@ -737,77 +1654,83 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 })}
                 <div className="flex-1 min-w-0 bg-rose-100 rounded-lg px-2.5 py-2.5 border border-rose-200 flex flex-col justify-between">
                   <span className="text-xs font-black leading-none text-rose-600">TOTAL</span>
-                  <span className="text-[17px] font-black tabular-nums leading-tight text-foreground truncate" style={{ fontFamily: "Inter, sans-serif" }}>{fmtNilai(funnelData.totalNilai ?? 0)}</span>
-                  <span className="text-[11px] font-bold text-muted-foreground tabular-nums leading-none">{funnelData.totalLop ?? 0} LOP</span>
+                  <span className="text-[17px] font-black tabular-nums leading-tight text-foreground truncate" style={{ fontFamily: "Inter, sans-serif" }}>{fmtNilai(filteredFunnelMetrics.filteredTotalNilai ?? 0)}</span>
+                  <span className="text-[11px] font-bold text-muted-foreground tabular-nums leading-none">{filteredFunnelMetrics.filteredTotalLop ?? 0} LOP</span>
                 </div>
               </div>
             </div>
-            {/* Capaian + Conversion Rate (stacked) */}
-            <div className="flex flex-col gap-3">
-              {/* Capaian Real vs Target */}
-              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-start gap-2">
-                <DonutChart pct={funnelData.capaianTotal ?? 0} color="#3b82f6" size={56} stroke={8} />
-                <div className="flex-1 min-w-0 space-y-0.5" style={{ fontSize: "10px" }}>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Capaian</p>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground shrink-0">Real</span>
-                    <span className="font-bold text-foreground tabular-nums shrink-0">{fmtRupiahShort(funnelData.totalNilai ?? 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground shrink-0">Target</span>
-                    <span className="tabular-nums text-foreground shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
-                  </div>
-                  {(funnelData.capaianTotal ?? 0) >= 100 ? (
-                    <div className="flex justify-between items-baseline gap-1">
-                      <span className="font-bold text-emerald-600 shrink-0">Plus</span>
-                      <span className="font-bold tabular-nums text-emerald-600 shrink-0">+{fmtRupiahShort(Math.max(0, (funnelData.totalNilai ?? 0) - (funnelData.targetTotal ?? 0)))}</span>
-                    </div>
-                  ) : (funnelData.targetTotal ?? 0) > 0 ? (
-                    <div className="flex justify-between items-baseline gap-1">
-                      <span className="font-bold text-red-600 shrink-0">Minus</span>
-                      <span className="font-bold tabular-nums text-red-600 shrink-0">-{fmtRupiahShort(Math.max(0, (funnelData.targetTotal ?? 0) - (funnelData.totalNilai ?? 0)))}</span>
-                    </div>
-                  ) : null}
-                </div>
+            {/* Capaian Real vs Target */}
+            <div style={{ overflow: "visible" }} className="bg-card border border-border rounded-xl p-2 shadow-sm min-w-0">
+              <h3 className="text-base font-display font-bold text-foreground mb-1">Capaian Real vs Target</h3>
+              <div className="flex items-start justify-center pb-1">
+                <DonutChart pct={(funnelData.targetTotal ?? 0) > 0 ? Math.min(100, ((filteredFunnelMetrics.filteredTotalNilai ?? 0) / funnelData.targetTotal) * 100) : 0} color="#3b82f6" size={145} stroke={18} />
               </div>
-              {/* Conversion Rate */}
-              <div className="bg-secondary/40 border border-border rounded-xl p-3 flex items-start gap-2">
-                <DonutChart pct={funnelData.conversionRate ?? 0} color="#10b981" size={56} stroke={8} />
-                <div className="flex-1 min-w-0 space-y-0.5" style={{ fontSize: "10px" }}>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Conversion Rate</p>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground shrink-0">F5 Won</span>
-                    <span className="font-bold tabular-nums shrink-0" style={{ color: "rgb(16,185,129)" }}>{fmtNilai(funnelData.wonLopNilai ?? 0)}</span>
+              <div className="space-y-1" style={{ fontSize: "13px" }}>
+                <div className="flex justify-between items-baseline gap-1">
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>Real</span>
+                  <span className="font-bold text-black tabular-nums shrink-0">{fmtRupiahShort(filteredFunnelMetrics.filteredTotalNilai ?? 0)}</span>
+                </div>
+                <div className="flex justify-between items-baseline gap-1">
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>Target</span>
+                  <span className="tabular-nums text-black shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
+                </div>
+                {((filteredFunnelMetrics.filteredTotalNilai ?? 0) >= (funnelData.targetTotal ?? 0)) ? (
+                  <div className="flex justify-between items-baseline gap-1 pt-1 border-t border-gray-200">
+                    <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600">Kelebihan</span>
+                    <span className="font-bold tabular-nums text-emerald-600 shrink-0">+{fmtRupiahShort(Math.max(0, (filteredFunnelMetrics.filteredTotalNilai ?? 0) - (funnelData.targetTotal ?? 0)))}</span>
                   </div>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground shrink-0">F3+F4+F5</span>
-                    <span className="tabular-nums text-foreground shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
+                ) : (funnelData.targetTotal ?? 0) > 0 ? (
+                  <div className="flex justify-between items-baseline gap-1 pt-1 border-t border-gray-200">
+                    <span className="font-bold whitespace-nowrap shrink-0 text-red-600">Minus</span>
+                    <span className="font-bold tabular-nums text-red-600 shrink-0">-{fmtRupiahShort(Math.max(0, (funnelData.targetTotal ?? 0) - (filteredFunnelMetrics.filteredTotalNilai ?? 0)))}</span>
                   </div>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="text-muted-foreground shrink-0">Threshold</span>
-                    <span className="font-bold text-amber-500 shrink-0">≥ 70%</span>
-                  </div>
-                  <div className="flex justify-between items-baseline gap-1">
-                    <span className="font-bold text-emerald-600 shrink-0">Rate</span>
-                    <span className="font-black tabular-nums text-emerald-600 shrink-0">{fmtPct(funnelData.conversionRate ?? 0)}</span>
-                  </div>
+                ) : null}
+              </div>
+            </div>
+            {/* Conversion Rate */}
+            <div style={{ overflow: "visible" }} className="bg-card border border-border rounded-xl p-2 shadow-sm min-w-0">
+              <h3 className="text-base font-display font-bold text-foreground mb-1">Conversion Rate</h3>
+              <div className="flex items-start justify-center pb-1">
+                <DonutChart pct={funnelData.pipelineEligibleNilai > 0 ? Math.min(100, (funnelData.wonLopNilai / funnelData.pipelineEligibleNilai) * 100) : 0} color="#10b981" size={145} stroke={18} />
+              </div>
+              <div className="space-y-1" style={{ fontSize: "13px" }}>
+                <div className="flex justify-between items-baseline gap-1">
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>F5 (Closed Won)</span>
+                  <span className="font-bold tabular-nums shrink-0" style={{ color: "rgb(59,130,246)" }}>{fmtNilai(funnelData.wonLopNilai ?? 0)}</span>
+                </div>
+                <div className="flex justify-between items-baseline gap-1">
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>F3 + F4 + F5</span>
+                  <span className="tabular-nums text-black shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
+                </div>
+                <div className="flex justify-between items-baseline gap-1">
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>Tercapai</span>
+                  <span className="font-bold tabular-nums text-emerald-600 shrink-0">{funnelData.pipelineEligibleNilai > 0 ? fmtPct(Math.min(100, (funnelData.wonLopNilai / funnelData.pipelineEligibleNilai) * 100)) : "—"}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* ── Pergerakan Funnel ── */}
+        {funnelData?.prevSnapshotLabel && (
+          <PergerakanSection
+            snapshotComparison={snapshotComparison}
+            funnelData={funnelData}
+            amNama={am.nama}
+          />
+        )}
+
         {/* ── Table ── */}
         <FunnelTable
-          lopRows={funnelData.lopRows ?? []}
+          lopRows={filteredFunnelMetrics.filteredLops}
+          funnelData={funnelData}
+          propTotalNilai={filteredFunnelMetrics.filteredTotalNilai}
+          propTotalLop={filteredFunnelMetrics.filteredTotalLop}
           funnelExpanded={funnelExpanded}
           setFunnelExpanded={setFunnelExpanded}
           search={funnelSearch}
           setSearch={setFunnelSearch}
-          fmtNilai={fmtNilai}
-          fmtRupiahShort={fmtRupiahShort}
           amNama={data?.am?.nama ?? ""}
-          amBadge={data?.am?.badge ?? ""}
         />
       </div>
     ) : (
@@ -893,7 +1816,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 <div className="grid grid-cols-4 divide-x divide-border">
                   {/* Snapshot */}
                   <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold text-foreground uppercase tracking-wide">Snapshot</label>
+                    <label className="text-[10px] font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Snapshot</label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
@@ -921,7 +1844,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
 
                   {/* Periode */}
                   <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold text-foreground uppercase tracking-wide">Periode</label>
+                    <label className="text-[10px] font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Periode</label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
@@ -1072,7 +1995,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     {/* ACH CM */}
                     <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide leading-none">ACH CM</div>
-                      <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtPct(data?.summary?.achRate ?? 0)}</div>
+                      <div className="text-2xl font-black tabular-nums leading-none text-emerald-600">{fmtPct(data?.summary?.cmAchRate ?? 0)}</div>
                       <div className="text-[10px] font-medium leading-none" style={{ color: "#1e1e1e" }}>{latestPeriode ? (() => { const [y, m] = latestPeriode.split("-"); return `${MONTHS_SHORT[parseInt(m) - 1]} ${y}`; })() : "—"}</div>
                     </div>
                     <div className="w-px bg-border mx-1 shrink-0" />
@@ -1103,6 +2026,32 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                       <div className="text-[10px] font-medium leading-none" style={{ color: "#1e1e1e" }}>{ytdPeriodeLabel ?? "—"}</div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ── Trend Chart ───────────────────────────────────────── */}
+              {trendData.length > 0 && (
+                <div className="bg-card border border-border rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-foreground mb-3">
+                    Tren Performa Revenue Bulanan {latestPeriode ? latestPeriode.split("-")[0] : ""}
+                    {selectedDivisi !== "LESA" && <span className="ml-2 text-xs text-muted-foreground font-normal">· {selectedDivisi}</span>}
+                  </h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <ComposedChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                      <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 10 }}
+                        domain={[0, "auto"]}
+                        tickFormatter={v => typeof v === "number" && !isNaN(v) ? (v >= 1e9 ? `Rp${(v/1e9).toFixed(0)}M` : v >= 1e6 ? `Rp${(v/1e6).toFixed(0)}Jt` : "0") : "0"} />
+                      <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10 }}
+                        domain={[0, "auto"]} tickFormatter={v => `${v}%`} />
+                      <Tooltip content={<TrendTooltip />} />
+                      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                      <Bar yAxisId="left" dataKey="real" name="Real Revenue" fill="#22c55e" radius={[3,3,0,0]} maxBarSize={36} />
+                      <Bar yAxisId="left" dataKey="target" name="Target Revenue" fill="#3b82f6" radius={[3,3,0,0]} maxBarSize={36} />
+                      <Line yAxisId="right" type="monotone" dataKey="ach" name="Ach Rate %" stroke="#CC0000" strokeWidth={2.5} dot={{ fill: "#CC0000", r: 3 }} activeDot={{ r: 5 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
                 </div>
               )}
 
@@ -1374,7 +2323,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 <p className="text-red-200 font-mono text-sm">NIK {am.nik}</p>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   {am.divisi && <span className="text-xs px-2 py-0.5 rounded bg-white/20 text-white font-semibold">{am.divisi}</span>}
-                  <Badge badge={am.badge} />
+                  <RankBadge badge={am.badge} />
                   {am.witel && <span className="text-xs text-red-200">{am.witel}</span>}
                 </div>
               </div>

@@ -20297,8 +20297,8 @@ var require_dist2 = __commonJS({
       let combinations = 0;
       function process2(path5) {
         if (Array.isArray(path5)) {
-          for (const p of path5)
-            process2(p);
+          for (const p2 of path5)
+            process2(p2);
           return;
         }
         const data = typeof path5 === "object" ? path5 : parse3(path5, options);
@@ -20475,8 +20475,8 @@ var require_layer = __commonJS({
               offset: m.index
             });
           }
-          return function regexpMatcher(p) {
-            const match = _path.exec(p);
+          return function regexpMatcher(p2) {
+            const match = _path.exec(p2);
             if (!match) {
               return false;
             }
@@ -20584,8 +20584,8 @@ var require_layer = __commonJS({
       if (path4 instanceof RegExp || path4 === "/") {
         return path4;
       }
-      return Array.isArray(path4) ? path4.map(function(p) {
-        return loosen(p);
+      return Array.isArray(path4) ? path4.map(function(p2) {
+        return loosen(p2);
       }) : String(path4).replace(TRAILING_SLASH_REGEXP, "");
     }
   }
@@ -21611,14 +21611,14 @@ var require_language = __commonJS({
       return priority;
     }
     function specify(language, spec, index) {
-      var p = formatLanguage(contentType.parse(language), 0);
-      if (!p) return null;
+      var p2 = formatLanguage(contentType.parse(language), 0);
+      if (!p2) return null;
       var s = 0;
-      if (spec.full.toLowerCase() === p.full.toLowerCase()) {
+      if (spec.full.toLowerCase() === p2.full.toLowerCase()) {
         s |= 4;
-      } else if (spec.prefix.toLowerCase() === p.full.toLowerCase()) {
+      } else if (spec.prefix.toLowerCase() === p2.full.toLowerCase()) {
         s |= 2;
-      } else if (spec.full.toLowerCase() === p.prefix.toLowerCase()) {
+      } else if (spec.full.toLowerCase() === p2.prefix.toLowerCase()) {
         s |= 1;
       } else if (spec.full !== "*") {
         return null;
@@ -21695,17 +21695,17 @@ var require_mediaType = __commonJS({
       return priority;
     }
     function specify(type, spec, index) {
-      var p = formatMediaType(contentType.parse(type), 0);
+      var p2 = formatMediaType(contentType.parse(type), 0);
       var s = 0;
-      if (!p) {
+      if (!p2) {
         return null;
       }
-      if (spec.type.toLowerCase() == p.type.toLowerCase()) {
+      if (spec.type.toLowerCase() == p2.type.toLowerCase()) {
         s |= 4;
       } else if (spec.type != "*") {
         return null;
       }
-      if (spec.subtype.toLowerCase() == p.subtype.toLowerCase()) {
+      if (spec.subtype.toLowerCase() == p2.subtype.toLowerCase()) {
         s |= 2;
       } else if (spec.subtype != "*") {
         return null;
@@ -21713,7 +21713,7 @@ var require_mediaType = __commonJS({
       var keys = Object.keys(spec.params);
       if (keys.length > 0) {
         if (keys.every(function(k) {
-          return spec.params[k] == "*" || (spec.params[k] || "").toLowerCase() == (p.params[k] || "").toLowerCase();
+          return spec.params[k] == "*" || (spec.params[k] || "").toLowerCase() == (p2.params[k] || "").toLowerCase();
         })) {
           s |= 1;
         } else {
@@ -22901,13 +22901,13 @@ var require_send = __commonJS({
         if (self2._extensions.length <= i) {
           return err ? self2.onStatError(err) : self2.error(404);
         }
-        var p = path5 + "." + self2._extensions[i++];
-        debug('stat "%s"', p);
-        fs3.stat(p, function(err2, stat) {
+        var p2 = path5 + "." + self2._extensions[i++];
+        debug('stat "%s"', p2);
+        fs3.stat(p2, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
-          self2.emit("file", p, stat);
-          self2.send(p, stat);
+          self2.emit("file", p2, stat);
+          self2.send(p2, stat);
         });
       }
     };
@@ -22919,13 +22919,13 @@ var require_send = __commonJS({
           if (err) return self2.onStatError(err);
           return self2.error(404);
         }
-        var p = join(path5, self2._index[i]);
-        debug('stat "%s"', p);
-        fs3.stat(p, function(err2, stat) {
+        var p2 = join(path5, self2._index[i]);
+        debug('stat "%s"', p2);
+        fs3.stat(p2, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
-          self2.emit("file", p, stat);
-          self2.send(p, stat);
+          self2.emit("file", p2, stat);
+          self2.send(p2, stat);
         });
       }
       next();
@@ -28148,14 +28148,14 @@ var require_multistream = __commonJS({
 // ../../node_modules/.pnpm/pino@9.14.0/node_modules/pino/pino.js
 var require_pino = __commonJS({
   "../../node_modules/.pnpm/pino@9.14.0/node_modules/pino/pino.js"(exports, module) {
-    function pinoBundlerAbsolutePath(p) {
+    function pinoBundlerAbsolutePath(p2) {
       try {
         const path4 = __require("path");
         const outputDir = "C:\\Users\\USER\\Desktop\\LESAVI-SURAMADU\\LESAVI-SURAMADU\\apps\\api\\dist";
-        return path4.resolve(outputDir, p.replace(/^\.\//, ""));
+        return path4.resolve(outputDir, p2.replace(/^\.\//, ""));
       } catch (e) {
         const f = new Function("p", "return new URL(p, import.meta.url).pathname");
-        return f(p);
+        return f(p2);
       }
     }
     globalThis.__bundlerPathsOverrides = { ...globalThis.__bundlerPathsOverrides || {}, "thread-stream-worker": pinoBundlerAbsolutePath("./thread-stream-worker.mjs"), "pino-worker": pinoBundlerAbsolutePath("./pino-worker.mjs"), "pino/file": pinoBundlerAbsolutePath("./pino-file.mjs"), "pino-pretty": pinoBundlerAbsolutePath("./pino-pretty.mjs") };
@@ -30385,56 +30385,56 @@ var require_textParsers = __commonJS({
       if (!value) {
         return null;
       }
-      var p = arrayParser.create(value, function(entry) {
+      var p2 = arrayParser.create(value, function(entry) {
         if (entry !== null) {
           entry = parsePoint(entry);
         }
         return entry;
       });
-      return p.parse();
+      return p2.parse();
     };
     var parseFloatArray = function(value) {
       if (!value) {
         return null;
       }
-      var p = arrayParser.create(value, function(entry) {
+      var p2 = arrayParser.create(value, function(entry) {
         if (entry !== null) {
           entry = parseFloat(entry);
         }
         return entry;
       });
-      return p.parse();
+      return p2.parse();
     };
     var parseStringArray = function(value) {
       if (!value) {
         return null;
       }
-      var p = arrayParser.create(value);
-      return p.parse();
+      var p2 = arrayParser.create(value);
+      return p2.parse();
     };
     var parseDateArray = function(value) {
       if (!value) {
         return null;
       }
-      var p = arrayParser.create(value, function(entry) {
+      var p2 = arrayParser.create(value, function(entry) {
         if (entry !== null) {
           entry = parseDate2(entry);
         }
         return entry;
       });
-      return p.parse();
+      return p2.parse();
     };
     var parseIntervalArray = function(value) {
       if (!value) {
         return null;
       }
-      var p = arrayParser.create(value, function(entry) {
+      var p2 = arrayParser.create(value, function(entry) {
         if (entry !== null) {
           entry = parseInterval(entry);
         }
         return entry;
       });
-      return p.parse();
+      return p2.parse();
     };
     var parseByteAArray = function(value) {
       if (!value) {
@@ -35348,11 +35348,11 @@ var init_logger = __esm({
         this.writer = config2?.writer ?? new ConsoleLogWriter();
       }
       logQuery(query, params) {
-        const stringifiedParams = params.map((p) => {
+        const stringifiedParams = params.map((p2) => {
           try {
-            return JSON.stringify(p);
+            return JSON.stringify(p2);
           } catch {
-            return String(p);
+            return String(p2);
           }
         });
         const paramsStr = stringifiedParams.length ? ` -- params: [${stringifiedParams.join(", ")}]` : "";
@@ -36265,20 +36265,20 @@ function placeholder(name2) {
   return new Placeholder(name2);
 }
 function fillPlaceholders(params, values) {
-  return params.map((p) => {
-    if (is(p, Placeholder)) {
-      if (!(p.name in values)) {
-        throw new Error(`No value for placeholder "${p.name}" was provided`);
+  return params.map((p2) => {
+    if (is(p2, Placeholder)) {
+      if (!(p2.name in values)) {
+        throw new Error(`No value for placeholder "${p2.name}" was provided`);
       }
-      return values[p.name];
+      return values[p2.name];
     }
-    if (is(p, Param) && is(p.value, Placeholder)) {
-      if (!(p.value.name in values)) {
-        throw new Error(`No value for placeholder "${p.value.name}" was provided`);
+    if (is(p2, Param) && is(p2.value, Placeholder)) {
+      if (!(p2.value.name in values)) {
+        throw new Error(`No value for placeholder "${p2.value.name}" was provided`);
       }
-      return p.encoder.mapToDriverValue(values[p.value.name]);
+      return p2.encoder.mapToDriverValue(values[p2.value.name]);
     }
-    return p;
+    return p2;
   });
 }
 function isView(view) {
@@ -36367,8 +36367,8 @@ var init_sql = __esm({
           }
           if (Array.isArray(chunk)) {
             const result = [new StringChunk("(")];
-            for (const [i, p] of chunk.entries()) {
-              result.push(p);
+            for (const [i, p2] of chunk.entries()) {
+              result.push(p2);
               if (i < chunk.length - 1) {
                 result.push(new StringChunk(", "));
               }
@@ -46458,7 +46458,7 @@ var init_schemas = __esm({
       defineLazy(inst._zod, "pattern", () => {
         if (def.options.every((o) => o._zod.pattern)) {
           const patterns = def.options.map((o) => o._zod.pattern);
-          return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
+          return new RegExp(`^(${patterns.map((p2) => cleanRegex(p2.source)).join("|")})$`);
         }
         return void 0;
       });
@@ -52188,9 +52188,9 @@ var init_registries = __esm({
         return this;
       }
       get(schema) {
-        const p = schema._zod.parent;
-        if (p) {
-          const pm = { ...this.get(p) ?? {} };
+        const p2 = schema._zod.parent;
+        if (p2) {
+          const pm = { ...this.get(p2) ?? {} };
           delete pm.id;
           return { ...pm, ...this._map.get(schema) };
         }
@@ -63484,15 +63484,15 @@ var require_xlsx = __commonJS({
           }
           return L.length - R.length;
         }
-        function dirname2(p) {
-          if (p.charAt(p.length - 1) == "/") return p.slice(0, -1).indexOf("/") === -1 ? p : dirname2(p.slice(0, -1));
-          var c = p.lastIndexOf("/");
-          return c === -1 ? p : p.slice(0, c + 1);
+        function dirname2(p2) {
+          if (p2.charAt(p2.length - 1) == "/") return p2.slice(0, -1).indexOf("/") === -1 ? p2 : dirname2(p2.slice(0, -1));
+          var c = p2.lastIndexOf("/");
+          return c === -1 ? p2 : p2.slice(0, c + 1);
         }
-        function filename(p) {
-          if (p.charAt(p.length - 1) == "/") return filename(p.slice(0, -1));
-          var c = p.lastIndexOf("/");
-          return c === -1 ? p : p.slice(c + 1);
+        function filename(p2) {
+          if (p2.charAt(p2.length - 1) == "/") return filename(p2.slice(0, -1));
+          var c = p2.lastIndexOf("/");
+          return c === -1 ? p2 : p2.slice(c + 1);
         }
         function write_dos_date(buf, date6) {
           if (typeof date6 === "string") date6 = new Date(date6);
@@ -63533,23 +63533,23 @@ var require_xlsx = __commonJS({
           while (blob.l <= blob.length - 4) {
             var type = blob.read_shift(2);
             var sz = blob.read_shift(2), tgt = blob.l + sz;
-            var p = {};
+            var p2 = {};
             switch (type) {
               /* UNIX-style Timestamps */
               case 21589:
                 {
                   flags = blob.read_shift(1);
-                  if (flags & 1) p.mtime = blob.read_shift(4);
+                  if (flags & 1) p2.mtime = blob.read_shift(4);
                   if (sz > 5) {
-                    if (flags & 2) p.atime = blob.read_shift(4);
-                    if (flags & 4) p.ctime = blob.read_shift(4);
+                    if (flags & 2) p2.atime = blob.read_shift(4);
+                    if (flags & 4) p2.ctime = blob.read_shift(4);
                   }
-                  if (p.mtime) p.mt = new Date(p.mtime * 1e3);
+                  if (p2.mtime) p2.mt = new Date(p2.mtime * 1e3);
                 }
                 break;
             }
             blob.l = tgt;
-            o[type] = p;
+            o[type] = p2;
           }
           return o;
         }
@@ -63863,11 +63863,11 @@ var require_xlsx = __commonJS({
         function seed_cfb(cfb) {
           var nm = "Sh33tJ5";
           if (CFB.find(cfb, "/" + nm)) return;
-          var p = new_buf(4);
-          p[0] = 55;
-          p[1] = p[3] = 50;
-          p[2] = 54;
-          cfb.FileIndex.push({ name: nm, type: 2, content: p, size: 4, L: 69, R: 69, C: 69 });
+          var p2 = new_buf(4);
+          p2[0] = 55;
+          p2[1] = p2[3] = 50;
+          p2[2] = 54;
+          cfb.FileIndex.push({ name: nm, type: 2, content: p2, size: 4, L: 69, R: 69, C: 69 });
           cfb.FullPaths.push(cfb.FullPaths[0] + nm);
           rebuild_cfb(cfb);
         }
@@ -65314,10 +65314,10 @@ var require_xlsx = __commonJS({
         var safe_split_regex = "abacaba".split(/(:?b)/i).length == 5;
         return function split_regex2(str, re, def) {
           if (safe_split_regex || typeof re == "string") return str.split(re);
-          var p = str.split(re), o = [p[0]];
-          for (var i = 1; i < p.length; ++i) {
+          var p2 = str.split(re), o = [p2[0]];
+          for (var i = 1; i < p2.length; ++i) {
             o.push(def);
-            o.push(p[i]);
+            o.push(p2[i]);
           }
           return o;
         };
@@ -67594,18 +67594,18 @@ var require_xlsx = __commonJS({
         return r;
       })();
       function parse_core_props(data) {
-        var p = {};
+        var p2 = {};
         data = utf8read(data);
         for (var i = 0; i < CORE_PROPS.length; ++i) {
           var f = CORE_PROPS[i], cur = data.match(CORE_PROPS_REGEX[i]);
-          if (cur != null && cur.length > 0) p[f[1]] = unescapexml(cur[1]);
-          if (f[2] === "date" && p[f[1]]) p[f[1]] = parseDate2(p[f[1]]);
+          if (cur != null && cur.length > 0) p2[f[1]] = unescapexml(cur[1]);
+          if (f[2] === "date" && p2[f[1]]) p2[f[1]] = parseDate2(p2[f[1]]);
         }
-        return p;
+        return p2;
       }
-      function cp_doit(f, g, h, o, p) {
-        if (p[f] != null || g == null || g === "") return;
-        p[f] = g;
+      function cp_doit(f, g, h, o, p2) {
+        if (p2[f] != null || g == null || g === "") return;
+        p2[f] = g;
         g = escapexml(g);
         o[o.length] = h ? writextag(f, g, h) : writetag(f, g);
       }
@@ -67618,11 +67618,11 @@ var require_xlsx = __commonJS({
           "xmlns:dcterms": XMLNS.dcterms,
           "xmlns:dcmitype": XMLNS.dcmitype,
           "xmlns:xsi": XMLNS.xsi
-        })], p = {};
+        })], p2 = {};
         if (!cp && !opts.Props) return o.join("");
         if (cp) {
-          if (cp.CreatedDate != null) cp_doit("dcterms:created", typeof cp.CreatedDate === "string" ? cp.CreatedDate : write_w3cdtf(cp.CreatedDate, opts.WTF), { "xsi:type": "dcterms:W3CDTF" }, o, p);
-          if (cp.ModifiedDate != null) cp_doit("dcterms:modified", typeof cp.ModifiedDate === "string" ? cp.ModifiedDate : write_w3cdtf(cp.ModifiedDate, opts.WTF), { "xsi:type": "dcterms:W3CDTF" }, o, p);
+          if (cp.CreatedDate != null) cp_doit("dcterms:created", typeof cp.CreatedDate === "string" ? cp.CreatedDate : write_w3cdtf(cp.CreatedDate, opts.WTF), { "xsi:type": "dcterms:W3CDTF" }, o, p2);
+          if (cp.ModifiedDate != null) cp_doit("dcterms:modified", typeof cp.ModifiedDate === "string" ? cp.ModifiedDate : write_w3cdtf(cp.ModifiedDate, opts.WTF), { "xsi:type": "dcterms:W3CDTF" }, o, p2);
         }
         for (var i = 0; i != CORE_PROPS.length; ++i) {
           var f = CORE_PROPS[i];
@@ -67630,7 +67630,7 @@ var require_xlsx = __commonJS({
           if (v === true) v = "1";
           else if (v === false) v = "0";
           else if (typeof v == "number") v = String(v);
-          if (v != null) cp_doit(f[0], v, null, o, p);
+          if (v != null) cp_doit(f[0], v, null, o, p2);
         }
         if (o.length > 2) {
           o[o.length] = "</cp:coreProperties>";
@@ -67707,18 +67707,18 @@ var require_xlsx = __commonJS({
           idx += len;
         }
       }
-      function parse_ext_props(data, p, opts) {
+      function parse_ext_props(data, p2, opts) {
         var q = {};
-        if (!p) p = {};
+        if (!p2) p2 = {};
         data = utf8read(data);
         EXT_PROPS.forEach(function(f) {
           var xml = (data.match(matchtag(f[0])) || [])[1];
           switch (f[2]) {
             case "string":
-              if (xml) p[f[1]] = unescapexml(xml);
+              if (xml) p2[f[1]] = unescapexml(xml);
               break;
             case "bool":
-              p[f[1]] = xml === "true";
+              p2[f[1]] = xml === "true";
               break;
             case "raw":
               var cur = data.match(new RegExp("<" + f[0] + "[^>]*>([\\s\\S]*?)</" + f[0] + ">"));
@@ -67726,8 +67726,8 @@ var require_xlsx = __commonJS({
               break;
           }
         });
-        if (q.HeadingPairs && q.TitlesOfParts) load_props_pairs(q.HeadingPairs, q.TitlesOfParts, p, opts);
-        return p;
+        if (q.HeadingPairs && q.TitlesOfParts) load_props_pairs(q.HeadingPairs, q.TitlesOfParts, p2, opts);
+        return p2;
       }
       function write_ext_props(cp) {
         var o = [], W = writextag;
@@ -67763,7 +67763,7 @@ var require_xlsx = __commonJS({
       }
       var custregex = /<[^>]+>[^<]*/g;
       function parse_cust_props(data, opts) {
-        var p = {}, name2 = "";
+        var p2 = {}, name2 = "";
         var m = data.match(custregex);
         if (m) for (var i = 0; i != m.length; ++i) {
           var x = m[i], y = parsexmltag(x);
@@ -67786,10 +67786,10 @@ var require_xlsx = __commonJS({
                   case "lpstr":
                   case "bstr":
                   case "lpwstr":
-                    p[name2] = unescapexml(text2);
+                    p2[name2] = unescapexml(text2);
                     break;
                   case "bool":
-                    p[name2] = parsexmlbool(text2);
+                    p2[name2] = parsexmlbool(text2);
                     break;
                   case "i1":
                   case "i2":
@@ -67797,20 +67797,20 @@ var require_xlsx = __commonJS({
                   case "i8":
                   case "int":
                   case "uint":
-                    p[name2] = parseInt(text2, 10);
+                    p2[name2] = parseInt(text2, 10);
                     break;
                   case "r4":
                   case "r8":
                   case "decimal":
-                    p[name2] = parseFloat(text2);
+                    p2[name2] = parseFloat(text2);
                     break;
                   case "filetime":
                   case "date":
-                    p[name2] = parseDate2(text2);
+                    p2[name2] = parseDate2(text2);
                     break;
                   case "cy":
                   case "error":
-                    p[name2] = unescapexml(text2);
+                    p2[name2] = unescapexml(text2);
                     break;
                   default:
                     if (type.slice(-1) == "/") break;
@@ -67820,7 +67820,7 @@ var require_xlsx = __commonJS({
               } else if (opts.WTF) throw new Error(x);
           }
         }
-        return p;
+        return p2;
       }
       function write_cust_props(cp) {
         var o = [XML_HEADER, writextag("Properties", null, {
@@ -67889,10 +67889,10 @@ var require_xlsx = __commonJS({
           for (var i = 0; i < CORE_PROPS.length; ++i) if (CORE_PROPS[i][1] == m) return CORE_PROPS[i];
           for (i = 0; i < EXT_PROPS.length; ++i) if (EXT_PROPS[i][1] == m) return EXT_PROPS[i];
           throw m;
-        }).forEach(function(p) {
-          if (Props[p[1]] == null) return;
-          var m = opts && opts.Props && opts.Props[p[1]] != null ? opts.Props[p[1]] : Props[p[1]];
-          switch (p[2]) {
+        }).forEach(function(p2) {
+          if (Props[p2[1]] == null) return;
+          var m = opts && opts.Props && opts.Props[p2[1]] != null ? opts.Props[p2[1]] : Props[p2[1]];
+          switch (p2[2]) {
             case "date":
               m = new Date(m).toISOString().replace(/\.\d*Z/, "Z");
               break;
@@ -67901,7 +67901,7 @@ var require_xlsx = __commonJS({
           else if (m === true || m === false) {
             m = m ? "1" : "0";
           } else if (m instanceof Date) m = new Date(m).toISOString().replace(/\.\d*Z/, "");
-          o.push(writetag(XLMLDocPropsMap[p[1]] || p[1], m));
+          o.push(writetag(XLMLDocPropsMap[p2[1]] || p2[1], m));
         });
         return writextag("DocumentProperties", o.join(""), { xmlns: XLMLNS.o });
       }
@@ -68087,33 +68087,33 @@ var require_xlsx = __commonJS({
         }
       }
       function write_TypedPropertyValue(type, value) {
-        var o = new_buf(4), p = new_buf(4);
+        var o = new_buf(4), p2 = new_buf(4);
         o.write_shift(4, type == 80 ? 31 : type);
         switch (type) {
           case 3:
-            p.write_shift(-4, value);
+            p2.write_shift(-4, value);
             break;
           case 5:
-            p = new_buf(8);
-            p.write_shift(8, value, "f");
+            p2 = new_buf(8);
+            p2.write_shift(8, value, "f");
             break;
           case 11:
-            p.write_shift(4, value ? 1 : 0);
+            p2.write_shift(4, value ? 1 : 0);
             break;
           case 64:
-            p = write_FILETIME(value);
+            p2 = write_FILETIME(value);
             break;
           case 31:
           case 80:
-            p = new_buf(4 + 2 * (value.length + 1) + (value.length % 2 ? 0 : 2));
-            p.write_shift(4, value.length + 1);
-            p.write_shift(0, value, "dbcs");
-            while (p.l != p.length) p.write_shift(1, 0);
+            p2 = new_buf(4 + 2 * (value.length + 1) + (value.length % 2 ? 0 : 2));
+            p2.write_shift(4, value.length + 1);
+            p2.write_shift(0, value, "dbcs");
+            while (p2.l != p2.length) p2.write_shift(1, 0);
             break;
           default:
             throw new Error("TypedPropertyValue unrecognized type " + type + " " + value);
         }
-        return bconcat([o, p]);
+        return bconcat([o, p2]);
       }
       function parse_PropertySet(blob, PIDSI) {
         var start_addr = blob.l;
@@ -74899,19 +74899,19 @@ var require_xlsx = __commonJS({
       var CT_VBA = "application/vnd.ms-office.vbaProject";
       function make_vba_xls(cfb) {
         var newcfb = CFB.utils.cfb_new({ root: "R" });
-        cfb.FullPaths.forEach(function(p, i) {
-          if (p.slice(-1) === "/" || !p.match(/_VBA_PROJECT_CUR/))
+        cfb.FullPaths.forEach(function(p2, i) {
+          if (p2.slice(-1) === "/" || !p2.match(/_VBA_PROJECT_CUR/))
             return;
-          var newpath = p.replace(/^[^\/]*/, "R").replace(/\/_VBA_PROJECT_CUR\u0000*/, "");
+          var newpath = p2.replace(/^[^\/]*/, "R").replace(/\/_VBA_PROJECT_CUR\u0000*/, "");
           CFB.utils.cfb_add(newcfb, newpath, cfb.FileIndex[i].content);
         });
         return CFB.write(newcfb);
       }
       function fill_vba_xls(cfb, vba) {
-        vba.FullPaths.forEach(function(p, i) {
+        vba.FullPaths.forEach(function(p2, i) {
           if (i == 0)
             return;
-          var newpath = p.replace(/[^\/]*[\/]/, "/_VBA_PROJECT_CUR/");
+          var newpath = p2.replace(/[^\/]*[\/]/, "/_VBA_PROJECT_CUR/");
           if (newpath.slice(-1) !== "/")
             CFB.utils.cfb_add(cfb, newpath, vba.FileIndex[i].content);
         });
@@ -77318,21 +77318,21 @@ var require_xlsx = __commonJS({
         return len;
       }
       function col_obj_w(C, col) {
-        var p = { min: C + 1, max: C + 1 };
+        var p2 = { min: C + 1, max: C + 1 };
         var wch = -1;
         if (col.MDW) MDW = col.MDW;
-        if (col.width != null) p.customWidth = 1;
+        if (col.width != null) p2.customWidth = 1;
         else if (col.wpx != null) wch = px2char(col.wpx);
         else if (col.wch != null) wch = col.wch;
         if (wch > -1) {
-          p.width = char2width(wch);
-          p.customWidth = 1;
-        } else if (col.width != null) p.width = col.width;
-        if (col.hidden) p.hidden = true;
+          p2.width = char2width(wch);
+          p2.customWidth = 1;
+        } else if (col.width != null) p2.width = col.width;
+        if (col.hidden) p2.hidden = true;
         if (col.level != null) {
-          p.outlineLevel = p.level = col.level;
+          p2.outlineLevel = p2.level = col.level;
         }
-        return p;
+        return p2;
       }
       function default_margins(margins, mode) {
         if (!margins) return;
@@ -77367,42 +77367,42 @@ var require_xlsx = __commonJS({
         };
         return len;
       }
-      function safe_format(p, fmtid, fillid, opts, themes, styles) {
+      function safe_format(p2, fmtid, fillid, opts, themes, styles) {
         try {
-          if (opts.cellNF) p.z = table_fmt[fmtid];
+          if (opts.cellNF) p2.z = table_fmt[fmtid];
         } catch (e) {
           if (opts.WTF) throw e;
         }
-        if (p.t === "z" && !opts.cellStyles) return;
-        if (p.t === "d" && typeof p.v === "string") p.v = parseDate2(p.v);
-        if ((!opts || opts.cellText !== false) && p.t !== "z") try {
+        if (p2.t === "z" && !opts.cellStyles) return;
+        if (p2.t === "d" && typeof p2.v === "string") p2.v = parseDate2(p2.v);
+        if ((!opts || opts.cellText !== false) && p2.t !== "z") try {
           if (table_fmt[fmtid] == null) SSF_load(SSFImplicit[fmtid] || "General", fmtid);
-          if (p.t === "e") p.w = p.w || BErr[p.v];
+          if (p2.t === "e") p2.w = p2.w || BErr[p2.v];
           else if (fmtid === 0) {
-            if (p.t === "n") {
-              if ((p.v | 0) === p.v) p.w = p.v.toString(10);
-              else p.w = SSF_general_num(p.v);
-            } else if (p.t === "d") {
-              var dd = datenum(p.v);
-              if ((dd | 0) === dd) p.w = dd.toString(10);
-              else p.w = SSF_general_num(dd);
-            } else if (p.v === void 0) return "";
-            else p.w = SSF_general(p.v, _ssfopts);
-          } else if (p.t === "d") p.w = SSF_format(fmtid, datenum(p.v), _ssfopts);
-          else p.w = SSF_format(fmtid, p.v, _ssfopts);
+            if (p2.t === "n") {
+              if ((p2.v | 0) === p2.v) p2.w = p2.v.toString(10);
+              else p2.w = SSF_general_num(p2.v);
+            } else if (p2.t === "d") {
+              var dd = datenum(p2.v);
+              if ((dd | 0) === dd) p2.w = dd.toString(10);
+              else p2.w = SSF_general_num(dd);
+            } else if (p2.v === void 0) return "";
+            else p2.w = SSF_general(p2.v, _ssfopts);
+          } else if (p2.t === "d") p2.w = SSF_format(fmtid, datenum(p2.v), _ssfopts);
+          else p2.w = SSF_format(fmtid, p2.v, _ssfopts);
         } catch (e) {
           if (opts.WTF) throw e;
         }
         if (!opts.cellStyles) return;
         if (fillid != null) try {
-          p.s = styles.Fills[fillid];
-          if (p.s.fgColor && p.s.fgColor.theme && !p.s.fgColor.rgb) {
-            p.s.fgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.fgColor.theme].rgb, p.s.fgColor.tint || 0);
-            if (opts.WTF) p.s.fgColor.raw_rgb = themes.themeElements.clrScheme[p.s.fgColor.theme].rgb;
+          p2.s = styles.Fills[fillid];
+          if (p2.s.fgColor && p2.s.fgColor.theme && !p2.s.fgColor.rgb) {
+            p2.s.fgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p2.s.fgColor.theme].rgb, p2.s.fgColor.tint || 0);
+            if (opts.WTF) p2.s.fgColor.raw_rgb = themes.themeElements.clrScheme[p2.s.fgColor.theme].rgb;
           }
-          if (p.s.bgColor && p.s.bgColor.theme) {
-            p.s.bgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.bgColor.theme].rgb, p.s.bgColor.tint || 0);
-            if (opts.WTF) p.s.bgColor.raw_rgb = themes.themeElements.clrScheme[p.s.bgColor.theme].rgb;
+          if (p2.s.bgColor && p2.s.bgColor.theme) {
+            p2.s.bgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p2.s.bgColor.theme].rgb, p2.s.bgColor.tint || 0);
+            if (opts.WTF) p2.s.bgColor.raw_rgb = themes.themeElements.clrScheme[p2.s.bgColor.theme].rgb;
           }
         } catch (e) {
           if (opts.WTF && styles.Fills) throw e;
@@ -77729,7 +77729,7 @@ var require_xlsx = __commonJS({
         var refregex = /ref=["']([^"']*)["']/;
         var match_v = matchtag("v"), match_f = matchtag("f");
         return function parse_ws_xml_data2(sdata, s, opts, guess, themes, styles) {
-          var ri = 0, x = "", cells = [], cref = [], idx = 0, i = 0, cc = 0, d = "", p;
+          var ri = 0, x = "", cells = [], cref = [], idx = 0, i = 0, cc = 0, d = "", p2;
           var tag, tagr = 0, tagc = 0;
           var sstr, ftag;
           var fmtid = 0, fillid = 0;
@@ -77834,15 +77834,15 @@ var require_xlsx = __commonJS({
               tag = parsexmltag(x.slice(0, i), true);
               if (!tag.r) tag.r = encode_cell({ r: tagr - 1, c: tagc });
               d = x.slice(i);
-              p = { t: "" };
-              if ((cref = d.match(match_v)) != null && cref[1] !== "") p.v = unescapexml(cref[1]);
+              p2 = { t: "" };
+              if ((cref = d.match(match_v)) != null && cref[1] !== "") p2.v = unescapexml(cref[1]);
               if (opts.cellFormula) {
                 if ((cref = d.match(match_f)) != null && cref[1] !== "") {
-                  p.f = unescapexml(utf8read(cref[1])).replace(/\r\n/g, "\n");
-                  if (!opts.xlfn) p.f = _xlfn(p.f);
+                  p2.f = unescapexml(utf8read(cref[1])).replace(/\r\n/g, "\n");
+                  if (!opts.xlfn) p2.f = _xlfn(p2.f);
                   if (cref[0].indexOf('t="array"') > -1) {
-                    p.F = (d.match(refregex) || [])[1];
-                    if (p.F.indexOf(":") > -1) arrayf.push([safe_decode_range(p.F), p.F]);
+                    p2.F = (d.match(refregex) || [])[1];
+                    if (p2.F.indexOf(":") > -1) arrayf.push([safe_decode_range(p2.F), p2.F]);
                   } else if (cref[0].indexOf('t="shared"') > -1) {
                     ftag = parsexmltag(cref[0]);
                     var ___f = unescapexml(utf8read(cref[1]));
@@ -77851,69 +77851,69 @@ var require_xlsx = __commonJS({
                   }
                 } else if (cref = d.match(/<f[^>]*\/>/)) {
                   ftag = parsexmltag(cref[0]);
-                  if (sharedf[ftag.si]) p.f = shift_formula_xlsx(sharedf[ftag.si][1], sharedf[ftag.si][2], tag.r);
+                  if (sharedf[ftag.si]) p2.f = shift_formula_xlsx(sharedf[ftag.si][1], sharedf[ftag.si][2], tag.r);
                 }
                 var _tag = decode_cell(tag.r);
                 for (i = 0; i < arrayf.length; ++i)
                   if (_tag.r >= arrayf[i][0].s.r && _tag.r <= arrayf[i][0].e.r) {
                     if (_tag.c >= arrayf[i][0].s.c && _tag.c <= arrayf[i][0].e.c)
-                      p.F = arrayf[i][1];
+                      p2.F = arrayf[i][1];
                   }
               }
-              if (tag.t == null && p.v === void 0) {
-                if (p.f || p.F) {
-                  p.v = 0;
-                  p.t = "n";
+              if (tag.t == null && p2.v === void 0) {
+                if (p2.f || p2.F) {
+                  p2.v = 0;
+                  p2.t = "n";
                 } else if (!sheetStubs) continue;
-                else p.t = "z";
-              } else p.t = tag.t || "n";
+                else p2.t = "z";
+              } else p2.t = tag.t || "n";
               if (guess.s.c > tagc) guess.s.c = tagc;
               if (guess.e.c < tagc) guess.e.c = tagc;
-              switch (p.t) {
+              switch (p2.t) {
                 case "n":
-                  if (p.v == "" || p.v == null) {
+                  if (p2.v == "" || p2.v == null) {
                     if (!sheetStubs) continue;
-                    p.t = "z";
-                  } else p.v = parseFloat(p.v);
+                    p2.t = "z";
+                  } else p2.v = parseFloat(p2.v);
                   break;
                 case "s":
-                  if (typeof p.v == "undefined") {
+                  if (typeof p2.v == "undefined") {
                     if (!sheetStubs) continue;
-                    p.t = "z";
+                    p2.t = "z";
                   } else {
-                    sstr = strs[parseInt(p.v, 10)];
-                    p.v = sstr.t;
-                    p.r = sstr.r;
-                    if (opts.cellHTML) p.h = sstr.h;
+                    sstr = strs[parseInt(p2.v, 10)];
+                    p2.v = sstr.t;
+                    p2.r = sstr.r;
+                    if (opts.cellHTML) p2.h = sstr.h;
                   }
                   break;
                 case "str":
-                  p.t = "s";
-                  p.v = p.v != null ? utf8read(p.v) : "";
-                  if (opts.cellHTML) p.h = escapehtml(p.v);
+                  p2.t = "s";
+                  p2.v = p2.v != null ? utf8read(p2.v) : "";
+                  if (opts.cellHTML) p2.h = escapehtml(p2.v);
                   break;
                 case "inlineStr":
                   cref = d.match(isregex);
-                  p.t = "s";
+                  p2.t = "s";
                   if (cref != null && (sstr = parse_si(cref[1]))) {
-                    p.v = sstr.t;
-                    if (opts.cellHTML) p.h = sstr.h;
-                  } else p.v = "";
+                    p2.v = sstr.t;
+                    if (opts.cellHTML) p2.h = sstr.h;
+                  } else p2.v = "";
                   break;
                 case "b":
-                  p.v = parsexmlbool(p.v);
+                  p2.v = parsexmlbool(p2.v);
                   break;
                 case "d":
-                  if (opts.cellDates) p.v = parseDate2(p.v, 1);
+                  if (opts.cellDates) p2.v = parseDate2(p2.v, 1);
                   else {
-                    p.v = datenum(parseDate2(p.v, 1));
-                    p.t = "n";
+                    p2.v = datenum(parseDate2(p2.v, 1));
+                    p2.t = "n";
                   }
                   break;
                 /* error string in .w, number in .v */
                 case "e":
-                  if (!opts || opts.cellText !== false) p.w = p.v;
-                  p.v = RBErr[p.v];
+                  if (!opts || opts.cellText !== false) p2.w = p2.v;
+                  p2.v = RBErr[p2.v];
                   break;
               }
               fmtid = fillid = 0;
@@ -77927,20 +77927,20 @@ var require_xlsx = __commonJS({
                   }
                 }
               }
-              safe_format(p, fmtid, fillid, opts, themes, styles);
-              if (opts.cellDates && do_format && p.t == "n" && fmt_is_date(table_fmt[fmtid])) {
-                p.t = "d";
-                p.v = numdate(p.v);
+              safe_format(p2, fmtid, fillid, opts, themes, styles);
+              if (opts.cellDates && do_format && p2.t == "n" && fmt_is_date(table_fmt[fmtid])) {
+                p2.t = "d";
+                p2.v = numdate(p2.v);
               }
               if (tag.cm && opts.xlmeta) {
                 var cm = (opts.xlmeta.Cell || [])[+tag.cm - 1];
-                if (cm && cm.type == "XLDAPR") p.D = true;
+                if (cm && cm.type == "XLDAPR") p2.D = true;
               }
               if (dense) {
                 var _r = decode_cell(tag.r);
                 if (!s[_r.r]) s[_r.r] = [];
-                s[_r.r][_r.c] = p;
-              } else s[tag.r] = p;
+                s[_r.r][_r.c] = p2;
+              } else s[tag.r] = p2;
             }
           }
           if (rows.length > 0) s["!rows"] = rows;
@@ -78427,10 +78427,10 @@ var require_xlsx = __commonJS({
       }
       function write_BrtColInfo(C, col, o) {
         if (o == null) o = new_buf(18);
-        var p = col_obj_w(C, col);
+        var p2 = col_obj_w(C, col);
         o.write_shift(-4, C);
         o.write_shift(-4, C);
-        o.write_shift(4, (p.width || 10) * 256);
+        o.write_shift(4, (p2.width || 10) * 256);
         o.write_shift(
           4,
           0
@@ -78438,7 +78438,7 @@ var require_xlsx = __commonJS({
         );
         var flags = 0;
         if (col.hidden) flags |= 1;
-        if (typeof p.width == "number") flags |= 2;
+        if (typeof p2.width == "number") flags |= 2;
         if (col.level) flags |= col.level << 8;
         o.write_shift(2, flags);
         return o;
@@ -78544,7 +78544,7 @@ var require_xlsx = __commonJS({
         var refguess = { s: { r: 2e6, c: 2e6 }, e: { r: 0, c: 0 } };
         var state = [];
         var pass = false, end = false;
-        var row, p, cf, R, C, addr, sstr, rr, cell;
+        var row, p2, cf, R, C, addr, sstr, rr, cell;
         var merges = [];
         opts.biff = 12;
         opts["!row"] = 0;
@@ -78614,64 +78614,64 @@ var require_xlsx = __commonJS({
             case 18:
             /* 'BrtShortIsst' */
             case 62:
-              p = { t: val[2] };
+              p2 = { t: val[2] };
               switch (val[2]) {
                 case "n":
-                  p.v = val[1];
+                  p2.v = val[1];
                   break;
                 case "s":
                   sstr = strs[val[1]];
-                  p.v = sstr.t;
-                  p.r = sstr.r;
+                  p2.v = sstr.t;
+                  p2.r = sstr.r;
                   break;
                 case "b":
-                  p.v = val[1] ? true : false;
+                  p2.v = val[1] ? true : false;
                   break;
                 case "e":
-                  p.v = val[1];
-                  if (opts.cellText !== false) p.w = BErr[p.v];
+                  p2.v = val[1];
+                  if (opts.cellText !== false) p2.w = BErr[p2.v];
                   break;
                 case "str":
-                  p.t = "s";
-                  p.v = val[1];
+                  p2.t = "s";
+                  p2.v = val[1];
                   break;
                 case "is":
-                  p.t = "s";
-                  p.v = val[1].t;
+                  p2.t = "s";
+                  p2.v = val[1].t;
                   break;
               }
-              if (cf = styles.CellXf[val[0].iStyleRef]) safe_format(p, cf.numFmtId, null, opts, themes, styles);
+              if (cf = styles.CellXf[val[0].iStyleRef]) safe_format(p2, cf.numFmtId, null, opts, themes, styles);
               C = val[0].c == -1 ? C + 1 : val[0].c;
               if (opts.dense) {
                 if (!s[R]) s[R] = [];
-                s[R][C] = p;
-              } else s[encode_col(C) + rr] = p;
+                s[R][C] = p2;
+              } else s[encode_col(C) + rr] = p2;
               if (opts.cellFormula) {
                 af = false;
                 for (ai = 0; ai < arrayf.length; ++ai) {
                   var aii = arrayf[ai];
                   if (row.r >= aii[0].s.r && row.r <= aii[0].e.r) {
                     if (C >= aii[0].s.c && C <= aii[0].e.c) {
-                      p.F = encode_range(aii[0]);
+                      p2.F = encode_range(aii[0]);
                       af = true;
                     }
                   }
                 }
-                if (!af && val.length > 3) p.f = val[3];
+                if (!af && val.length > 3) p2.f = val[3];
               }
               if (refguess.s.r > row.r) refguess.s.r = row.r;
               if (refguess.s.c > C) refguess.s.c = C;
               if (refguess.e.r < row.r) refguess.e.r = row.r;
               if (refguess.e.c < C) refguess.e.c = C;
-              if (opts.cellDates && cf && p.t == "n" && fmt_is_date(table_fmt[cf.numFmtId])) {
-                var _d = SSF_parse_date_code(p.v);
+              if (opts.cellDates && cf && p2.t == "n" && fmt_is_date(table_fmt[cf.numFmtId])) {
+                var _d = SSF_parse_date_code(p2.v);
                 if (_d) {
-                  p.t = "d";
-                  p.v = new Date(_d.y, _d.m - 1, _d.d, _d.H, _d.M, _d.S, _d.u);
+                  p2.t = "d";
+                  p2.v = new Date(_d.y, _d.m - 1, _d.d, _d.H, _d.M, _d.S, _d.u);
                 }
               }
               if (cm) {
-                if (cm.type == "XLDAPR") p.D = true;
+                if (cm.type == "XLDAPR") p2.D = true;
                 cm = void 0;
               }
               if (vm) vm = void 0;
@@ -78680,18 +78680,18 @@ var require_xlsx = __commonJS({
             /* 'BrtCellBlank' */
             case 12:
               if (!opts.sheetStubs || pass) break;
-              p = { t: "z", v: void 0 };
+              p2 = { t: "z", v: void 0 };
               C = val[0].c == -1 ? C + 1 : val[0].c;
               if (opts.dense) {
                 if (!s[R]) s[R] = [];
-                s[R][C] = p;
-              } else s[encode_col(C) + rr] = p;
+                s[R][C] = p2;
+              } else s[encode_col(C) + rr] = p2;
               if (refguess.s.r > row.r) refguess.s.r = row.r;
               if (refguess.s.c > C) refguess.s.c = C;
               if (refguess.e.r < row.r) refguess.e.r = row.r;
               if (refguess.e.c < C) refguess.e.c = C;
               if (cm) {
-                if (cm.type == "XLDAPR") p.D = true;
+                if (cm.type == "XLDAPR") p2.D = true;
                 cm = void 0;
               }
               if (vm) vm = void 0;
@@ -81470,37 +81470,37 @@ var require_xlsx = __commonJS({
             if (marr[mi].e.r > marr[mi].s.r) attr["ss:MergeDown"] = marr[mi].e.r - marr[mi].s.r;
           }
         }
-        var t = "", p = "";
+        var t = "", p2 = "";
         switch (cell.t) {
           case "z":
             if (!opts.sheetStubs) return "";
             break;
           case "n":
             t = "Number";
-            p = String(cell.v);
+            p2 = String(cell.v);
             break;
           case "b":
             t = "Boolean";
-            p = cell.v ? "1" : "0";
+            p2 = cell.v ? "1" : "0";
             break;
           case "e":
             t = "Error";
-            p = BErr[cell.v];
+            p2 = BErr[cell.v];
             break;
           case "d":
             t = "DateTime";
-            p = new Date(cell.v).toISOString();
+            p2 = new Date(cell.v).toISOString();
             if (cell.z == null) cell.z = cell.z || table_fmt[14];
             break;
           case "s":
             t = "String";
-            p = escapexlml(cell.v || "");
+            p2 = escapexlml(cell.v || "");
             break;
         }
         var os = get_cell_style(opts.cellXfs, cell, opts);
         attr["ss:StyleID"] = "s" + (21 + os);
         attr["ss:Index"] = addr.c + 1;
-        var _v = cell.v != null ? p : "";
+        var _v = cell.v != null ? p2 : "";
         var m = cell.t == "z" ? "" : '<Data ss:Type="' + t + '">' + _v + "</Data>";
         if ((cell.c || []).length > 0) m += write_ws_xlml_comment(cell.c);
         return writextag("Cell", m, attr);
@@ -81522,9 +81522,9 @@ var require_xlsx = __commonJS({
         if (ws["!cols"]) ws["!cols"].forEach(function(n, i) {
           process_col(n);
           var w = !!n.width;
-          var p = col_obj_w(i, n);
+          var p2 = col_obj_w(i, n);
           var k = { "ss:Index": i + 1 };
-          if (w) k["ss:Width"] = width2px(p.width);
+          if (w) k["ss:Width"] = width2px(p2.width);
           if (n.hidden) k["ss:Hidden"] = "1";
           o.push(writextag("Column", null, k));
         });
@@ -81662,33 +81662,33 @@ var require_xlsx = __commonJS({
         if (b.length < length) throw "XLS Record 0x" + RecordType.toString(16) + " Truncated: " + b.length + " < " + length;
         return R.f(b, b.length, opts);
       }
-      function safe_format_xf(p, opts, date1904) {
-        if (p.t === "z") return;
-        if (!p.XF) return;
+      function safe_format_xf(p2, opts, date1904) {
+        if (p2.t === "z") return;
+        if (!p2.XF) return;
         var fmtid = 0;
         try {
-          fmtid = p.z || p.XF.numFmtId || 0;
-          if (opts.cellNF) p.z = table_fmt[fmtid];
+          fmtid = p2.z || p2.XF.numFmtId || 0;
+          if (opts.cellNF) p2.z = table_fmt[fmtid];
         } catch (e) {
           if (opts.WTF) throw e;
         }
         if (!opts || opts.cellText !== false) try {
-          if (p.t === "e") {
-            p.w = p.w || BErr[p.v];
+          if (p2.t === "e") {
+            p2.w = p2.w || BErr[p2.v];
           } else if (fmtid === 0 || fmtid == "General") {
-            if (p.t === "n") {
-              if ((p.v | 0) === p.v) p.w = p.v.toString(10);
-              else p.w = SSF_general_num(p.v);
-            } else p.w = SSF_general(p.v);
-          } else p.w = SSF_format(fmtid, p.v, { date1904: !!date1904, dateNF: opts && opts.dateNF });
+            if (p2.t === "n") {
+              if ((p2.v | 0) === p2.v) p2.w = p2.v.toString(10);
+              else p2.w = SSF_general_num(p2.v);
+            } else p2.w = SSF_general(p2.v);
+          } else p2.w = SSF_format(fmtid, p2.v, { date1904: !!date1904, dateNF: opts && opts.dateNF });
         } catch (e) {
           if (opts.WTF) throw e;
         }
-        if (opts.cellDates && fmtid && p.t == "n" && fmt_is_date(table_fmt[fmtid] || String(fmtid))) {
-          var _d = SSF_parse_date_code(p.v);
+        if (opts.cellDates && fmtid && p2.t == "n" && fmt_is_date(table_fmt[fmtid] || String(fmtid))) {
+          var _d = SSF_parse_date_code(p2.v);
           if (_d) {
-            p.t = "d";
-            p.v = new Date(_d.y, _d.m - 1, _d.d, _d.H, _d.M, _d.S, _d.u);
+            p2.t = "d";
+            p2.v = new Date(_d.y, _d.m - 1, _d.d, _d.H, _d.M, _d.S, _d.u);
           }
         }
       }
@@ -89639,8 +89639,8 @@ var require_xlsx = __commonJS({
       function parse_numbers_iwa(cfb) {
         var _a, _b, _c, _d;
         var M = {}, indices = [];
-        cfb.FullPaths.forEach(function(p) {
-          if (p.match(/\.iwpv2/))
+        cfb.FullPaths.forEach(function(p2) {
+          if (p2.match(/\.iwpv2/))
             throw new Error("Unsupported password protection");
         });
         cfb.FileIndex.forEach(function(s) {
@@ -90292,10 +90292,10 @@ var require_xlsx = __commonJS({
           } else {
             out.keys = [];
             out.files = {};
-            zip.FullPaths.forEach(function(p, idx) {
-              p = p.replace(/^Root Entry[\/]/, "");
-              out.keys.push(p);
-              out.files[p] = zip.FileIndex[idx];
+            zip.FullPaths.forEach(function(p2, idx) {
+              p2 = p2.replace(/^Root Entry[\/]/, "");
+              out.keys.push(p2);
+              out.files[p2] = zip.FileIndex[idx];
             });
           }
         }
@@ -91882,22 +91882,22 @@ var require_BufferList = __commonJS({
       };
       BufferList.prototype.join = function join(s) {
         if (this.length === 0) return "";
-        var p = this.head;
-        var ret = "" + p.data;
-        while (p = p.next) {
-          ret += s + p.data;
+        var p2 = this.head;
+        var ret = "" + p2.data;
+        while (p2 = p2.next) {
+          ret += s + p2.data;
         }
         return ret;
       };
       BufferList.prototype.concat = function concat(n) {
         if (this.length === 0) return Buffer2.alloc(0);
         var ret = Buffer2.allocUnsafe(n >>> 0);
-        var p = this.head;
+        var p2 = this.head;
         var i = 0;
-        while (p) {
-          copyBuffer(p.data, ret, i);
-          i += p.data.length;
-          p = p.next;
+        while (p2) {
+          copyBuffer(p2.data, ret, i);
+          i += p2.data.length;
+          p2 = p2.next;
         }
         return ret;
       };
@@ -92646,7 +92646,7 @@ var require_string_decoder = __commonJS({
       }
       return 0;
     }
-    function utf8CheckExtraBytes(self2, buf, p) {
+    function utf8CheckExtraBytes(self2, buf, p2) {
       if ((buf[0] & 192) !== 128) {
         self2.lastNeed = 0;
         return "\uFFFD";
@@ -92665,14 +92665,14 @@ var require_string_decoder = __commonJS({
       }
     }
     function utf8FillLast(buf) {
-      var p = this.lastTotal - this.lastNeed;
-      var r = utf8CheckExtraBytes(this, buf, p);
+      var p2 = this.lastTotal - this.lastNeed;
+      var r = utf8CheckExtraBytes(this, buf, p2);
       if (r !== void 0) return r;
       if (this.lastNeed <= buf.length) {
-        buf.copy(this.lastChar, p, 0, this.lastNeed);
+        buf.copy(this.lastChar, p2, 0, this.lastNeed);
         return this.lastChar.toString(this.encoding, 0, this.lastTotal);
       }
-      buf.copy(this.lastChar, p, 0, buf.length);
+      buf.copy(this.lastChar, p2, 0, buf.length);
       this.lastNeed -= buf.length;
     }
     function utf8Text(buf, i) {
@@ -93352,12 +93352,12 @@ var require_stream_readable = __commonJS({
       return ret;
     }
     function copyFromBufferString(n, list) {
-      var p = list.head;
+      var p2 = list.head;
       var c = 1;
-      var ret = p.data;
+      var ret = p2.data;
       n -= ret.length;
-      while (p = p.next) {
-        var str = p.data;
+      while (p2 = p2.next) {
+        var str = p2.data;
         var nb = n > str.length ? str.length : n;
         if (nb === str.length) ret += str;
         else ret += str.slice(0, n);
@@ -93365,11 +93365,11 @@ var require_stream_readable = __commonJS({
         if (n === 0) {
           if (nb === str.length) {
             ++c;
-            if (p.next) list.head = p.next;
+            if (p2.next) list.head = p2.next;
             else list.head = list.tail = null;
           } else {
-            list.head = p;
-            p.data = str.slice(nb);
+            list.head = p2;
+            p2.data = str.slice(nb);
           }
           break;
         }
@@ -93380,23 +93380,23 @@ var require_stream_readable = __commonJS({
     }
     function copyFromBuffer(n, list) {
       var ret = Buffer2.allocUnsafe(n);
-      var p = list.head;
+      var p2 = list.head;
       var c = 1;
-      p.data.copy(ret);
-      n -= p.data.length;
-      while (p = p.next) {
-        var buf = p.data;
+      p2.data.copy(ret);
+      n -= p2.data.length;
+      while (p2 = p2.next) {
+        var buf = p2.data;
         var nb = n > buf.length ? buf.length : n;
         buf.copy(ret, ret.length - n, 0, nb);
         n -= nb;
         if (n === 0) {
           if (nb === buf.length) {
             ++c;
-            if (p.next) list.head = p.next;
+            if (p2.next) list.head = p2.next;
             else list.head = list.tail = null;
           } else {
-            list.head = p;
-            p.data = buf.slice(nb);
+            list.head = p2;
+            p2.data = buf.slice(nb);
           }
           break;
         }
@@ -93854,19 +93854,19 @@ var require_lib7 = __commonJS({
       if (typeof callback !== "function") {
         return this;
       }
-      var p = this.constructor;
+      var p2 = this.constructor;
       return this.then(resolve3, reject2);
       function resolve3(value) {
         function yes() {
           return value;
         }
-        return p.resolve(callback()).then(yes);
+        return p2.resolve(callback()).then(yes);
       }
       function reject2(reason) {
         function no() {
           throw reason;
         }
-        return p.resolve(callback()).then(no);
+        return p2.resolve(callback()).then(no);
       }
     };
     Promise2.prototype.catch = function(onRejected) {
@@ -95591,9 +95591,9 @@ var require_common2 = __commonJS({
         if (typeof source !== "object") {
           throw new TypeError(source + "must be non-object");
         }
-        for (var p in source) {
-          if (_has(source, p)) {
-            obj[p] = source[p];
+        for (var p2 in source) {
+          if (_has(source, p2)) {
+            obj[p2] = source[p2];
           }
         }
       }
@@ -96547,7 +96547,7 @@ var require_deflate = __commonJS({
     }
     function fill_window(s) {
       var _w_size = s.w_size;
-      var p, n, m, more, str;
+      var p2, n, m, more, str;
       do {
         more = s.window_size - s.lookahead - s.strstart;
         if (s.strstart >= _w_size + (_w_size - MIN_LOOKAHEAD)) {
@@ -96556,16 +96556,16 @@ var require_deflate = __commonJS({
           s.strstart -= _w_size;
           s.block_start -= _w_size;
           n = s.hash_size;
-          p = n;
+          p2 = n;
           do {
-            m = s.head[--p];
-            s.head[p] = m >= _w_size ? m - _w_size : 0;
+            m = s.head[--p2];
+            s.head[p2] = m >= _w_size ? m - _w_size : 0;
           } while (--n);
           n = _w_size;
-          p = n;
+          p2 = n;
           do {
-            m = s.prev[--p];
-            s.prev[p] = m >= _w_size ? m - _w_size : 0;
+            m = s.prev[--p2];
+            s.prev[p2] = m >= _w_size ? m - _w_size : 0;
           } while (--n);
           more += _w_size;
         }
@@ -102226,7 +102226,7 @@ async function importFunnel(rows, sourceUrl, period, snapshotDate, _fileName) {
   for (let i = 0; i < toInsert.length; i += 200) {
     await db.insert(salesFunnelTable).values(toInsert.slice(i, i + 200).map((row) => ({ ...row, importId: importRecord.id }))).onConflictDoNothing();
   }
-  const uniqueCustomers = [...new Set(toInsert.map((r) => r.pelanggan).filter((p) => p && p !== "\u2013"))];
+  const uniqueCustomers = [...new Set(toInsert.map((r) => r.pelanggan).filter((p2) => p2 && p2 !== "\u2013"))];
   for (let i = 0; i < uniqueCustomers.length; i += 100) {
     await db.insert(masterCustomerTable).values(uniqueCustomers.slice(i, i + 100).map((nama) => ({ nama, witel: "SURAMADU" }))).onConflictDoNothing();
   }
@@ -120718,16 +120718,16 @@ async function buildPerformanceMessage(nik, period) {
     allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik).map((m) => m.nik)
   );
   const allPerfs = await getSnapshotAwarePerfs(year, month);
-  const activePerfs = allPerfs.filter((p2) => activeNikSet.has(p2.nik));
+  const activePerfs = allPerfs.filter((p3) => activeNikSet.has(p3.nik));
   const byNik = /* @__PURE__ */ new Map();
-  for (const p2 of activePerfs) {
-    const existing = byNik.get(p2.nik);
-    if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-      byNik.set(p2.nik, p2);
+  for (const p3 of activePerfs) {
+    const existing = byNik.get(p3.nik);
+    if (!existing || parseFloat(String(p3.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+      byNik.set(p3.nik, p3);
     }
   }
   const uniquePerfs = [...byNik.values()];
-  const p = uniquePerfs.find((x) => x.nik === nik);
+  const p2 = uniquePerfs.find((x) => x.nik === nik);
   const totalAMs = uniquePerfs.length;
   const sortedByCm = [...uniquePerfs].sort((a, b) => parseFloat(String(b.achRate ?? 0)) - parseFloat(String(a.achRate ?? 0)));
   const rankCm = sortedByCm.findIndex((x) => x.nik === nik) + 1;
@@ -120736,20 +120736,20 @@ async function buildPerformanceMessage(nik, period) {
   const ytdPerfs = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.nik, nik), eq(performanceDataTable.tahun, year)));
   const ytdUpTo = ytdPerfs.filter((x) => x.bulan <= month);
   const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
-  const realRegulerCm = fmtNum(p?.realReguler);
-  const targetRegulerCm = fmtNum(p?.targetReguler);
+  const realRegulerCm = fmtNum(p2?.realReguler);
+  const targetRegulerCm = fmtNum(p2?.targetReguler);
   const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realReguler), 0);
   const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetReguler), 0);
-  const realSustainCm = fmtNum(p?.realSustain);
-  const targetSustainCm = fmtNum(p?.targetSustain);
+  const realSustainCm = fmtNum(p2?.realSustain);
+  const targetSustainCm = fmtNum(p2?.targetSustain);
   const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realSustain), 0);
   const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetSustain), 0);
-  const realScalingCm = fmtNum(p?.realScaling);
-  const targetScalingCm = fmtNum(p?.targetScaling);
+  const realScalingCm = fmtNum(p2?.realScaling);
+  const targetScalingCm = fmtNum(p2?.targetScaling);
   const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realScaling), 0);
   const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetScaling), 0);
-  const realNgtmaCm = fmtNum(p?.realNgtma);
-  const targetNgtmaCm = fmtNum(p?.targetNgtma);
+  const realNgtmaCm = fmtNum(p2?.realNgtma);
+  const targetNgtmaCm = fmtNum(p2?.targetNgtma);
   const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realNgtma), 0);
   const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetNgtma), 0);
   const achRegulerCm = targetRegulerCm > 0 ? realRegulerCm / targetRegulerCm * 100 : 0;
@@ -120768,7 +120768,7 @@ async function buildPerformanceMessage(nik, period) {
   const achTotalYtd = totalTargetYtd > 0 ? totalRealYtd / totalTargetYtd * 100 : 0;
   const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
   const snapDate = formatSnapshotDate(latestImport?.snapshotDate ?? null, latestImport?.period ?? null, "-");
-  const noRealData = !p || totalRealCm === 0 && totalRealYtd === 0;
+  const noRealData = !p2 || totalRealCm === 0 && totalRealYtd === 0;
   const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
   let part1 = `<b>\u{1F4CA} LAPORAN PERFORMANSI ACCOUNT MANAGER</b>
 `;
@@ -121192,16 +121192,16 @@ async function buildActivityReport(nik, monthKey) {
       snapYear = d.getFullYear();
       snapMonth = d.getMonth() + 1;
     } else if (targetSnap.period) {
-      const p = targetSnap.period;
-      if (/^\d{6}$/.test(p)) {
-        snapYear = parseInt(p.slice(0, 4));
-        snapMonth = parseInt(p.slice(4, 6));
-      } else if (/^\d{4}-\d{2}$/.test(p)) {
-        snapYear = parseInt(p.slice(0, 4));
-        snapMonth = parseInt(p.slice(5, 7));
-      } else if (/^\d{8}$/.test(p)) {
-        snapYear = parseInt(p.slice(0, 4));
-        snapMonth = parseInt(p.slice(4, 6));
+      const p2 = targetSnap.period;
+      if (/^\d{6}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(4, 6));
+      } else if (/^\d{4}-\d{2}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(5, 7));
+      } else if (/^\d{8}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(4, 6));
       }
     }
   }
@@ -122210,7 +122210,7 @@ router2.get("/am/:slug", async (req, res) => {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const perfs = await db.select().from(performanceDataTable).where(eq(performanceDataTable.nik, am.nik));
-  const latestPerf = perfs.find((p) => p.tahun === year && p.bulan === month) || perfs[perfs.length - 1];
+  const latestPerf = perfs.find((p2) => p2.tahun === year && p2.bulan === month) || perfs[perfs.length - 1];
   const lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, am.nik));
   const acts = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, am.nik));
   const monthActs = acts.filter((a) => a.activityEndDate?.startsWith(`${year}-${String(month).padStart(2, "0")}`));
@@ -122641,7 +122641,7 @@ router5.get("/activity", async (req, res) => {
   const months = req.query.months ? String(req.query.months).split(",").filter(Boolean) : null;
   if (year && months && months.length > 0) {
     const prefixes = months.map((m) => `${year}-${m.padStart(2, "0")}`);
-    acts = acts.filter((a) => prefixes.some((p) => a.activityEndDate?.startsWith(p)));
+    acts = acts.filter((a) => prefixes.some((p2) => a.activityEndDate?.startsWith(p2)));
   } else if (year && month && String(month) !== "all") {
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
     acts = acts.filter((a) => a.activityEndDate?.startsWith(prefix));
@@ -123005,7 +123005,7 @@ router8.post("/funnel", requireAuth, async (req, res) => {
   for (const row of nullNameRows) {
     await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and(eq(salesFunnelTable.importId, imp.id), eq(salesFunnelTable.nikAm, row.nikAm)));
   }
-  const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p) => p && p !== "\u2013"))];
+  const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p2) => p2 && p2 !== "\u2013"))];
   for (let i = 0; i < uniqueCustomers.length; i += 100) {
     await db.insert(masterCustomerTable).values(
       uniqueCustomers.slice(i, i + 100).map((nama) => ({ nama, witel: "SURAMADU" }))
@@ -123208,8 +123208,8 @@ router8.post("/performance", requireAuth, async (req, res) => {
   } else {
     const periodeSet = /* @__PURE__ */ new Set();
     for (const r of filtered) {
-      const p = String(r.PERIODE ?? "").trim();
-      if (p) periodeSet.add(p);
+      const p2 = String(r.PERIODE ?? "").trim();
+      if (p2) periodeSet.add(p2);
     }
     const periodeList = [...periodeSet].sort();
     PERIODE = bodyPeriod || periodeList[0] || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7).replace("-", "");
@@ -123632,8 +123632,8 @@ router8.post("/internal/performance", async (req, res) => {
   } else {
     const periodeSet = /* @__PURE__ */ new Set();
     for (const r of filtered) {
-      const p = String(r.PERIODE ?? "").trim();
-      if (p) periodeSet.add(p);
+      const p2 = String(r.PERIODE ?? "").trim();
+      if (p2) periodeSet.add(p2);
     }
     const periodeList = [...periodeSet].sort();
     const PERIODE = bodyPeriod || periodeList[0] || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7).replace("-", "");
@@ -123847,8 +123847,8 @@ router9.post("/import-performance", async (req, res) => {
   } else {
     const periodeSet = /* @__PURE__ */ new Set();
     for (const r of filtered) {
-      const p = String(r.PERIODE ?? "").trim();
-      if (p) periodeSet.add(p);
+      const p2 = String(r.PERIODE ?? "").trim();
+      if (p2) periodeSet.add(p2);
     }
     const periodeList = [...periodeSet].sort();
     const PERIODE = bodyPeriod || periodeList[0] || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7).replace("-", "");
@@ -124121,7 +124121,7 @@ router9.post("/import-funnel", async (req, res) => {
   for (const row of nullNameRows) {
     await db.update(salesFunnelTable).set({ namaAm: masterNameByNik.get(row.nikAm) }).where(and(eq(salesFunnelTable.importId, imp.id), eq(salesFunnelTable.nikAm, row.nikAm)));
   }
-  const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p) => p && p !== "\u2013"))];
+  const uniqueCustomers = [...new Set(cleaned.map((r) => r.pelanggan).filter((p2) => p2 && p2 !== "\u2013"))];
   for (let i = 0; i < uniqueCustomers.length; i += 100) {
     await db.insert(masterCustomerTable).values(
       uniqueCustomers.slice(i, i + 100).map((nama) => ({ nama, witel: "SURAMADU" }))
@@ -125784,9 +125784,9 @@ Silakan pilih menu di bawah untuk melihat detailnya.`,
               continue;
             }
             const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-            const buttons = periods.map((p) => ({
-              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
-              callback_data: `perf:rankbulan:${p.tahun}-${String(p.bulan).padStart(2, "0")}`
+            const buttons = periods.map((p2) => ({
+              text: `${SHORT_MONTHS[p2.bulan]} ${p2.tahun}`,
+              callback_data: `perf:rankbulan:${p2.tahun}-${String(p2.bulan).padStart(2, "0")}`
             }));
             const rows = [];
             for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
@@ -125872,10 +125872,10 @@ Silakan pilih divisi untuk papan peringkat:
               allPerfsRaw = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
             }
             const byNik = /* @__PURE__ */ new Map();
-            for (const p of allPerfsRaw) {
-              const existing = byNik.get(p.nik);
-              if (!existing || parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-                byNik.set(p.nik, p);
+            for (const p2 of allPerfsRaw) {
+              const existing = byNik.get(p2.nik);
+              if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+                byNik.set(p2.nik, p2);
               }
             }
             const uniquePerfs = [...byNik.values()];
@@ -125890,11 +125890,11 @@ Silakan pilih divisi untuk papan peringkat:
             };
             const allYtdRaw = latestImport ? await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, latestImport.id)) : await db.select().from(performanceDataTable).where(eq(performanceDataTable.tahun, year));
             const ytdByNik = /* @__PURE__ */ new Map();
-            for (const p of allYtdRaw) {
-              if (p.bulan > month) continue;
-              const existing = ytdByNik.get(p.nik);
-              if (!existing || parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-                ytdByNik.set(p.nik, p);
+            for (const p2 of allYtdRaw) {
+              if (p2.bulan > month) continue;
+              const existing = ytdByNik.get(p2.nik);
+              if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+                ytdByNik.set(p2.nik, p2);
               }
             }
             const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
@@ -125908,15 +125908,15 @@ Silakan pilih divisi untuk papan peringkat:
             const MEDALS = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
             const amRanks = [];
             for (const am of activeAms) {
-              const cmPerf = uniquePerfs.find((p) => p.nik === am.nik);
+              const cmPerf = uniquePerfs.find((p2) => p2.nik === am.nik);
               if (!cmPerf) continue;
               if (!matchesDivisi2(cmPerf.divisiCc, cmPerf.divisi)) continue;
               const cmTarget = fmtNum(cmPerf.targetReguler) + fmtNum(cmPerf.targetSustain) + fmtNum(cmPerf.targetScaling) + fmtNum(cmPerf.targetNgtma);
               const cmReal = fmtNum(cmPerf.realReguler) + fmtNum(cmPerf.realSustain) + fmtNum(cmPerf.realScaling) + fmtNum(cmPerf.realNgtma);
               const cmAch = cmTarget > 0 ? cmReal / cmTarget * 100 : 0;
-              const ytdPerfs = allYtdRaw.filter((p) => p.nik === am.nik && p.bulan <= month);
-              const ytdTarget = ytdPerfs.reduce((s, p) => s + fmtNum(p.targetReguler) + fmtNum(p.targetSustain) + fmtNum(p.targetScaling) + fmtNum(p.targetNgtma), 0);
-              const ytdReal = ytdPerfs.reduce((s, p) => s + fmtNum(p.realReguler) + fmtNum(p.realSustain) + fmtNum(p.realScaling) + fmtNum(p.realNgtma), 0);
+              const ytdPerfs = allYtdRaw.filter((p2) => p2.nik === am.nik && p2.bulan <= month);
+              const ytdTarget = ytdPerfs.reduce((s, p2) => s + fmtNum(p2.targetReguler) + fmtNum(p2.targetSustain) + fmtNum(p2.targetScaling) + fmtNum(p2.targetNgtma), 0);
+              const ytdReal = ytdPerfs.reduce((s, p2) => s + fmtNum(p2.realReguler) + fmtNum(p2.realSustain) + fmtNum(p2.realScaling) + fmtNum(p2.realNgtma), 0);
               const ytdAch = ytdTarget > 0 ? ytdReal / ytdTarget * 100 : 0;
               amRanks.push({ nik: am.nik, nama: am.nama, cmAch, cmReal, cmTarget, ytdAch, ytdReal, ytdTarget });
             }
@@ -126024,9 +126024,9 @@ Silakan pilih divisi untuk papan peringkat:
               continue;
             }
             const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-            const buttons = periods.map((p) => ({
-              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
-              callback_data: `perf:${p.tahun}-${String(p.bulan).padStart(2, "0")}`
+            const buttons = periods.map((p2) => ({
+              text: `${SHORT_MONTHS[p2.bulan]} ${p2.tahun}`,
+              callback_data: `perf:${p2.tahun}-${String(p2.bulan).padStart(2, "0")}`
             }));
             const rows = [];
             for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
@@ -126601,16 +126601,16 @@ Data aktivitas mungkin belum tersedia atau sedang dalam proses import.`
               snapYear = d.getFullYear();
               snapMonth = d.getMonth() + 1;
             } else if (targetSnap.period) {
-              const p = targetSnap.period;
-              if (/^\d{6}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(4, 6));
-              } else if (/^\d{4}-\d{2}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(5, 7));
-              } else if (/^\d{8}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(4, 6));
+              const p2 = targetSnap.period;
+              if (/^\d{6}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(4, 6));
+              } else if (/^\d{4}-\d{2}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(5, 7));
+              } else if (/^\d{8}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(4, 6));
               }
             }
             const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
@@ -126650,16 +126650,16 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
               snapYear = d.getFullYear();
               snapMonth = d.getMonth() + 1;
             } else if (targetSnap.period) {
-              const p = targetSnap.period;
-              if (/^\d{6}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(4, 6));
-              } else if (/^\d{4}-\d{2}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(5, 7));
-              } else if (/^\d{8}$/.test(p)) {
-                snapYear = parseInt(p.slice(0, 4));
-                snapMonth = parseInt(p.slice(4, 6));
+              const p2 = targetSnap.period;
+              if (/^\d{6}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(4, 6));
+              } else if (/^\d{4}-\d{2}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(5, 7));
+              } else if (/^\d{8}$/.test(p2)) {
+                snapYear = parseInt(p2.slice(0, 4));
+                snapMonth = parseInt(p2.slice(4, 6));
               }
             }
             const snapshotLabel = `${MONTHS3[snapMonth]} ${snapYear}`;
@@ -126713,16 +126713,16 @@ Silakan pilih periode yang ingin dilihat kak *${amFirstName}*:`,
                 const mm = String(d.getMonth() + 1).padStart(2, "0");
                 filterYearMonth = `${d.getFullYear()}-${mm}`;
               } else if (latestImport.period) {
-                const p = latestImport.period;
+                const p2 = latestImport.period;
                 const MONTH_SHORT2 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-                if (/^\d{6}$/.test(p)) {
-                  const y = parseInt(p.slice(0, 4));
-                  const m = parseInt(p.slice(4, 6));
+                if (/^\d{6}$/.test(p2)) {
+                  const y = parseInt(p2.slice(0, 4));
+                  const m = parseInt(p2.slice(4, 6));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
                   filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
-                } else if (/^\d{4}-\d{2}$/.test(p)) {
-                  const y = parseInt(p.slice(0, 4));
-                  const m = parseInt(p.slice(5, 7));
+                } else if (/^\d{4}-\d{2}$/.test(p2)) {
+                  const y = parseInt(p2.slice(0, 4));
+                  const m = parseInt(p2.slice(5, 7));
                   snapshotLabel = `${MONTH_SHORT2[m]} ${y}`;
                   filterYearMonth = `${y}-${String(m).padStart(2, "0")}`;
                 }
@@ -126875,9 +126875,9 @@ Hai kak *${amFirstName2}*! Pilih tipe data untuk melihat peringkat:`,
               continue;
             }
             const SHORT_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-            const buttons = periods.map((p) => ({
-              text: `${SHORT_MONTHS[p.bulan]} ${p.tahun}`,
-              callback_data: `perf:rankbulan:${p.tahun}-${String(p.bulan).padStart(2, "0")}`
+            const buttons = periods.map((p2) => ({
+              text: `${SHORT_MONTHS[p2.bulan]} ${p2.tahun}`,
+              callback_data: `perf:rankbulan:${p2.tahun}-${String(p2.bulan).padStart(2, "0")}`
             }));
             const rows = [];
             for (let i = 0; i < buttons.length; i += 3) rows.push(buttons.slice(i, i + 3));
@@ -129055,8 +129055,8 @@ var SHEET_PATTERNS = [
   { prefix: "PERFORMANSI_", type: "performance" }
 ];
 function detectSheetType(name2) {
-  for (const p of SHEET_PATTERNS) {
-    if (name2.toUpperCase().startsWith(p.prefix.toUpperCase())) return p.type;
+  for (const p2 of SHEET_PATTERNS) {
+    if (name2.toUpperCase().startsWith(p2.prefix.toUpperCase())) return p2.type;
   }
   return null;
 }
@@ -129876,7 +129876,7 @@ router18.get("/am-profile/:nik", requirePresentationAuth, async (req, res) => {
   let perfData = await db.select().from(performanceDataTable).where(and(...perfConditions));
   console.log("[DEBUG divisi] divisiCc query:", divisiCc);
   if (divisiCc && String(divisiCc) !== "all") {
-    perfData = perfData.filter((p) => p.divisiCc === String(divisiCc));
+    perfData = perfData.filter((p2) => p2.divisiCc === String(divisiCc));
     console.log("[DEBUG divisi] after filter perfData count:", perfData.length);
   } else {
     console.log("[DEBUG divisi] no filter, perfData count:", perfData.length);
@@ -129988,6 +129988,45 @@ router18.get("/am-profile/:nik", requirePresentationAuth, async (req, res) => {
   const totalTarget = customers.reduce((s, c) => s + c.targetTotal, 0);
   const totalReal = customers.reduce((s, c) => s + c.realTotal, 0);
   const achRateOverall = totalTarget > 0 ? totalReal / totalTarget * 100 : 0;
+  const latestBulan = selectedBulan.length > 0 ? Math.max(...selectedBulan) : null;
+  let cmTarget = 0, cmReal = 0;
+  if (latestBulan !== null) {
+    const tahun2 = perfData.length > 0 ? perfData[0].tahun : null;
+    for (const row of perfData) {
+      if (row.bulan !== latestBulan) continue;
+      if (tahun2 != null && row.tahun !== tahun2) continue;
+      const getTypedVal = (field, fallback) => {
+        const v = row[field];
+        if (v == null || v === "") return fallback;
+        const n = Number(v);
+        return isNaN(n) ? fallback : n;
+      };
+      let targetVal = 0, realVal = 0;
+      if (tipe === "Reguler") {
+        targetVal = getTypedVal("targetReguler", 0);
+        realVal = getTypedVal("realReguler", 0);
+        if (targetVal === 0 && realVal === 0) {
+          targetVal = getTypedVal("targetRevenue", 0);
+          realVal = getTypedVal("realRevenue", 0);
+        }
+      } else if (tipe === "Sustain") {
+        targetVal = getTypedVal("targetSustain", 0);
+        realVal = getTypedVal("realSustain", 0);
+      } else if (tipe === "Scaling") {
+        targetVal = getTypedVal("targetScaling", 0);
+        realVal = getTypedVal("realScaling", 0);
+      } else if (tipe === "NGTMA") {
+        targetVal = getTypedVal("targetNgtma", 0);
+        realVal = getTypedVal("realNgtma", 0);
+      } else {
+        targetVal = getTypedVal("targetRevenue", 0);
+        realVal = getTypedVal("realRevenue", 0);
+      }
+      cmTarget += targetVal;
+      cmReal += realVal;
+    }
+  }
+  const cmAchRate = cmTarget > 0 ? cmReal / cmTarget * 100 : 0;
   const uniqDivisi = [...new Set(amRow.divisi ? [amRow.divisi] : [])];
   const hasDps = uniqDivisi.some((d) => ["DPS", "DSS", "DES"].includes(d));
   const hasDgs = uniqDivisi.includes("DGS");
@@ -130038,7 +130077,10 @@ router18.get("/am-profile/:nik", requirePresentationAuth, async (req, res) => {
       totalReal,
       achRate: achRateOverall,
       periodText,
-      customerCount: customers.length
+      customerCount: customers.length,
+      cmAchRate,
+      cmTarget,
+      cmReal
     }
   });
 });
@@ -130190,7 +130232,14 @@ router18.post("/am-photo", requirePresentationAuth, upload.single("photo"), asyn
 });
 router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
   const rawNik = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
-  const { import_id: import_id2, tahun: tahunParam, divisi: divisiParam } = req.query;
+  const {
+    import_id: import_id2,
+    tahun: tahunParam,
+    divisi: divisiParam,
+    target_type: targetType,
+    kategori_kontrak: kontrakRaw,
+    status_funnel: statusFunnel
+  } = req.query;
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, rawNik));
   if (!am) {
     res.status(404).json({ error: "Account Manager tidak ditemukan" });
@@ -130201,14 +130250,33 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
   if (!targetImportId && funnelImports.length > 0) {
     targetImportId = funnelImports[0].id;
   }
-  let lops = await db.select().from(salesFunnelTable).where(and(
-    eq(salesFunnelTable.nikAm, rawNik),
-    ...targetImportId ? [eq(salesFunnelTable.importId, targetImportId)] : []
-  ));
+  let prevImportId = null;
+  if (targetImportId) {
+    const targetImport = funnelImports.find((i) => i.id === targetImportId);
+    if (targetImport) {
+      const targetIdx = funnelImports.findIndex((i) => i.id === targetImportId);
+      if (targetIdx >= 0 && targetIdx < funnelImports.length - 1) {
+        prevImportId = funnelImports[targetIdx + 1].id;
+      }
+    }
+  }
+  let lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, rawNik));
   lops = lops.filter((l) => (l.isReport || "").toUpperCase() === "Y");
   lops = lops.filter((l) => ["AO", "MO"].includes((l.projectType || "").toUpperCase()));
   lops = lops.filter((l) => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()));
   lops = lops.filter((l) => (l.divisi || "").toUpperCase() !== "DGS");
+  if (kontrakRaw) {
+    const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
+    if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
+      lops = lops.filter((l) => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+    }
+  }
+  const sf = String(statusFunnel || "all").toLowerCase();
+  if (sf === "active") {
+    lops = lops.filter((l) => !["F5"].includes(l.statusF || ""));
+  } else if (sf === "closedwon") {
+    lops = lops.filter((l) => ["F4", "F5"].includes(l.statusF || ""));
+  }
   if (tahunParam) {
     const yearNum = Number(tahunParam);
     lops = lops.filter((l) => {
@@ -130216,15 +130284,26 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
       return rdYear === yearNum;
     });
   }
-  const lopMap = /* @__PURE__ */ new Map();
-  for (const l of lops) {
-    const existing = lopMap.get(l.lopid);
-    if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+  if (!import_id2 && !tahunParam) {
+    const lopMap = /* @__PURE__ */ new Map();
+    for (const l of lops) {
+      const existing = lopMap.get(l.lopid);
+      if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+    }
+    lops = [...lopMap.values()];
+  } else if (import_id2) {
+    lops = lops.filter((l) => l.importId === Number(import_id2));
+  } else {
+    const lopMap = /* @__PURE__ */ new Map();
+    for (const l of lops) {
+      const existing = lopMap.get(l.lopid);
+      if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+    }
+    lops = [...lopMap.values()];
   }
-  lops = [...lopMap.values()];
   const statusMap = {};
   const allPhases = ["F0", "F1", "F2", "F3", "F4", "F5"];
-  for (const p of allPhases) statusMap[p] = { status: p, count: 0, totalNilai: 0 };
+  for (const p2 of allPhases) statusMap[p2] = { status: p2, count: 0, totalNilai: 0 };
   let totalNilai = 0;
   let totalLop = 0;
   for (const l of lops) {
@@ -130235,7 +130314,7 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
     totalNilai += l.nilaiProyek || 0;
     totalLop++;
   }
-  const byStatus = allPhases.map((p) => statusMap[p]).filter((s) => s.count > 0);
+  const byStatus = allPhases.map((p2) => statusMap[p2]).filter((s) => s.count > 0 || allPhases.includes(p));
   let dpsNilai = 0, dpsLop = 0;
   let dssNilai = 0, dssLop = 0;
   for (const l of lops) {
@@ -130248,12 +130327,17 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
       dssLop++;
     }
   }
-  const won = (statusMap["F4"]?.count || 0) + (statusMap["F5"]?.count || 0);
-  const conversionRate = totalLop > 0 ? won / totalLop * 100 : 0;
-  const dpsWon = lops.filter((l) => (l.divisi || "").toUpperCase() === "DPS" && ["F4", "F5"].includes(l.statusF || "")).length;
-  const dpsConversionRate = dpsLop > 0 ? dpsWon / dpsLop * 100 : 0;
-  const dssWon = lops.filter((l) => (l.divisi || "").toUpperCase() === "DSS" && ["F4", "F5"].includes(l.statusF || "")).length;
-  const dssConversionRate = dssLop > 0 ? dssWon / dssLop * 100 : 0;
+  const won = statusMap["F5"]?.count || 0;
+  const inPipeline = (statusMap["F0"]?.count || 0) + (statusMap["F1"]?.count || 0) + (statusMap["F2"]?.count || 0) + (statusMap["F3"]?.count || 0) + (statusMap["F4"]?.count || 0);
+  const conversionRate = totalLop > 0 ? won / (won + inPipeline) * 100 : 0;
+  const pipelineEligible = (statusMap["F3"]?.count || 0) + (statusMap["F4"]?.count || 0) + (statusMap["F5"]?.count || 0);
+  const pipelineEligibleNilai = (statusMap["F3"]?.totalNilai || 0) + (statusMap["F4"]?.totalNilai || 0) + (statusMap["F5"]?.totalNilai || 0);
+  const dpsWonLop = lops.filter((l) => (l.divisi || "").toUpperCase() === "DPS" && (l.statusF || "") === "F5").length;
+  const dpsPipeline = lops.filter((l) => (l.divisi || "").toUpperCase() === "DPS" && ["F0", "F1", "F2", "F3", "F4"].includes(l.statusF || "")).length;
+  const dpsConversionRate = dpsWonLop + dpsPipeline > 0 ? dpsWonLop / (dpsWonLop + dpsPipeline) * 100 : 0;
+  const dssWonLop = lops.filter((l) => (l.divisi || "").toUpperCase() === "DSS" && (l.statusF || "") === "F5").length;
+  const dssPipeline = lops.filter((l) => (l.divisi || "").toUpperCase() === "DSS" && ["F0", "F1", "F2", "F3", "F4"].includes(l.statusF || "")).length;
+  const dssConversionRate = dssWonLop + dssPipeline > 0 ? dssWonLop / (dssWonLop + dssPipeline) * 100 : 0;
   const lookupYear = tahunParam ? Number(tahunParam) : (/* @__PURE__ */ new Date()).getFullYear();
   const amTargets = await db.select().from(amFunnelTargetTable).where(and(
     eq(amFunnelTargetTable.nikAm, rawNik),
@@ -130262,9 +130346,12 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
   let targetDps = amTargets[0]?.targetValueDps ?? null;
   let targetDss = amTargets[0]?.targetValueDss ?? null;
   let targetTotal = amTargets[0]?.targetValue ?? null;
-  const capaikanDps = targetDps && targetDps > 0 ? dpsNilai / targetDps * 100 : null;
-  const capaikanDss = targetDss && targetDss > 0 ? dssNilai / targetDss * 100 : null;
-  const capaikanTotal = targetTotal && targetTotal > 0 ? totalNilai / targetTotal * 100 : null;
+  if (targetType === "HO" && targetDps) targetDps = targetDps;
+  if (targetType === "BA" && targetDss) targetDss = targetDss;
+  const capaianDps = targetDps && targetDps > 0 ? dpsNilai / targetDps * 100 : null;
+  const capaianDss = targetDss && targetDss > 0 ? dssNilai / targetDss * 100 : null;
+  const capaianTotal = targetTotal && targetTotal > 0 ? totalNilai / targetTotal * 100 : null;
+  const uniquePelanggan = new Set(lops.map((l) => l.pelanggan).filter(Boolean)).size;
   const currentImport = funnelImports.find((imp) => imp.id === targetImportId);
   const periodText = currentImport ? (() => {
     const d = currentImport.snapshotDate ? new Date(currentImport.snapshotDate) : currentImport.createdAt ? new Date(currentImport.createdAt) : null;
@@ -130289,33 +130376,104 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
     divisi: l.divisi,
     statusF: l.statusF,
     proses: l.proses,
-    reportDate: l.reportDate
+    reportDate: l.reportDate,
+    projectType: l.projectType,
+    kategoriKontrak: l.kategoriKontrak ?? null,
+    monthSubs: l.monthSubs ?? null,
+    segmen: l.segmen ?? null,
+    tahunAnggaran: l.tahunAnggaran ?? null,
+    statusProyek: l.statusProyek ?? null
   }));
+  const taSet = /* @__PURE__ */ new Set();
+  for (const l of lops) {
+    if (l.tahunAnggaran) taSet.add(String(l.tahunAnggaran));
+  }
+  const availableTahunAnggaran = [...taSet].sort().reverse();
+  let prevLops = [];
+  if (prevImportId) {
+    const rawPrev = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, rawNik));
+    let filteredPrev = rawPrev.filter((l) => (l.isReport || "").toUpperCase() === "Y").filter((l) => ["AO", "MO"].includes((l.projectType || "").toUpperCase())).filter((l) => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase())).filter((l) => (l.divisi || "").toUpperCase() !== "DGS").filter((l) => l.importId === prevImportId);
+    if (kontrakRaw) {
+      const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
+      if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
+        filteredPrev = filteredPrev.filter((l) => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+      }
+    }
+    const sf2 = String(statusFunnel || "all").toLowerCase();
+    if (sf2 === "active") {
+      filteredPrev = filteredPrev.filter((l) => !["F5"].includes(l.statusF || ""));
+    } else if (sf2 === "closedwon") {
+      filteredPrev = filteredPrev.filter((l) => ["F4", "F5"].includes(l.statusF || ""));
+    }
+    if (tahunParam) {
+      const yearNum = Number(tahunParam);
+      filteredPrev = filteredPrev.filter((l) => {
+        const rdYear = l.reportDate ? parseInt(String(l.reportDate).slice(0, 4), 10) || null : null;
+        return rdYear === yearNum;
+      });
+    }
+    if (!import_id2 && !tahunParam) {
+      const lopMap = /* @__PURE__ */ new Map();
+      for (const l of filteredPrev) {
+        const existing = lopMap.get(l.lopid);
+        if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+      }
+      filteredPrev = [...lopMap.values()];
+    } else if (import_id2) {
+      filteredPrev = filteredPrev.filter((l) => l.importId === Number(import_id2));
+    } else {
+      filteredPrev = filteredPrev.filter((l) => l.importId === prevImportId);
+    }
+    prevLops = filteredPrev.map((l) => ({
+      lopid: l.lopid,
+      judulProyek: l.judulProyek,
+      pelanggan: l.pelanggan,
+      nilaiProyek: l.nilaiProyek,
+      divisi: l.divisi,
+      statusF: l.statusF,
+      proses: l.proses,
+      reportDate: l.reportDate,
+      projectType: l.projectType,
+      kategoriKontrak: l.kategoriKontrak ?? null,
+      monthSubs: l.monthSubs ?? null,
+      segmen: l.segmen ?? null,
+      tahunAnggaran: l.tahunAnggaran ?? null,
+      statusProyek: l.statusProyek ?? null
+    }));
+  }
   res.json({
     snapshots,
     selectedSnapshotId: targetImportId,
-    periodText,
+    prevSnapshotId: prevImportId,
+    prevSnapshotLabel: prevImportId ? funnelImports.find((imp) => imp.id === prevImportId)?.period ?? `Snapshot #${prevImportId}` : null,
+    prevLops,
     byStatus,
     totalLop,
     totalNilai,
     targetTotal,
-    capaikanTotal,
+    capaianTotal,
+    pelangganCount: uniquePelanggan,
     dps: {
       nilai: dpsNilai,
       lop: dpsLop,
       target: targetDps,
-      capaikan: capaikanDps,
+      capaikan: capaianDps,
       conversionRate: dpsConversionRate
     },
     dss: {
       nilai: dssNilai,
       lop: dssLop,
       target: targetDss,
-      capaikan: capaikanDss,
+      capaikan: capaianDss,
       conversionRate: dssConversionRate
     },
     conversionRate,
-    lopRows
+    pipelineEligible,
+    pipelineEligibleNilai,
+    wonLop: won,
+    wonLopNilai: statusMap["F5"]?.totalNilai || 0,
+    lopRows,
+    availableTahunAnggaran
   });
 });
 router18.delete("/am-photo", requirePresentationAuth, async (req, res) => {
@@ -130682,10 +130840,10 @@ function findJsonFile() {
     "/home/runner/workspace/artifacts/api-server/src/seeds/funnel-apr22-snapshot.json",
     "/home/runner/workspace/artifacts/api-server/dist/seeds/funnel-apr22-snapshot.json"
   ];
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      logger.info({ path: p }, "[seed-funnel-apr22-json] Found JSON file");
-      return p;
+  for (const p2 of candidates) {
+    if (existsSync(p2)) {
+      logger.info({ path: p2 }, "[seed-funnel-apr22-json] Found JSON file");
+      return p2;
     }
   }
   logger.warn({ candidates }, "[seed-funnel-apr22-json] JSON file not found in any path");

@@ -678,7 +678,7 @@ function FSGauge({ pct, targetHo, targetFullHo, real, mode, compact, divisi }: {
   const endY=cy+r*Math.sin(toRad(endAngle));
   if (compact) return (
     <div className="flex flex-col items-center gap-1.5">
-      <svg width="130" height="95" viewBox="0 0 160 115">
+      <svg width="150" height="130" viewBox="0 0 160 120">
         <path d={arc(startAngle,endAngle,r)} fill="none" stroke="#e5e7eb" strokeWidth="18" strokeLinecap="round"/>
         {hasTarget&&clamp>0&&<path d={arc(startAngle,startAngle+fillDeg,r)} fill="none" stroke={color} strokeWidth="18" strokeLinecap="round"/>}
         {hasTarget?(
@@ -710,7 +710,7 @@ function FSGauge({ pct, targetHo, targetFullHo, real, mode, compact, divisi }: {
   return (
     <div className="flex flex-col sm:flex-row items-center gap-3">
       <div className="shrink-0 mx-auto">
-        <svg width="150" height="108" viewBox="0 0 160 115">
+        <svg width="150" height="130" viewBox="0 0 160 120">
           <path d={arc(startAngle,endAngle,r)} fill="none" stroke="#e5e7eb" strokeWidth="18" strokeLinecap="round"/>
           {hasTarget&&clamp>0&&<path d={arc(startAngle,startAngle+fillDeg,r)} fill="none" stroke={color} strokeWidth="18" strokeLinecap="round"/>}
           {hasTarget?(
@@ -878,7 +878,7 @@ function FSCRGauge({ f5, denom, cr, divisi }: { f5:number; denom:number; cr:numb
   return (
     <div className="flex items-center gap-3">
       <div className="shrink-0">
-        <svg width="145" height="105" viewBox="0 0 160 115">
+        <svg width="150" height="130" viewBox="0 0 160 120">
           <path d={arc(startAngle,endAngle,r)} fill="none" stroke="#e5e7eb" strokeWidth="18" strokeLinecap="round"/>
           {cr!==null&&clamp>0&&<path d={arc(startAngle,startAngle+fillDeg,r)} fill="none" stroke={color} strokeWidth="18" strokeLinecap="round"/>}
           <line x1={thInnerX} y1={thInnerY} x2={thOuterX} y2={thOuterY} stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round"/>
@@ -1104,7 +1104,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
   },[periodFilteredLops]);
   const kontrakOptions = useMemo(()=>{
     // Hanya tampilkan kategori yang relevan untuk PIVOT F — jangan tampilkan Uncategorized, Reseller, dll
-    const ALLOWED = new Set(["GTMA","Own Channel","New GTMA"]);
+    const ALLOWED = new Set(["GTMA","Own Channel","New GTMA","Uncategorized"]);
     const inData = new Set(periodFilteredLops.map((l:any)=>l.kategoriKontrak).filter(Boolean) as string[]);
     return [...ALLOWED].filter(k => inData.has(k)).sort();
   },[periodFilteredLops]);

@@ -227,10 +227,42 @@ router.get("/am-profile/:nik", requirePresentationAuth, async (req, res): Promis
   const responseAvailableBulan = availableBulan.filter(b => b >= 1 && b <= 12);
   const responseSelectedBulan = availableBulan.filter(b => b >= 1 && b <= 12 && (bulanWithReal.get(b) ?? 0) > 0);
 
-  // Summary cards
+  // Summary cards — overall across all selected periods
   const totalTarget = customers.reduce((s, c) => s + c.targetTotal, 0);
   const totalReal = customers.reduce((s, c) => s + c.realTotal, 0);
   const achRateOverall = totalTarget > 0 ? (totalReal / totalTarget) * 100 : 0;
+
+  // CM achievement — latest selected bulan (single month, labeled "CM" in UI)
+  const latestBulan = selectedBulan.length > 0 ? Math.max(...selectedBulan) : null;
+  let cmTarget = 0, cmReal = 0;
+  if (latestBulan !== null) {
+    const tahun = perfData.length > 0 ? perfData[0].tahun : null;
+    for (const row of perfData) {
+      if (row.bulan !== latestBulan) continue;
+      if (tahun != null && row.tahun !== tahun) continue;
+      const getTypedVal = (field: string, fallback: number) => {
+        const v = (row as any)[field];
+        if (v == null || v === "") return fallback;
+        const n = Number(v);
+        return isNaN(n) ? fallback : n;
+      };
+      let targetVal = 0, realVal = 0;
+      if (tipe === "Reguler") {
+        targetVal = getTypedVal("targetReguler", 0); realVal = getTypedVal("realReguler", 0);
+        if (targetVal === 0 && realVal === 0) { targetVal = getTypedVal("targetRevenue", 0); realVal = getTypedVal("realRevenue", 0); }
+      } else if (tipe === "Sustain") {
+        targetVal = getTypedVal("targetSustain", 0); realVal = getTypedVal("realSustain", 0);
+      } else if (tipe === "Scaling") {
+        targetVal = getTypedVal("targetScaling", 0); realVal = getTypedVal("realScaling", 0);
+      } else if (tipe === "NGTMA") {
+        targetVal = getTypedVal("targetNgtma", 0); realVal = getTypedVal("realNgtma", 0);
+      } else {
+        targetVal = getTypedVal("targetRevenue", 0); realVal = getTypedVal("realRevenue", 0);
+      }
+      cmTarget += targetVal; cmReal += realVal;
+    }
+  }
+  const cmAchRate = cmTarget > 0 ? (cmReal / cmTarget) * 100 : 0;
 
   // Divisi badge
   const uniqDivisi = [...new Set(amRow.divisi ? [amRow.divisi] : [])];
@@ -285,6 +317,9 @@ router.get("/am-profile/:nik", requirePresentationAuth, async (req, res): Promis
       achRate: achRateOverall,
       periodText,
       customerCount: customers.length,
+      cmAchRate,
+      cmTarget,
+      cmReal,
     },
   });
 });
@@ -499,12 +534,22 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     targetImportId = funnelImports[0].id;
   }
 
-  // Get all funnel LOPs for this AM from the latest import
+  // Previous snapshot: find the import immediately BEFORE targetImportId by createdAt
+  let prevImportId: number | null = null;
+  if (targetImportId) {
+    const targetImport = funnelImports.find(i => i.id === targetImportId);
+    if (targetImport) {
+      // funnelImports is sorted desc by createdAt, so the prev is the next one in the array
+      const targetIdx = funnelImports.findIndex(i => i.id === targetImportId);
+      if (targetIdx >= 0 && targetIdx < funnelImports.length - 1) {
+        prevImportId = funnelImports[targetIdx + 1].id;
+      }
+    }
+  }
+
+  // Get all funnel LOPs for this AM (all imports, for proper deduplication)
   let lops = await db.select().from(salesFunnelTable)
-    .where(and(
-      eq(salesFunnelTable.nikAm, rawNik),
-      ...(targetImportId ? [eq(salesFunnelTable.importId, targetImportId)] : [])
-    ));
+    .where(eq(salesFunnelTable.nikAm, rawNik));
 
   // Same auto-filters as main funnel endpoint
   lops = lops.filter(l => (l.isReport || "").toUpperCase() === "Y");
@@ -529,7 +574,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
   }
   // "all" = no filter
 
-  // Year filter
+  // Year filter (apply before deduplication, same as public/funnel)
   if (tahunParam) {
     const yearNum = Number(tahunParam);
     lops = lops.filter(l => {
@@ -538,15 +583,30 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     });
   }
 
-  // Deduplicate by lopid
-  const lopMap = new Map<string, typeof lops[0]>();
-  for (const l of lops) {
-    const existing = lopMap.get(l.lopid);
-    if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+  // Deduplicate by lopid — keep highest importId across ALL imports (same as /api/public/funnel)
+  if (!import_id && !tahunParam) {
+    // When NO filters active, also exclude lops from the non-target import if target_import is set
+    // (keep consistent deduplication across all imports)
+    const lopMap = new Map<string, typeof lops[0]>();
+    for (const l of lops) {
+      const existing = lopMap.get(l.lopid);
+      if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+    }
+    lops = [...lopMap.values()];
+  } else if (import_id) {
+    // When import_id is explicitly set, use only that import
+    lops = lops.filter(l => l.importId === Number(import_id));
+  } else {
+    // tahunParam set — deduplicate within tahun-filtered results
+    const lopMap = new Map<string, typeof lops[0]>();
+    for (const l of lops) {
+      const existing = lopMap.get(l.lopid);
+      if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+    }
+    lops = [...lopMap.values()];
   }
-  lops = [...lopMap.values()];
 
-  // Group by statusF (F0-F5)
+  // Group by statusF (F0-F5) — computed from deduplicated lops
   const statusMap: Record<string, { status: string; count: number; totalNilai: number }> = {};
   const allPhases = ["F0", "F1", "F2", "F3", "F4", "F5"];
   for (const p of allPhases) statusMap[p] = { status: p, count: 0, totalNilai: 0 };
@@ -610,9 +670,9 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
   if (targetType === "BA" && targetDss) targetDss = targetDss;
 
   // Capaian rates
-  const capaikanDps = targetDps && targetDps > 0 ? (dpsNilai / targetDps) * 100 : null;
-  const capaikanDss = targetDss && targetDss > 0 ? (dssNilai / targetDss) * 100 : null;
-  const capaikanTotal = targetTotal && targetTotal > 0 ? (totalNilai / targetTotal) * 100 : null;
+  const capaianDps = targetDps && targetDps > 0 ? (dpsNilai / targetDps) * 100 : null;
+  const capaianDss = targetDss && targetDss > 0 ? (dssNilai / targetDss) * 100 : null;
+  const capaianTotal = targetTotal && targetTotal > 0 ? (totalNilai / targetTotal) * 100 : null;
 
   // Unique pelanggan count
   const uniquePelanggan = new Set(lops.map(l => l.pelanggan).filter(Boolean)).size;
@@ -650,30 +710,114 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     proses: l.proses,
     reportDate: l.reportDate,
     projectType: l.projectType,
+    kategoriKontrak: l.kategoriKontrak ?? null,
+    monthSubs: l.monthSubs ?? null,
+    segmen: l.segmen ?? null,
+    tahunAnggaran: l.tahunAnggaran ?? null,
+    statusProyek: l.statusProyek ?? null,
   }));
 
+  // Build available tahun anggaran options from lopRows
+  const taSet = new Set<string>();
+  for (const l of lops) {
+    if (l.tahunAnggaran) taSet.add(String(l.tahunAnggaran));
+  }
+  const availableTahunAnggaran = [...taSet].sort().reverse();
+
+  // Previous snapshot LOPs (for comparison card) — apply same filters as current lops
+  let prevLops: typeof lopRows = [];
+  if (prevImportId) {
+    const rawPrev = await db.select().from(salesFunnelTable)
+      .where(eq(salesFunnelTable.nikAm, rawNik));
+    let filteredPrev = rawPrev
+      .filter(l => (l.isReport || "").toUpperCase() === "Y")
+      .filter(l => ["AO", "MO"].includes((l.projectType || "").toUpperCase()))
+      .filter(l => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()))
+      .filter(l => (l.divisi || "").toUpperCase() !== "DGS")
+      .filter(l => l.importId === prevImportId);
+
+    // Kategori kontrak filter (same as current lops)
+    if (kontrakRaw) {
+      const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
+      if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
+        filteredPrev = filteredPrev.filter(l => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+      }
+    }
+
+    // Status funnel filter (same as current lops)
+    const sf = String(statusFunnel || "all").toLowerCase();
+    if (sf === "active") {
+      filteredPrev = filteredPrev.filter(l => !["F5"].includes(l.statusF || ""));
+    } else if (sf === "closedwon") {
+      filteredPrev = filteredPrev.filter(l => ["F4", "F5"].includes(l.statusF || ""));
+    }
+
+    // Tahun filter (same as current lops)
+    if (tahunParam) {
+      const yearNum = Number(tahunParam);
+      filteredPrev = filteredPrev.filter(l => {
+        const rdYear = l.reportDate ? parseInt(String(l.reportDate).slice(0, 4), 10) || null : null;
+        return rdYear === yearNum;
+      });
+    }
+
+    // Deduplicate by lopid (same as current lops — keep highest importId)
+    if (!import_id && !tahunParam) {
+      const lopMap = new Map<string, typeof filteredPrev[0]>();
+      for (const l of filteredPrev) {
+        const existing = lopMap.get(l.lopid);
+        if (!existing || (l.importId || 0) > (existing.importId || 0)) lopMap.set(l.lopid, l);
+      }
+      filteredPrev = [...lopMap.values()];
+    } else if (import_id) {
+      filteredPrev = filteredPrev.filter(l => l.importId === Number(import_id));
+    } else {
+      filteredPrev = filteredPrev.filter(l => l.importId === prevImportId);
+    }
+
+    prevLops = filteredPrev.map(l => ({
+      lopid: l.lopid,
+      judulProyek: l.judulProyek,
+      pelanggan: l.pelanggan,
+      nilaiProyek: l.nilaiProyek,
+      divisi: l.divisi,
+      statusF: l.statusF,
+      proses: l.proses,
+      reportDate: l.reportDate,
+      projectType: l.projectType,
+      kategoriKontrak: l.kategoriKontrak ?? null,
+      monthSubs: l.monthSubs ?? null,
+      segmen: l.segmen ?? null,
+      tahunAnggaran: l.tahunAnggaran ?? null,
+      statusProyek: l.statusProyek ?? null,
+    }));
+  }
   res.json({
     snapshots,
     selectedSnapshotId: targetImportId,
-    periodText,
+    prevSnapshotId: prevImportId,
+    prevSnapshotLabel: prevImportId
+      ? funnelImports.find(imp => imp.id === prevImportId)?.period ?? `Snapshot #${prevImportId}`
+      : null,
+    prevLops,
     byStatus,
     totalLop,
     totalNilai,
     targetTotal,
-    capaikanTotal,
+    capaianTotal: capaianTotal,
     pelangganCount: uniquePelanggan,
     dps: {
       nilai: dpsNilai,
       lop: dpsLop,
       target: targetDps,
-      capaikan: capaikanDps,
+      capaikan: capaianDps,
       conversionRate: dpsConversionRate,
     },
     dss: {
       nilai: dssNilai,
       lop: dssLop,
       target: targetDss,
-      capaikan: capaikanDss,
+      capaikan: capaianDss,
       conversionRate: dssConversionRate,
     },
     conversionRate,
@@ -682,6 +826,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     wonLop: won,
     wonLopNilai: statusMap["F5"]?.totalNilai || 0,
     lopRows,
+    availableTahunAnggaran,
   });
 });
 

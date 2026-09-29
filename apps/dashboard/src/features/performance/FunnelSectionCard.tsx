@@ -365,7 +365,7 @@ export function FunnelSectionCard() {
 
       if (!amExpanded) {
         return (
-          <table key={amKey} className="text-left text-sm" style={{ ...TB_STYLE, border: "1.5px solid #e2e8f0" }}>
+          <table key={amKey} className="text-left text-sm" style={{ ...TB_STYLE, border: "1px solid hsl(var(--border))" }}>
             <ColGroup />
             <tbody>
               <tr className="cursor-pointer select-none bg-card hover:bg-secondary/30 transition-colors" onClick={() => toggleAmRow(amKey)}>
@@ -389,7 +389,7 @@ export function FunnelSectionCard() {
       }
 
       return (
-        <table key={amKey} className="text-left text-sm" style={{ ...TB_STYLE, border: "2px solid #dc2626" }}>
+        <table key={amKey} className="text-left text-sm" style={{ ...TB_STYLE, border: "1px solid hsl(var(--border))" }}>
           <ColGroup />
           <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
             <tr className="cursor-pointer select-none hover:brightness-95 transition-colors" onClick={() => toggleAmRow(amKey)}>
@@ -415,16 +415,16 @@ export function FunnelSectionCard() {
             const phaseExpanded = !!expandedPhase[phaseKey];
             const phaseTotal = lops.reduce((s: number, l: any) => s + getAnnualized(l), 0);
             const c = PHASE_COLORS[phase];
-            const phaseBg = phaseExpanded ? "rgb(253,242,248)" : "rgba(253,242,248,0.75)";
+            const phaseBg = phaseExpanded ? "hsl(var(--secondary)/0.5)" : "hsl(var(--secondary)/0.3)";
             const phaseCell: React.CSSProperties = { background: phaseBg };
             return (
               <tbody key={phaseKey}>
                 <tr className="cursor-pointer select-none" onClick={() => togglePhaseRow(phaseKey)}>
                   <td style={{ ...phaseCell, borderLeft: `4px solid ${c?.bar || "#94a3b8"}` }} className="px-4 py-2.5 pl-10">
                     <div className="flex items-center gap-2">
-                      <ChevronRight className={cn("w-3.5 h-3.5 text-slate-500 transition-transform shrink-0", phaseExpanded && "rotate-90")} />
+                      <ChevronRight className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0", phaseExpanded && "rotate-90")} />
                       <span className="text-sm font-black uppercase tracking-wide" style={{ color: c?.text }}>{phase} — {PHASE_LABELS[phase] ?? phase}</span>
-                      <span className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">{lops.length} proyek</span>
+                      <span className="text-xs font-bold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{lops.length} proyek</span>
                     </div>
                   </td>
                   {phaseExpanded
@@ -438,7 +438,7 @@ export function FunnelSectionCard() {
                   }
                 </tr>
                 {phaseExpanded && lops.map((lop: any, idx: number) => (
-                  <tr key={`${lop.lopid}-${idx}`} className="hover:bg-pink-50 transition-colors">
+                  <tr key={`${lop.lopid}-${idx}`} className="hover:bg-secondary/40 transition-colors">
                     <td className="px-4 py-2 pl-16" style={{ minWidth: "280px" }}>
                       <div className="text-sm text-foreground font-bold leading-tight line-clamp-2" title={lop.judulProyek}>{lop.judulProyek}</div>
                     </td>
@@ -453,20 +453,20 @@ export function FunnelSectionCard() {
                   </tr>
                 ))}
                 {phaseExpanded && (
-                  <tr className="bg-red-50 border-t border-red-200">
-                    <td colSpan={4} className="px-4 py-2 pl-16"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
-                    <td className="px-4 py-2 text-right tabular-nums font-black text-red-800 whitespace-nowrap">{formatRupiahFull(phaseTotal)}</td>
+                  <tr className="bg-secondary/50 border-t border-border">
+                    <td colSpan={4} className="px-4 py-2 pl-16"><span className="text-sm font-bold uppercase tracking-wide text-indigo-700">Total Nilai {phase}</span></td>
+                    <td className="px-4 py-2 text-right tabular-nums font-bold text-indigo-700 whitespace-nowrap">{formatRupiahFull(phaseTotal)}</td>
                   </tr>
                 )}
               </tbody>
             );
           })}
           <tbody>
-            <tr className="bg-slate-100 border-t-2 border-slate-300">
+            <tr className="bg-secondary/30 border-t border-border">
               <td colSpan={4} className="px-4 py-2.5 pl-10">
-                <span className="text-sm font-black text-red-700 uppercase tracking-wide">Total Nilai Proyek — {am.namaAm}</span>
+                <span className="text-sm font-bold uppercase tracking-wide text-indigo-700">Total Nilai Proyek — {am.namaAm}</span>
               </td>
-              <td className="px-4 py-2.5 text-right tabular-nums font-black text-red-700 whitespace-nowrap text-base">{formatRupiahFull(amTotal)}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums font-bold text-indigo-700 whitespace-nowrap text-base">{formatRupiahFull(amTotal)}</td>
             </tr>
           </tbody>
         </table>
@@ -617,7 +617,7 @@ export function FunnelSectionCard() {
               <table className="text-left text-xs w-full" style={{ ...TB_STYLE }}>
                 <ColGroup />
                 <thead>
-                  <tr className="bg-red-700 text-white font-black uppercase tracking-wide text-xs">
+                  <tr className="bg-slate-800 text-white font-bold uppercase tracking-wide text-xs">
                     <th className="px-4 py-2.5 text-left">Nama AM / Proyek</th>
                     <th className="px-3 py-2.5 text-left">Kategori</th>
                     <th className="px-3 py-2.5 text-left">LOP ID</th>
