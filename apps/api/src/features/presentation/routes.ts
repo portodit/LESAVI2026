@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, pool, performanceDataTable, accountManagersTable, dataImportsTable, salesFunnelTable, amFunnelTargetTable } from "@workspace/db";
+import { db, pool, performanceDataTable, accountManagersTable, dataImportsTable, salesFunnelTable, amFunnelTargetTable, salesActivityTable, appSettingsTable } from "@workspace/db";
 import { sql, and, eq, gte, lte, inArray, desc } from "drizzle-orm";
 import { requirePresentationAuth } from "../../shared/auth";
 import multer from "multer";
@@ -551,17 +551,11 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
   let lops = await db.select().from(salesFunnelTable)
     .where(eq(salesFunnelTable.nikAm, rawNik));
 
-  // Same auto-filters as main funnel endpoint
-  lops = lops.filter(l => (l.isReport || "").toUpperCase() === "Y");
-  lops = lops.filter(l => ["AO", "MO"].includes((l.projectType || "").toUpperCase()));
-  lops = lops.filter(l => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()));
-  lops = lops.filter(l => (l.divisi || "").toUpperCase() !== "DGS");
-
-  // Kategori kontrak filter (AO / MO multi-select)
+  // Kategori kontrak filter (multi-select by kategoriKontrak)
   if (kontrakRaw) {
     const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
     if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
-      lops = lops.filter(l => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+      lops = lops.filter(l => selectedKontrak.includes((l.kategoriKontrak || "").toUpperCase()));
     }
   }
 
@@ -863,6 +857,129 @@ router.delete("/am-photo", requirePresentationAuth, async (req, res): Promise<vo
   );
 
   res.json({ success: true });
+});
+
+// GET /api/presentation/am-activity/:nik
+router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promise<void> => {
+  const rawNik = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
+  const { snapshotId, tahun, bulan, kategori, divisiCc } = req.query;
+
+  // Verify AM exists
+  const [am] = await db.select().from(accountManagersTable)
+    .where(eq(accountManagersTable.nik, rawNik));
+  if (!am) { res.status(404).json({ error: "AM tidak ditemukan" }); return; }
+
+  // Available snapshots
+  const snapshots = await db.select({
+    id: dataImportsTable.id,
+    period: dataImportsTable.period,
+    snapshotDate: dataImportsTable.snapshotDate,
+    rowsImported: dataImportsTable.rowsImported,
+    createdAt: dataImportsTable.createdAt,
+  }).from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "activity"))
+    .orderBy(desc(dataImportsTable.createdAt));
+
+  let targetSnapshotId: number | null = snapshotId ? parseInt(String(snapshotId)) : null;
+  if (!targetSnapshotId && snapshots.length > 0) targetSnapshotId = snapshots[0].id;
+
+  // Get KPI default
+  const [settings] = await db.select({ kpiActivityDefault: appSettingsTable.kpiActivityDefault })
+    .from(appSettingsTable).limit(1);
+  const kpiDefault = settings?.kpiActivityDefault ?? 30;
+
+  // Get all activities
+  let acts = await db.select().from(salesActivityTable)
+    .where(eq(salesActivityTable.nik, rawNik));
+
+  // Filter by snapshot (cumulative)
+  if (targetSnapshotId) {
+    const snap = snapshots.find(s => s.id === targetSnapshotId);
+    if (snap?.snapshotDate) {
+      acts = acts.filter(a => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate!);
+    }
+  }
+
+  // Filter by tahun/bulan
+  if (tahun) {
+    const tahunStr = String(tahun);
+    acts = acts.filter(a => a.activityEndDate?.startsWith(tahunStr));
+  }
+  if (bulan && String(bulan) !== "all") {
+    const tahunStr = String(tahun ?? new Date().getFullYear());
+    const prefix = `${tahunStr}-${String(bulan).padStart(2, "0")}`;
+    acts = acts.filter(a => a.activityEndDate?.startsWith(prefix));
+  }
+
+  // Filter by divisi_cc
+  if (divisiCc && String(divisiCc) !== "LESA" && String(divisiCc) !== "all") {
+    acts = acts.filter(a => a.divisiCc === String(divisiCc));
+  }
+
+  // Distinct labels (kategori) — from all activities (before label filter)
+  const allActsForLabels = await db.select().from(salesActivityTable)
+    .where(eq(salesActivityTable.nik, rawNik));
+  const availableLabels = [...new Set(
+    allActsForLabels.map(a => a.label).filter(Boolean) as string[]
+  )].sort();
+
+  // Filter by kategori (label)
+  if (kategori) {
+    const selected = Array.isArray(kategori) ? kategori.map(String) : [String(kategori)];
+    if (selected.length > 0 && !selected.includes("all")) {
+      acts = acts.filter(a => selected.includes(a.label ?? ""));
+    }
+  }
+
+  const isKpiLabel = (label: string | null | undefined) =>
+    !label ? false : !label.toLowerCase().includes("tanpa");
+
+  // Sort by date desc
+  acts.sort((a, b) => {
+    const da = a.activityEndDate ?? "";
+    const db2 = b.activityEndDate ?? "";
+    return db2 < da ? -1 : db2 > da ? 1 : 0;
+  });
+
+  const kpiCount = acts.filter(a => isKpiLabel(a.label)).length;
+  const kpiTarget = am.kpiActivity ?? kpiDefault;
+  const activityCount = acts.length;
+
+  const detailLabels = [...new Set(acts.map(a => a.label).filter(Boolean) as string[])];
+
+  res.json({
+    kpiDefault,
+    kpiTarget,
+    activityCount,
+    kpiCount,
+    snapshots: snapshots.map(s => ({
+      id: s.id,
+      period: s.period,
+      snapshotDate: s.snapshotDate,
+      rowsImported: s.rowsImported,
+      label: (() => {
+        const d = s.snapshotDate ? new Date(s.snapshotDate) : (s.createdAt ? new Date(s.createdAt) : null);
+        if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+      })(),
+    })),
+    selectedSnapshotId: targetSnapshotId,
+    availableLabels,
+    selectedLabels: kategori
+      ? (Array.isArray(kategori) ? kategori.map(String) : [String(kategori)])
+      : [],
+    activities: acts.map(a => ({
+      id: a.id,
+      activityEndDate: a.activityEndDate,
+      activityType: a.activityType,
+      label: a.label,
+      caName: a.caName,
+      picName: a.picName,
+      activityNotes: a.activityNotes,
+      isKpi: isKpiLabel(a.label),
+    })),
+    detailLabels,
+  });
 });
 
 export default router;

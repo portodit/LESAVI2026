@@ -450,45 +450,37 @@ function Sparkline({ values, color = "#10b981", fill = true }: { values: number[
 }
 
 // ─── Donut Chart ─────────────────────────────────────────────────────────────
-function DonutChart({ pct, color = "#3b82f6", size = 150, stroke = 18 }: { pct: number; color?: string; size?: number; stroke?: number }) {
-  // Scale viewBox so SVG is crisp at any prop size
-  const scale = size / 120;
-  const R = 54 * scale;
-  const cx = 80 * scale, cy = 80 * scale;
-  const startAngle = -90;
+	function DonutChart({ pct, color = "#3b82f6", size = 150 }: { pct: number; color?: string; size?: number }) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size * 0.44;
+  const innerR = size * 0.28;
   const clamped = Math.min(100, Math.max(0, pct));
-  const endAngle = startAngle + (clamped / 100) * 360;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const arc = (a: number) => {
-    const rad = toRad(a);
-    return `${cx + R * Math.cos(rad)},${cy + R * Math.sin(rad)}`;
+  const polarToXY = (r: number, deg: number) => ({
+    x: cx + r * Math.cos(toRad(deg)),
+    y: cy + r * Math.sin(toRad(deg)),
+  });
+  const describeArc = (r: number, startDeg: number, endDeg: number) => {
+    const s = polarToXY(r, startDeg);
+    const e = polarToXY(r, endDeg);
+    const large = endDeg - startDeg > 180 ? 1 : 0;
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
   };
-  const start = arc(startAngle);
-  const end = arc(endAngle);
-  const large = clamped > 50 ? 1 : 0;
-  const bgEnd = arc(startAngle + 360);
-  const fontSize = Math.round(22 * scale);
-  const labelFontSize = Math.round(8.5 * scale);
-  const sw = stroke * scale;
-  // viewBox: center arc vertically with enough room for stroke caps and label
-  const arcTop = cy - R - sw / 2;
-  const arcBot = cy + R + sw / 2;
-  const vbTop = Math.floor(arcTop);
-  const vbBot = Math.ceil(arcBot + 15); // extra buffer for stroke cap + label
-  const vbH = vbBot - vbTop;
-  const vbW = Math.ceil(160 * scale);
+  const startAngle = -90;
+  const filledAngle = startAngle + (clamped / 100) * 360;
+  const bgEndAngle = startAngle + 360;
   return (
-    <svg width={size} height={size * vbH / vbW} viewBox={`0 0 ${vbW} ${vbH}`} style={{ display: "block" }}>
-      {/* Full background arc — always visible */}
-      <path d={`M ${start} A ${R} ${R} 0 1 1 ${bgEnd}`} fill="none" stroke="#e5e7eb" strokeWidth={sw} strokeLinecap="round" />
-      {/* Colored arc — if 0%, show a tiny arc so it's never empty */}
-      {clamped > 0 ? (
-        <path d={`M ${start} A ${R} ${R} 0 ${large} 1 ${end}`} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" />
-      ) : (
-        <path d={`M ${arc(startAngle)} A ${R} ${R} 0 0 1 ${arc(startAngle + 8)}`} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" />
-      )}
-      <text x={cx} y={cy - fontSize * 0.3} textAnchor="middle" fontSize={fontSize} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
-      <text x={cx} y={cy + labelFontSize * 1.2} textAnchor="middle" fontSize={labelFontSize} fill="#6b7280">CAPAIAN</text>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
+      {/* Background ring */}
+      <path d={describeArc((outerR + innerR) / 2, startAngle, bgEndAngle)} fill="none" stroke="#e5e7eb" strokeWidth={outerR - innerR} strokeLinecap="round" />
+      {/* Filled ring */}
+      {filledAngle > startAngle + 0.5 ? (
+        <path d={describeArc((outerR + innerR) / 2, startAngle, filledAngle)} fill="none" stroke={color} strokeWidth={outerR - innerR} strokeLinecap="round" />
+      ) : null}
+      {/* Percentage in center */}
+      <text x={cx} y={cy + 5} textAnchor="middle" fontSize={size * 0.17} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
+      <text x={cx} y={cy + size * 0.07 + 8} textAnchor="middle" fontSize={size * 0.065} fill="#6b7280">CAPAIAN</text>
     </svg>
   );
 }
@@ -1663,7 +1655,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
             <div style={{ overflow: "visible" }} className="bg-card border border-border rounded-xl p-2 shadow-sm min-w-0">
               <h3 className="text-base font-display font-bold text-foreground mb-1">Capaian Real vs Target</h3>
               <div className="flex items-start justify-center pb-1">
-                <DonutChart pct={(funnelData.targetTotal ?? 0) > 0 ? Math.min(100, ((filteredFunnelMetrics.filteredTotalNilai ?? 0) / funnelData.targetTotal) * 100) : 0} color="#3b82f6" size={145} stroke={18} />
+                <DonutChart pct={(funnelData.targetTotal ?? 0) > 0 ? Math.min(100, ((filteredFunnelMetrics.filteredTotalNilai ?? 0) / funnelData.targetTotal) * 100) : 0} color="#3b82f6" size={145} />
               </div>
               <div className="space-y-1" style={{ fontSize: "13px" }}>
                 <div className="flex justify-between items-baseline gap-1">
@@ -1691,7 +1683,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
             <div style={{ overflow: "visible" }} className="bg-card border border-border rounded-xl p-2 shadow-sm min-w-0">
               <h3 className="text-base font-display font-bold text-foreground mb-1">Conversion Rate</h3>
               <div className="flex items-start justify-center pb-1">
-                <DonutChart pct={funnelData.pipelineEligibleNilai > 0 ? Math.min(100, (funnelData.wonLopNilai / funnelData.pipelineEligibleNilai) * 100) : 0} color="#10b981" size={145} stroke={18} />
+                <DonutChart pct={funnelData.pipelineEligibleNilai > 0 ? Math.min(100, (funnelData.wonLopNilai / funnelData.pipelineEligibleNilai) * 100) : 0} color="#10b981" size={145} />
               </div>
               <div className="space-y-1" style={{ fontSize: "13px" }}>
                 <div className="flex justify-between items-baseline gap-1">
