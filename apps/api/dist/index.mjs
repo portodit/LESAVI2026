@@ -130179,7 +130179,7 @@ router18.get("/am-rank", requirePresentationAuth, async (req, res) => {
     tipe: tipeRank
   });
 });
-var uploadsDir = path2.resolve(process.cwd(), "..", "..", "..", "uploads");
+var uploadsDir = path2.resolve(__dirname, "..", "..", "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -130261,14 +130261,10 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
     }
   }
   let lops = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, rawNik));
-  lops = lops.filter((l) => (l.isReport || "").toUpperCase() === "Y");
-  lops = lops.filter((l) => ["AO", "MO"].includes((l.projectType || "").toUpperCase()));
-  lops = lops.filter((l) => !["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase()));
-  lops = lops.filter((l) => (l.divisi || "").toUpperCase() !== "DGS");
   if (kontrakRaw) {
     const selectedKontrak = Array.isArray(kontrakRaw) ? kontrakRaw.map(String) : [String(kontrakRaw)];
     if (selectedKontrak.length > 0 && !selectedKontrak.includes("all")) {
-      lops = lops.filter((l) => selectedKontrak.includes((l.projectType || "").toUpperCase()));
+      lops = lops.filter((l) => selectedKontrak.includes((l.kategoriKontrak || "").toUpperCase()));
     }
   }
   const sf = String(statusFunnel || "all").toLowerCase();
@@ -130510,6 +130506,107 @@ router18.delete("/am-photo", requirePresentationAuth, async (req, res) => {
   );
   res.json({ success: true });
 });
+router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
+  const rawNik = Array.isArray(req.params.nik) ? req.params.nik[0] : req.params.nik;
+  const { snapshotId, tahun, bulan, kategori, divisiCc } = req.query;
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, rawNik));
+  if (!am) {
+    res.status(404).json({ error: "AM tidak ditemukan" });
+    return;
+  }
+  const snapshots = await db.select({
+    id: dataImportsTable.id,
+    period: dataImportsTable.period,
+    snapshotDate: dataImportsTable.snapshotDate,
+    rowsImported: dataImportsTable.rowsImported,
+    createdAt: dataImportsTable.createdAt
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt));
+  let targetSnapshotId = snapshotId ? parseInt(String(snapshotId)) : null;
+  if (!targetSnapshotId && snapshots.length > 0) targetSnapshotId = snapshots[0].id;
+  const [settings] = await db.select({ kpiActivityDefault: appSettingsTable.kpiActivityDefault }).from(appSettingsTable).limit(1);
+  const kpiDefault = settings?.kpiActivityDefault ?? 30;
+  let acts = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, rawNik));
+  if (targetSnapshotId) {
+    const snap = snapshots.find((s) => s.id === targetSnapshotId);
+    if (snap?.snapshotDate) {
+      acts = acts.filter((a) => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate);
+    }
+  }
+  if (bulan) {
+    const bulanVals = Array.isArray(bulan) ? bulan.map(String) : [String(bulan)];
+    const tahunStr = String(tahun ?? (/* @__PURE__ */ new Date()).getFullYear());
+    const prefixes = bulanVals.filter((b) => b !== "all").map((b) => {
+      if (b.includes("-")) return b;
+      return `${tahunStr}-${b.padStart(2, "0")}`;
+    });
+    if (prefixes.length > 0) {
+      acts = acts.filter((a) => prefixes.some((p2) => a.activityEndDate?.startsWith(p2)));
+    }
+  }
+  if (divisiCc && String(divisiCc) !== "LESA" && String(divisiCc) !== "all") {
+    acts = acts.filter((a) => a.divisiCc === String(divisiCc));
+  }
+  const allActsForLabels = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, rawNik));
+  const availableLabels = [...new Set(
+    allActsForLabels.map((a) => a.label).filter(Boolean)
+  )].sort();
+  const monthSet = /* @__PURE__ */ new Set();
+  for (const a of allActsForLabels) {
+    const d = a.activityEndDate;
+    if (d && typeof d === "string" && d.length >= 7) {
+      monthSet.add(d.slice(0, 7));
+    }
+  }
+  const availableMonths = [...monthSet].sort().reverse();
+  if (kategori) {
+    const selected = Array.isArray(kategori) ? kategori.map(String) : [String(kategori)];
+    if (selected.length > 0 && !selected.includes("all")) {
+      acts = acts.filter((a) => selected.includes(a.label ?? ""));
+    }
+  }
+  const isKpiLabel3 = (label) => !label ? false : !label.toLowerCase().includes("tanpa");
+  acts.sort((a, b) => {
+    const da = a.activityEndDate ?? "";
+    const db2 = b.activityEndDate ?? "";
+    return db2 < da ? -1 : db2 > da ? 1 : 0;
+  });
+  const kpiCount = acts.filter((a) => isKpiLabel3(a.label)).length;
+  const kpiTarget = am.kpiActivity ?? kpiDefault;
+  const activityCount = acts.length;
+  const detailLabels = [...new Set(acts.map((a) => a.label).filter(Boolean))];
+  res.json({
+    kpiDefault,
+    kpiTarget,
+    activityCount,
+    kpiCount,
+    snapshots: snapshots.map((s) => ({
+      id: s.id,
+      period: s.period,
+      snapshotDate: s.snapshotDate,
+      rowsImported: s.rowsImported,
+      label: (() => {
+        const d = s.snapshotDate ? new Date(s.snapshotDate) : s.createdAt ? new Date(s.createdAt) : null;
+        if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+      })()
+    })),
+    selectedSnapshotId: targetSnapshotId,
+    availableMonths,
+    availableLabels,
+    selectedLabels: kategori ? Array.isArray(kategori) ? kategori.map(String) : [String(kategori)] : [],
+    activities: acts.map((a) => ({
+      id: a.id,
+      activityEndDate: a.activityEndDate,
+      activityType: a.activityType,
+      label: a.label,
+      caName: a.caName,
+      picName: a.picName,
+      activityNotes: a.activityNotes,
+      isKpi: isKpiLabel3(a.label)
+    })),
+    detailLabels
+  });
+});
 var routes_default13 = router18;
 
 // src/app.ts
@@ -130555,7 +130652,7 @@ app.use((req, _res, next) => {
   }
   next();
 });
-var uploadsPath = path3.resolve(process.cwd(), "..", "..", "uploads");
+var uploadsPath = path3.resolve(__dirname, "..", "..", "uploads");
 if (fs2.existsSync(uploadsPath)) {
   app.use("/uploads", import_express21.default.static(uploadsPath));
 }

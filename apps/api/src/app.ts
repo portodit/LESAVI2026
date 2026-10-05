@@ -72,7 +72,7 @@ app.use((req, _res, next) => {
 });
 
 // ─── Serve Uploaded AM Photos ───────────────────────────────────────────────────
-const uploadsPath = path.resolve(process.cwd(), "..", "..", "uploads");
+const uploadsPath = path.resolve(__dirname, "..", "..", "uploads");
 if (fs.existsSync(uploadsPath)) {
   app.use("/uploads", express.static(uploadsPath));
 }

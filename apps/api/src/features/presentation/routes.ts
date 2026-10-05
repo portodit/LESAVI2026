@@ -453,7 +453,7 @@ router.get("/am-rank", requirePresentationAuth, async (req, res): Promise<void> 
 });
 
 // Multer storage config for AM photos
-const uploadsDir = path.resolve(process.cwd(), "..", "..", "..", "uploads");
+const uploadsDir = path.resolve(__dirname, "..", "..", "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -900,15 +900,19 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
     }
   }
 
-  // Filter by tahun/bulan
-  if (tahun) {
-    const tahunStr = String(tahun);
-    acts = acts.filter(a => a.activityEndDate?.startsWith(tahunStr));
-  }
-  if (bulan && String(bulan) !== "all") {
+  // Filter by tahun/bulan — bulan can be YYYY-MM string or month number 1-12; supports arrays
+  if (bulan) {
+    const bulanVals = Array.isArray(bulan) ? bulan.map(String) : [String(bulan)];
     const tahunStr = String(tahun ?? new Date().getFullYear());
-    const prefix = `${tahunStr}-${String(bulan).padStart(2, "0")}`;
-    acts = acts.filter(a => a.activityEndDate?.startsWith(prefix));
+    const prefixes = bulanVals
+      .filter(b => b !== "all")
+      .map(b => {
+        if (b.includes("-")) return b; // YYYY-MM format
+        return `${tahunStr}-${b.padStart(2, "0")}`; // month number
+      });
+    if (prefixes.length > 0) {
+      acts = acts.filter(a => prefixes.some(p => a.activityEndDate?.startsWith(p)));
+    }
   }
 
   // Filter by divisi_cc
@@ -916,12 +920,22 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
     acts = acts.filter(a => a.divisiCc === String(divisiCc));
   }
 
-  // Distinct labels (kategori) — from all activities (before label filter)
+  // Distinct labels (kategori) & available months — from ALL activities for this AM (before any filter)
   const allActsForLabels = await db.select().from(salesActivityTable)
     .where(eq(salesActivityTable.nik, rawNik));
   const availableLabels = [...new Set(
     allActsForLabels.map(a => a.label).filter(Boolean) as string[]
   )].sort();
+
+  // Compute available months from all activities
+  const monthSet = new Set<string>();
+  for (const a of allActsForLabels) {
+    const d = a.activityEndDate;
+    if (d && typeof d === "string" && d.length >= 7) {
+      monthSet.add(d.slice(0, 7));
+    }
+  }
+  const availableMonths = [...monthSet].sort().reverse(); // ["2026-09", "2026-08", ...]
 
   // Filter by kategori (label)
   if (kategori) {
@@ -964,6 +978,7 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
       })(),
     })),
     selectedSnapshotId: targetSnapshotId,
+    availableMonths,
     availableLabels,
     selectedLabels: kategori
       ? (Array.isArray(kategori) ? kategori.map(String) : [String(kategori)])

@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import {
-  Loader2, X, Upload, TrendingUp, ChevronDown, Check, Target,
-  TrendingDown, ChevronLeft, ChevronRight, Users, Trophy, CreditCard, MapPin,
-  BarChart2, Filter, Activity, Search, Minimize2, ChevronsUp, ChevronsDown,
+  Loader2, Upload, TrendingUp, ChevronDown, Check,
+  ChevronLeft, ChevronRight, BarChart2, Filter, Activity, Search,
   ArrowRight, PlusCircle, AlertTriangle, MinusCircle
 } from "lucide-react";
 import { Bar, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -12,10 +11,8 @@ import { cn, formatRupiahFull } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
-import { Badge } from "@/shared/ui/badge";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
-const MONTHS_LABEL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 const REVENUE_OPTIONS = [
   { value: "Reguler", label: "Reguler" },
   { value: "Sustain", label: "Sustain" },
@@ -29,6 +26,11 @@ const DIVISI_OPTIONS_EMB = [
 ];
 const MONTHS_FULL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+const KATEGORI_OPTIONS = [
+  { value: "dengan_pelanggan", label: "Dengan Pelanggan" },
+  { value: "proyek", label: "Pelanggan Dengan Proyek" },
+  { value: "tanpa", label: "Tanpa Pelanggan" },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtRupiah = (n: number) => formatRupiahFull(n);
@@ -200,7 +202,7 @@ function PergerakanSection({
   funnelData,
   amNama,
 }: {
-  snapshotComparison: ReturnType<typeof import("./AmProfilePage").PergerakanSection>;
+  snapshotComparison: SnapshotComparison;
   funnelData: any;
   amNama: string;
 }) {
@@ -420,6 +422,7 @@ interface CustomerRowDetail extends CustomerRow { bulan: number; tahun: number; 
 interface Snapshot { id: number; label: string; period: string | null; snapshotDate: string | null; }
 interface AmProfileFilters { availableBulan: number[]; selectedBulan: number[]; tipeRevenue: string; }
 interface AmProfileResponse { am: AmProfile; snapshots: Snapshot[]; customers: CustomerRow[]; selectedSnapshotId: number | null; filters: AmProfileFilters; customerRows: CustomerRowDetail[]; summary: { totalTarget: number; totalReal: number; achRate: number; periodText: string; customerCount: number; cmAchRate: number; cmTarget: number; cmReal: number; }; }
+interface SnapshotComparison { newLops: any[]; changedStatus: any[]; newF5: any[]; stagnanLops: any[]; stagnanCount: number; prevCR: number; crDelta: number; currCR: number; totalTercakup: number; }
 interface RankData { myRank: number | null; myAchRate: number | null; totalCount: number; bulan?: number; tahun?: number; }
 type TabId = "performansi" | "salesFunnel" | "salesActivity" | "prognosa";
 interface Props { nik?: string; embedded?: boolean; onAmLoaded?: (am: AmProfile) => void; }
@@ -1156,6 +1159,18 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
   const [funnelKontrakOpen, setFunnelKontrakOpen] = useState(false);
   const [funnelKatKontrakOpen, setFunnelKatKontrakOpen] = useState(false);
 
+  // Activity state
+  const [actLoading, setActLoading] = useState(false);
+  const [actData, setActData] = useState<any>(null);
+  const [actSnapshot, setActSnapshot] = useState<number | null>(null);
+  const [actPeriodes, setActPeriodes] = useState<Set<string>>(new Set());
+  const [actKategori, setActKategori] = useState<Set<string>>(new Set());
+  const [actDivisi, setActDivisi] = useState<string>("LESA");
+  const [actSearch, setActSearch] = useState("");
+  const [actExpanded, setActExpanded] = useState<Record<string, boolean>>({});
+  const [actPage, setActPage] = useState(1);
+  const [actPageSize, setActPageSize] = useState(10);
+
   const session = getPresentationSession();
   const effectiveNik = nik ?? session?.nik ?? "";
 
@@ -1334,6 +1349,51 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
       .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [effectiveNik, selectedSnapshot, selectedPeriodes, selectedRevenue, selectedDivisi]);
+
+  // Initialize default snapshot and periode dari data yang sudah ada (bukan current month)
+  useEffect(() => {
+    if (actLoading || !actData) return;
+    // Default snapshot to latest
+    if (actSnapshot === null && actData?.snapshots?.length > 0) {
+      setActSnapshot(actData.snapshots[0].id);
+    }
+    // Default periode to latest month (availableMonths[0] already sorted desc)
+    if (actPeriodes.size === 0 && actData?.availableMonths?.length > 0) {
+      const latest = actData.availableMonths[0];
+      setActPeriodes(new Set([latest]));
+    }
+  }, [actLoading, actData, actSnapshot, actPeriodes]);
+
+  // Fetch activity data
+  useEffect(() => {
+    if (!effectiveNik) return;
+    let cancelled = false;
+    setActLoading(true);
+
+    const params = new URLSearchParams();
+    if (actSnapshot) params.set("snapshotId", String(actSnapshot));
+    if (actDivisi !== "LESA") params.set("divisiCc", actDivisi);
+    // Send selected periodes (empty = fetch all, filter happens on frontend)
+    actPeriodes.forEach(p => {
+      const [y, m] = p.split("-");
+      params.append("bulan", m);
+      params.append("tahun", y);
+    });
+    if (actKategori.size > 0) {
+      actKategori.forEach(k => params.append("kategori", k));
+    }
+    const query = params.toString();
+    const url = `/api/presentation/am-activity/${effectiveNik}${query ? `?${query}` : ""}`;
+    fetch(url, { headers: presHeaders() })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => {
+        if (cancelled) return;
+        setActData(d);
+        setActLoading(false);
+      })
+      .catch(e => { if (!cancelled) { setActData(null); setActLoading(false); } });
+    return () => { cancelled = true; };
+  }, [effectiveNik, actSnapshot, actPeriodes, actKategori, actDivisi]);
 
   // Fetch ranks
   // Determine latest selected periode for CM rank
@@ -2265,9 +2325,407 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 {embTab === "salesFunnel" && funnelContent}
                 {/* Tab: Sales Activity */}
           {embTab === "salesActivity" && (
-            <div className="w-full">
-              <div className="text-sm text-muted-foreground/60 italic">Konten Sales Activity — dalam pengembangan</div>
-            </div>
+            <div className="w-full space-y-4">
+              {/* ── Filter Bar (white card) ─────────────────────────── */}
+              <div className="bg-card border border-border rounded-xl p-3">
+                <div className="flex items-end gap-2 flex-wrap min-w-0">
+                  {/* Snapshot */}
+                <div className="flex flex-col gap-1 w-44 shrink-0">
+                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Snapshot</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                          {actData?.snapshots?.find((s: any) => s.id === actSnapshot)?.label ?? "Pilih Snapshot"}
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 160 }}>
+                      <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
+                        {(actData?.snapshots ?? []).map((s: any) => (
+                          <button key={s.id} onClick={() => { setActSnapshot(s.id); }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
+                            <span className="w-1.5 shrink-0 flex items-center justify-center">
+                              {actSnapshot === s.id && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                            </span>
+                            <span className={cn("flex-1", actSnapshot === s.id ? "font-semibold text-primary" : "")}>{s.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Periode */}
+                <div className="flex flex-col gap-1 shrink-0 w-44">
+                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Periode</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                          {actPeriodes.size === 0 ? "Pilih Periode" : actPeriodes.size === 1 ? (
+                            (() => { const p = [...actPeriodes][0]; const [y, m] = p.split("-"); return `${MONTHS_SHORT[parseInt(m)-1]} ${y}`; })()
+                          ) : `${actPeriodes.size} dipilih`}
+                        </span>
+                        {actPeriodes.size > 0 && <span className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none shrink-0">{actPeriodes.size}</span>}
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
+                      <div className="bg-popover border border-border rounded-xl shadow-xl w-52 overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Periode</span>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => setActPeriodes(new Set(actData?.availableMonths ?? []))} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
+                            <span className="text-muted-foreground text-[11px]">·</span>
+                            <button onClick={() => setActPeriodes(new Set())} className="text-[11px] text-muted-foreground font-semibold hover:underline">Reset</button>
+                          </div>
+                        </div>
+                        <div className="max-h-72 overflow-y-auto py-1">
+                          {/* Years */}
+                          {(() => {
+                            const availableMonths = (actData?.availableMonths ?? []) as string[];
+                            const years = [...new Set(availableMonths.map((m: string) => m.split("-")[0]))].sort((a: string, b: string) => b.localeCompare(a));
+                            return years.map((y: string) => {
+                              const monthsOfYear = availableMonths.filter((m: string) => m.startsWith(y + "-"));
+                              return (
+                                <div key={y}>
+                                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-secondary transition-colors cursor-pointer">
+                                    <span className={cn("w-4 h-4 rounded border shrink-0 flex items-center justify-center", actPeriodes.has(y) || monthsOfYear.some((m: string) => actPeriodes.has(m)) ? "border-primary bg-primary/10" : "border-border")}>
+                                      {(actPeriodes.has(y) || monthsOfYear.every((m: string) => actPeriodes.has(m))) && actPeriodes.size > 0 && <span className="text-primary text-[9px] font-black leading-none">–</span>}
+                                    </span>
+                                    <span className="flex-1 text-sm font-semibold text-foreground">{y}</span>
+                                  </div>
+                                  {monthsOfYear.map((m: string) => {
+                                    const monthNum = parseInt(m.split("-")[1]);
+                                    const isSelected = actPeriodes.has(m);
+                                    return (
+                                      <button key={m} onClick={() => {
+                                        setActPeriodes(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(m)) next.delete(m); else next.add(m);
+                                          return next;
+                                        });
+                                      }} className="w-full text-left pl-9 pr-3 py-1.5 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
+                                        <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center", isSelected ? "bg-primary border-primary" : "border-border")}>
+                                          {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
+                                        </span>
+                                        <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{MONTHS_FULL[monthNum - 1]}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Kategori */}
+                <div className="flex flex-col gap-1 w-44 shrink-0">
+                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Kategori</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                          {actKategori.size === 0 ? "Semua" : actKategori.size === 1 ? [...actKategori][0].replace(/_/g, " ") : `${actKategori.size} dipilih`}
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
+                      <div className="bg-popover border border-border rounded-xl shadow-xl min-w-[200px] max-w-[260px] overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Kategori</span>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => setActKategori(new Set())} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
+                            <span className="text-muted-foreground text-[11px]">·</span>
+                            <button onClick={() => setActKategori(new Set(KATEGORI_OPTIONS.map(o => o.value)))} className="text-[11px] text-muted-foreground font-semibold hover:underline">Kosongkan</button>
+                          </div>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {KATEGORI_OPTIONS.map(opt => {
+                            const isSelected = actKategori.has(opt.value);
+                            return (
+                              <button key={opt.value} onClick={() => {
+                                setActKategori(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(opt.value)) next.delete(opt.value); else next.add(opt.value);
+                                  return next;
+                                });
+                              }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
+                                <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center", isSelected ? "bg-primary border-primary" : "border-border")}>
+                                  {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
+                                </span>
+                                <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{opt.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Divisi */}
+                <div className="flex flex-col gap-1 w-28 shrink-0">
+                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Divisi</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                          {DIVISI_OPTIONS_EMB.find(o => o.value === actDivisi)?.label ?? "LESA (All)"}
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 120 }}>
+                      <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
+                        {DIVISI_OPTIONS_EMB.map(opt => (
+                          <button key={opt.value} onClick={() => setActDivisi(opt.value)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
+                            <span className="w-1.5 shrink-0 flex items-center justify-center">
+                              {actDivisi === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                            </span>
+                            <span className={cn(actDivisi === opt.value ? "font-semibold text-primary" : "")}>{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              {/* ── KPI Progress + Activity Table ───────────────────── */}
+              {actLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                (() => {
+                  const kpiTarget = actData?.kpiTarget ?? 30;
+                  const kpiCount = actData?.kpiCount ?? 0;
+                  const activityCount = actData?.activityCount ?? 0;
+                  const pct = kpiTarget > 0 ? Math.min(100, (kpiCount / kpiTarget) * 100) : 0;
+                  const remaining = Math.max(0, kpiTarget - kpiCount);
+                  const isAboveKpi = kpiCount >= kpiTarget;
+                  const statusLabel = isAboveKpi ? "Memenuhi KPI" : "Di Bawah KPI";
+                  const statusBg = isAboveKpi ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600";
+                  const barColor = pct >= 100 ? "from-emerald-600 to-emerald-500" : "from-red-600 to-red-500";
+
+                  // Build kategori label
+                  const kategoriLabel = (label: string | null | undefined): string => {
+                    if (!label) return "–";
+                    const l = label.toLowerCase();
+                    if (l.includes("tanpa")) return "Tanpa Pelanggan";
+                    if (l.includes("proyek")) return "Pelanggan Dengan Proyek";
+                    return "Dengan Pelanggan";
+                  };
+                  const kategoriColor = (label: string | null | undefined): string => {
+                    if (!label) return "bg-slate-100 text-slate-700";
+                    const l = label.toLowerCase();
+                    if (l.includes("tanpa")) return "bg-slate-100 text-slate-700";
+                    if (l.includes("proyek")) return "bg-teal-50 text-teal-700";
+                    return "bg-blue-50 text-blue-700";
+                  };
+
+                  // Filter activities by search + pagination
+                  const filteredActivities = (actData?.activities ?? []) as any[];
+                  const searchedActivities = actSearch.trim()
+                    ? filteredActivities.filter((a: any) => {
+                        const q = actSearch.toLowerCase();
+                        return (
+                          (a.caName || "").toLowerCase().includes(q) ||
+                          (a.label || "").toLowerCase().includes(q) ||
+                          (a.activityType || "").toLowerCase().includes(q) ||
+                          (a.activityNotes || "").toLowerCase().includes(q) ||
+                          (a.picName || "").toLowerCase().includes(q)
+                        );
+                      })
+                    : filteredActivities;
+
+                  // Reset page when filters/search change
+                  const safePage = Math.min(actPage, Math.max(1, Math.ceil(searchedActivities.length / actPageSize)));
+                  const paginatedActivities = searchedActivities.slice((safePage - 1) * actPageSize, safePage * actPageSize);
+                  const totalPages = Math.max(1, Math.ceil(searchedActivities.length / actPageSize));
+
+                  return (
+                    <>
+                      {/* KPI Header Card */}
+                      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+                        {/* Header */}
+                        <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-3">
+                          <span className="text-sm font-bold text-foreground">Monitoring KPI Aktivitas</span>
+                          <span className="bg-secondary border border-border text-foreground text-xs font-bold px-2 py-0.5 rounded-full">{effectiveNik}</span>
+                          <div className="flex-1" />
+                          {/* Search */}
+                          <div className="h-8 flex items-center gap-2 bg-background border border-border rounded-lg px-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-colors min-w-[220px]">
+                            <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Cari tipe, label, pelanggan, catatan…"
+                              value={actSearch}
+                              onChange={e => setActSearch(e.target.value)}
+                              className="border-none outline-none text-xs text-foreground placeholder:text-muted-foreground/60 bg-transparent flex-1 min-w-0"
+                            />
+                          </div>
+                        </div>
+
+                        {/* KPI Progress Bar */}
+                        <div className="grid items-center px-4 py-3 border-b border-border" style={{ gridTemplateColumns: "1fr 240px 100px 72px 64px 110px" }}>
+                          <div>
+                            <div className="text-sm font-bold text-foreground">{data?.am?.nama ?? effectiveNik}</div>
+                            <div className="text-xs font-semibold text-foreground/70 mt-0.5 flex items-center gap-1">
+                              {data?.am?.divisi && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">{data.am.divisi}</span>
+                              )}
+                              <span className="text-foreground/60 font-semibold">· {activityCount} aktivitas</span>
+                            </div>
+                          </div>
+                          <div className="pr-2">
+                            <div className="h-4 bg-secondary rounded-full overflow-hidden mb-2">
+                              <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-700", barColor)} style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={cn("text-base font-black font-display", isAboveKpi ? "text-emerald-600" : "text-red-600")}>{pct.toFixed(0)}%</span>
+                              <span className="text-sm font-bold font-display text-foreground/70">{kpiCount}/{kpiTarget} aktivitas KPI</span>
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-base font-black font-display text-foreground">{kpiCount}</div>
+                            <div className="text-[10px] font-medium text-foreground/50">Aktivitas</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-base font-bold font-display text-foreground/70">{kpiTarget}</div>
+                            <div className="text-[10px] font-medium text-foreground/50">Target</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-base font-bold font-display text-foreground">{remaining}</div>
+                            <div className="text-[10px] font-medium text-foreground/50">Sisa</div>
+                          </div>
+                          <div>
+                            <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold", statusBg)}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Activity Detail Table Header */}
+                        {paginatedActivities.length > 0 && (
+                          <div className="grid text-xs font-black uppercase tracking-wide text-white font-display" style={{ gridTemplateColumns: "28px 96px 1fr 140px 120px 60px", padding: "10px 14px 10px 52px", background: "rgb(185, 28, 28)" }}>
+                            <div>#</div>
+                            <div>Tanggal</div>
+                            <div>Pelanggan &amp; Catatan</div>
+                            <div>Tipe Aktivitas</div>
+                            <div>Kategori</div>
+                            <div>KPI</div>
+                          </div>
+                        )}
+
+                        {/* Activity Rows */}
+                        {paginatedActivities.length === 0 ? (
+                          <div className="flex items-center gap-3 px-6 py-8 text-sm text-foreground/50 justify-center">
+                            <Activity className="w-4 h-4" />
+                            <span>Tidak ada data aktivitas pada periode yang dipilih.</span>
+                          </div>
+                        ) : paginatedActivities.map((act: any, idx: number) => {
+                          const [datePart] = (act.activityEndDate ?? "").split(" ");
+                          const dateObj = datePart ? new Date(datePart) : null;
+                          const dayStr = dateObj ? `${String(dateObj.getDate()).padStart(2,"0")}/${String(dateObj.getMonth()+1).padStart(2,"0")}` : "–";
+                          const monthStr = dateObj ? dateObj.toLocaleDateString("id-ID", { weekday: "short", month: "short", year: "numeric" }).replace(",","") : "–";
+                          const kat = kategoriLabel(act.label);
+                          const katCls = kategoriColor(act.label);
+                          return (
+                            <div key={act.id}>
+                              <div className="grid items-start border-b border-border/20 last:border-b-0 hover:bg-secondary/30 transition-colors"
+                                style={{ gridTemplateColumns: "28px 96px 1fr 140px 120px 60px", padding: "9px 14px 9px 52px" }}>
+                                <div className="text-xs font-bold text-foreground/50 font-mono pt-0.5">{idx + 1}</div>
+                                <div>
+                                  <div className="text-sm font-bold text-foreground font-mono">{dayStr}</div>
+                                  <div className="text-[11px] font-medium text-foreground/60 mt-px">{monthStr}</div>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-bold text-foreground">{act.caName || "–"}</div>
+                                  <div className="text-xs font-medium text-foreground/60 mt-0.5 line-clamp-2">{act.activityNotes || "–"}</div>
+                                </div>
+                                <div className="pt-0.5">
+                                  <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold" style={{ background: "rgb(227, 242, 253)", color: "rgb(21, 101, 192)" }}>
+                                    {act.activityType || "–"}
+                                  </span>
+                                </div>
+                                <div className="pt-0.5">
+                                  <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-semibold", katCls)}>{kat}</span>
+                                </div>
+                                <div className="pt-0.5">
+                                  <span className={cn("text-xs font-bold px-2 py-0.5 rounded", act.isKpi ? "text-emerald-700 bg-emerald-50" : "text-slate-500 bg-slate-50")}>
+                                    {act.isKpi ? "✓ Ya" : "✗ Tidak"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Pagination Controls */}
+                        {searchedActivities.length > 0 && (
+                          <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-secondary/20">
+                            {/* Page size */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Tampilkan:</span>
+                              {[10, 20, 50].map(size => (
+                                <button key={size} onClick={() => { setActPageSize(size); setActPage(1); }}
+                                  className={cn("h-6 px-2.5 rounded text-[11px] font-semibold border transition-colors",
+                                    actPageSize === size ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
+                                  {size}
+                                </button>
+                              ))}
+                            </div>
+                            {/* Page info + controls */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] font-medium text-foreground/60">
+                                {(safePage - 1) * actPageSize + 1}–{Math.min(safePage * actPageSize, searchedActivities.length)} dari {searchedActivities.length}
+                              </span>
+                              <button onClick={() => setActPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}
+                                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                              </button>
+                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
+                                const page = start + i;
+                                if (page > totalPages) return null;
+                                return (
+                                  <button key={page} onClick={() => setActPage(page)}
+                                    className={cn("h-7 min-w-[28px] px-1 flex items-center justify-center rounded text-[11px] font-semibold border transition-colors",
+                                      safePage === page ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
+                                    {page}
+                                  </button>
+                                );
+                              })}
+                              <button onClick={() => setActPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}
+                                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Summary Footer */}
+                        {paginatedActivities.length > 0 && (
+                          <div className="flex items-center gap-5 px-6 py-3 border-t-2 border-primary/20 bg-primary/5">
+                            <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-wide">Ringkasan:</span>
+                            <span className="text-sm font-bold text-emerald-700">{kpiCount} aktivitas KPI</span>
+                            <span className="text-sm font-semibold text-foreground/60">({activityCount} total)</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()
+              </div>
           )}
 
           {/* Tab: Prognosa */}
