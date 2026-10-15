@@ -2,7 +2,27 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { readFileSync, existsSync } from "node:fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+const rootDir = path.resolve(import.meta.dirname, "..", "..");
+
+// Load root .env so vite.config can access process.env.PORT etc.
+const rootEnvPath = path.resolve(rootDir, ".env");
+if (existsSync(rootEnvPath)) {
+  const lines = readFileSync(rootEnvPath, "utf8").split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+    if (key && !Object.prototype.hasOwnProperty.call(process.env, key)) {
+      process.env[key] = val;
+    }
+  }
+}
 
 const isBuild = process.env.NODE_ENV === "production" || process.argv.includes("build");
 
@@ -14,7 +34,10 @@ if (isDev && !rawPort) {
     "PORT environment variable is required but was not provided.",
   );
 }
-const port = Number(rawPort ?? "5000");
+// Dashboard uses DASHBOARD_PORT if set, otherwise falls back to PORT
+const port = Number(
+  process.env.DASHBOARD_PORT ?? rawPort ?? "5173"
+);
 
 // Base path: dev always "/" (proxy to remote VPS), production from env
 const basePath = isBuild
@@ -23,6 +46,7 @@ const basePath = isBuild
 
 export default defineConfig({
   base: basePath,
+  envDir: rootDir,
   plugins: [
     react(),
     tailwindcss(),
@@ -98,5 +122,6 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    root: path.resolve(import.meta.dirname, "dist/public"),
   },
 });

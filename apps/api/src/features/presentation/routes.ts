@@ -300,7 +300,7 @@ router.get("/am-profile/:nik", requirePresentationAuth, async (req, res): Promis
       label: (() => {
         const d = s.snapshotDate ? new Date(s.snapshotDate) : (s.createdAt ? new Date(s.createdAt) : null);
         if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       })(),
     })),
     selectedSnapshotId: targetSnapshotId,
@@ -689,7 +689,7 @@ router.get("/am-funnel/:nik", requirePresentationAuth, async (req, res): Promise
     label: (() => {
       const d = s.snapshotDate ? new Date(s.snapshotDate) : (s.createdAt ? new Date(s.createdAt) : null);
       if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     })(),
   }));
 
@@ -974,7 +974,7 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
       label: (() => {
         const d = s.snapshotDate ? new Date(s.snapshotDate) : (s.createdAt ? new Date(s.createdAt) : null);
         if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       })(),
     })),
     selectedSnapshotId: targetSnapshotId,

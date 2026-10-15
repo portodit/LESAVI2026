@@ -113,7 +113,7 @@ apps/telegram-import.log
 apps/_*.log
 apps/_server*.log
 apps/dashboard/cookies_e2e.txt
-dashboard/
+/dashboard/
 funnel_converter/
 import_performance_backup.zip
 local_local.ts

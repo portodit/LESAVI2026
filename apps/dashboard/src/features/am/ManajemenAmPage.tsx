@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Trash2, Users, Wifi, WifiOff, Search, X,
   MessageSquare, AlertTriangle, RefreshCw, UserCog, Shield,
-  ToggleLeft, ToggleRight
+  ToggleLeft, ToggleRight, MessageCircle
 } from "lucide-react";
 import { useAuth } from "@/shared/hooks/use-auth";
 import { cn } from "@/shared/lib/utils";
@@ -15,6 +15,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { VerifikasiSection } from "@/features/telegram/VerifikasiSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,6 @@ interface UserFormData {
   role: string;
   tipe: string;
   divisi: string;
-  segmen: string;
   witel: string;
   telegramChatId: string;
   telegramUsername: string;
@@ -56,7 +56,7 @@ interface UserFormData {
 
 const EMPTY_FORM: UserFormData = {
   nik: "", nama: "", email: "", role: "AM", tipe: "LESA",
-  divisi: "DPS", segmen: "", witel: "SURAMADU", telegramChatId: "", telegramUsername: "", telegramDisplayName: "",
+  divisi: "DPS", witel: "SURAMADU", telegramChatId: "", telegramUsername: "", telegramDisplayName: "",
 };
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -84,29 +84,6 @@ function FormField({ label, required, error, children }: {
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
-  );
-}
-
-// ─── Reusable: SelectField ───────────────────────────────────────────────────
-
-function SelectField({ value, onChange, options, disabled, className }: {
-  value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  disabled?: boolean; className?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={disabled}
-      className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-        "focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-        className
-      )}
-    >
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
   );
 }
 
@@ -146,11 +123,12 @@ function ConfirmDeleteDialog({ open, onClose, onConfirm, name, loading }: {
 // ─── Role & Tipe configs ──────────────────────────────────────────────────────
 
 const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  ADMIN:         { label: "Admin",         color: "text-red-700",     bg: "bg-red-100",       border: "border-red-200" },
-  OFFICER:       { label: "Officer",       color: "text-purple-700", bg: "bg-purple-100",    border: "border-purple-200" },
-  MANAGER:       { label: "Manager",       color: "text-orange-700", bg: "bg-orange-100",   border: "border-orange-200" },
-  ACCOUNT_MANAGER: { label: "AM",           color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-200" },
-  AM:              { label: "AM",           color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-200" },
+  ADMIN:           { label: "Admin",           color: "text-red-700",       bg: "bg-red-100",         border: "border-red-200" },
+  OFFICER:         { label: "Officer",         color: "text-purple-700",    bg: "bg-purple-100",      border: "border-purple-200" },
+  MANAGER:         { label: "Manager",         color: "text-orange-700",    bg: "bg-orange-100",      border: "border-orange-200" },
+  ACCOUNT_MANAGER: { label: "AM",              color: "text-emerald-700",   bg: "bg-emerald-100",    border: "border-emerald-200" },
+  AM:              { label: "AM",              color: "text-emerald-700",   bg: "bg-emerald-100",    border: "border-emerald-200" },
+  INPUTER:         { label: "Inputer",         color: "text-teal-700",      bg: "bg-teal-100",       border: "border-teal-200" },
 };
 
 const TIPE_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
@@ -162,6 +140,10 @@ const DIVISI_CONFIG: Record<string, { color: string; bg: string; border: string 
   DSS: { color: "text-violet-700", bg: "bg-violet-100", border: "border-violet-200" },
   DGS: { color: "text-cyan-700",   bg: "bg-cyan-100",   border: "border-cyan-200" },
 };
+
+function getRoleDisplay(role: string): string {
+  return role === "AM" ? "ACCOUNT_MANAGER" : (role || "ACCOUNT_MANAGER");
+}
 
 // ─── User Form Dialog ─────────────────────────────────────────────────────────
 
@@ -181,12 +163,9 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(f => ({ ...f, [field]: e.target.value }));
   }
-  function setSelect(field: keyof UserFormData) {
-    return (v: string) => setForm(f => ({ ...f, [field]: v }));
-  }
 
-  const isOfficer = form.role === "OFFICER";
   const isAccountManager = form.role === "ACCOUNT_MANAGER" || form.role === "AM";
+  const isInputer = form.role === "INPUTER";
 
   function validate(): boolean {
     const errs: Partial<UserFormData> = {};
@@ -207,6 +186,7 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
     { v: "ACCOUNT_MANAGER", label: "Account Manager" },
     { v: "MANAGER", label: "Manager" },
     { v: "OFFICER", label: "Officer" },
+    { v: "INPUTER", label: "Inputer" },
     { v: "ADMIN", label: "Admin" },
   ];
 
@@ -253,7 +233,7 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
             </FormField>
           </div>
 
-          {/* Row 2: NIK + Divisi (AM) or NIK + Email (Officer/Admin) */}
+          {/* Row 2: NIK + Divisi/Email/Witel */}
           {isAccountManager ? (
             <div className="grid grid-cols-2 gap-3">
               <FormField label="NIK" required error={errors.nik}>
@@ -265,16 +245,37 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
                 />
               </FormField>
               <FormField label="Divisi" required error={errors.divisi}>
-                <SelectField
+                <select
                   value={form.divisi}
-                  onChange={setSelect("divisi")}
-                  options={[
-                    { value: "DPS", label: "DPS" },
-                    { value: "DSS", label: "DSS" },
-                    { value: "DGS", label: "DGS" },
-                  ]}
+                  onChange={e => setForm(f => ({ ...f, divisi: e.target.value }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="DPS">DPS</option>
+                  <option value="DSS">DSS</option>
+                  <option value="DGS">DGS</option>
+                </select>
+              </FormField>
+            </div>
+          ) : isInputer ? (
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="NIK">
+                <Input
+                  value={form.nik} onChange={set("nik")}
+                  placeholder="mis. 850099 (opsional)"
+                  disabled={mode === "edit"}
                   className="h-10"
                 />
+              </FormField>
+              <FormField label="Witel">
+                <select
+                  value={form.witel}
+                  onChange={e => setForm(f => ({ ...f, witel: e.target.value }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="SURAMADU">SURAMADU</option>
+                  <option value="SURABAYA">SURABAYA</option>
+                  <option value="MADURA">MADURA</option>
+                </select>
               </FormField>
             </div>
           ) : (
@@ -298,7 +299,7 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
             </div>
           )}
 
-          {/* Row 3: Nama Lengkap — always full width */}
+          {/* Row 3: Nama Lengkap */}
           <FormField label="Nama Lengkap" required error={errors.nama}>
             <Input
               value={form.nama} onChange={set("nama")}
@@ -307,39 +308,36 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
             />
           </FormField>
 
+          {/* Email for Inputer */}
+          {isInputer && (
+            <FormField label="Email Login">
+              <Input
+                type="email"
+                value={form.email} onChange={set("email")}
+                placeholder="mis. inputer@example.com"
+                className="h-10"
+              />
+            </FormField>
+          )}
+
           {/* AM-only fields */}
           {isAccountManager && (
             <>
-              {/* Segmen + Witel */}
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Segmen">
-                  <SelectField
-                    value={form.segmen}
-                    onChange={setSelect("segmen")}
-                    options={[
-                      { value: "", label: "— Pilih Segmen —" },
-                      { value: "Enterprise", label: "Enterprise" },
-                      { value: "Government", label: "Government" },
-                      { value: "SME", label: "SME" },
-                    ]}
-                    className="h-10"
-                  />
-                </FormField>
                 <FormField label="Witel">
-                  <SelectField
+                  <select
                     value={form.witel}
-                    onChange={setSelect("witel")}
-                    options={[
-                      { value: "SURAMADU", label: "SURAMADU" },
-                      { value: "SURABAYA", label: "SURABAYA" },
-                      { value: "MADURA", label: "MADURA" },
-                    ]}
-                    className="h-10"
-                  />
+                    onChange={e => setForm(f => ({ ...f, witel: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="SURAMADU">SURAMADU</option>
+                    <option value="SURABAYA">SURABAYA</option>
+                    <option value="MADURA">MADURA</option>
+                  </select>
                 </FormField>
               </div>
 
-              {/* Telegram fields — compact */}
+              {/* Telegram fields */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Data Telegram (opsional)</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -384,19 +382,30 @@ function UserFormDialog({ open, onClose, onSubmit, initial, loading, mode }: {
 
 // ─── Table Row ────────────────────────────────────────────────────────────────
 
-function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, togglingAktif }: {
+function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, togglingAktif, selected, onToggleSelect }: {
   user: User; onEdit: () => void; onDelete: () => void;
   isPrivileged: boolean; onToggleAktif: () => void; togglingAktif: boolean;
+  selected: boolean; onToggleSelect: () => void;
 }) {
-  const role = (user.role === "AM" ? "ACCOUNT_MANAGER" : (user.role || "ACCOUNT_MANAGER"));
-  const roleCfg = ROLE_CONFIG[role] ?? ROLE_CONFIG["ACCOUNT_MANAGER"];
+  const roleKey = getRoleDisplay(user.role);
+  const roleCfg = ROLE_CONFIG[roleKey] ?? ROLE_CONFIG["ACCOUNT_MANAGER"];
   const tipeCfg = user.tipe ? (TIPE_CONFIG[user.tipe] ?? TIPE_CONFIG["LESA"]) : TIPE_CONFIG["LESA"];
   const divisiCfg = DIVISI_CONFIG[user.divisi] ?? DIVISI_CONFIG["DPS"];
-  const isAccountManager = role === "ACCOUNT_MANAGER" || role === "AM";
+  const isAccountManager = roleKey === "ACCOUNT_MANAGER";
   const isNonaktif = !user.aktif;
 
   return (
-    <tr className={cn("border-b border-border/50 transition-colors", isNonaktif ? "bg-amber-50/40 hover:bg-amber-50/60 dark:bg-amber-950/10 dark:hover:bg-amber-950/20" : "hover:bg-secondary/20")}>
+    <tr className={cn("border-b border-border/50 transition-colors", isNonaktif ? "bg-amber-50/40 hover:bg-amber-50/60 dark:bg-amber-950/10 dark:hover:bg-amber-950/20" : "hover:bg-secondary/20", selected && "bg-primary/5")}>
+      {/* Checkbox */}
+      <td className="px-4 py-3 w-10">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+        />
+      </td>
+
       {/* NIK */}
       <td className="px-4 py-3 whitespace-nowrap">
         {user.nik
@@ -411,14 +420,16 @@ function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, toggling
           <div className={cn(
             "w-9 h-9 rounded-full border flex items-center justify-center shrink-0",
             isNonaktif ? "bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-700 opacity-70" :
-            role === "OFFICER" ? "bg-purple-50 border-purple-200 dark:bg-purple-950/30" :
-            role === "MANAGER" ? "bg-orange-50 border-orange-200 dark:bg-orange-950/30" :
+            roleKey === "OFFICER" ? "bg-purple-50 border-purple-200 dark:bg-purple-950/30" :
+            roleKey === "MANAGER" ? "bg-orange-50 border-orange-200 dark:bg-orange-950/30" :
+            roleKey === "INPUTER" ? "bg-teal-50 border-teal-200 dark:bg-teal-950/30" :
             "bg-primary/10 border-primary/20"
           )}>
             <span className={cn("text-[10px] font-black",
               isNonaktif ? "text-amber-600/70" :
-              role === "OFFICER" ? "text-purple-600" :
-              role === "MANAGER" ? "text-orange-600" : "text-primary"
+              roleKey === "OFFICER" ? "text-purple-600" :
+              roleKey === "MANAGER" ? "text-orange-600" :
+              roleKey === "INPUTER" ? "text-teal-600" : "text-primary"
             )}>
               {user.nama.split(" ").slice(0, 2).map(n => n[0]).join("")}
             </span>
@@ -479,11 +490,6 @@ function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, toggling
             {user.witel}
           </span>
         ) : <span className="text-muted-foreground/40 text-xs">—</span>}
-      </td>
-
-      {/* Segmen */}
-      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-        {isAccountManager ? (user.segmen || <span className="text-border text-xs">—</span>) : <span className="text-muted-foreground/40 text-xs">—</span>}
       </td>
 
       {/* Telegram */}
@@ -547,7 +553,7 @@ function UserRow({ user, onEdit, onDelete, isPrivileged, onToggleAktif, toggling
         )}
       </td>
 
-      {/* Aksi — always visible */}
+      {/* Aksi */}
       <td className="px-4 py-3">
         <RowActions actions={[
           { type: "edit", onClick: onEdit },
@@ -565,33 +571,100 @@ function StatCard({ icon, label, value, sub, color }: {
   sub?: string; color?: string;
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-4">
-      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", color || "bg-primary/10")}>
+    <div className="bg-card border border-border rounded-xl p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+      <div className={cn("w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0", color || "bg-primary/10")}>
         {icon}
       </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide leading-none mb-1">{label}</p>
-        <p className="text-2xl font-black text-foreground leading-none">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wide leading-none mb-1">{label}</p>
+        <p className="text-xl sm:text-2xl font-black text-foreground leading-none">{value}</p>
+        {sub && <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
       </div>
+    </div>
+  );
+}
+
+// ─── Pagination ────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 10;
+
+function Pagination({ total, page, onPage }: { total: number; page: number; onPage: (p: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (totalPages <= 1) return null;
+
+  const pages: (number | "...")[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page > 3) pages.push("...");
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+    if (page < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-1 py-3 border-t border-border">
+      <button
+        onClick={() => onPage(Math.max(1, page - 1))}
+        disabled={page === 1}
+        className="h-8 px-3 text-xs font-semibold rounded-lg border border-border hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        ‹
+      </button>
+      {pages.map((p, i) =>
+        p === "..." ? (
+          <span key={`ellipsis-${i}`} className="h-8 px-2 flex items-center text-xs text-muted-foreground">…</span>
+        ) : (
+          <button
+            key={p}
+            onClick={() => onPage(p)}
+            className={cn(
+              "h-8 w-8 text-xs font-semibold rounded-lg border transition-colors",
+              p === page
+                ? "bg-primary text-white border-primary"
+                : "border-border hover:bg-secondary text-foreground"
+            )}
+          >
+            {p}
+          </button>
+        )
+      )}
+      <button
+        onClick={() => onPage(Math.min(totalPages, page + 1))}
+        disabled={page === totalPages}
+        className="h-8 px-3 text-xs font-semibold rounded-lg border border-border hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        ›
+      </button>
     </div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type FilterRole = "all" | "ACCOUNT_MANAGER" | "AM" | "MANAGER" | "OFFICER" | "ADMIN";
+type FilterRole = "all" | "ACCOUNT_MANAGER" | "MANAGER" | "OFFICER" | "ADMIN" | "INPUTER";
 type FilterDivisi = "all" | "DPS" | "DSS" | "DGS";
+type PageTab = "list" | "telegram";
+
+// Map a user's stored role to the filter bucket the UI understands.
+// Some imported rows have role="AM" instead of "ACCOUNT_MANAGER" — treat them as the same.
+function normalizeRole(role: string | null | undefined): string {
+  return role === "AM" ? "ACCOUNT_MANAGER" : (role || "ACCOUNT_MANAGER");
+}
 
 export default function ManajemenAmPage() {
   const qc = useQueryClient();
   const { user: currentUser } = useAuth();
-  const isPrivileged = currentUser && ["ADMIN", "OFFICER", "MANAGER"].includes(currentUser.role || "");
+  const isPrivileged = currentUser && ["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(currentUser.role || "");
 
+  const [activeTab, setActiveTab] = useState<PageTab>("list");
   const [search, setSearch] = useState("");
   const [filterDivisi, setFilterDivisi] = useState<FilterDivisi>("all");
   const [filterRole, setFilterRole] = useState<FilterRole>("all");
-  const [filterWitel, setFilterWitel] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [togglingAktifId, setTogglingAktifId] = useState<number | null>(null);
 
   const [showAdd, setShowAdd] = useState(false);
@@ -605,7 +678,6 @@ export default function ManajemenAmPage() {
     staleTime: 30_000,
   });
 
-  // Telegram stats — counts ALL non-DGS roles (not just AM)
   const { data: tgStats } = useQuery<{
     totalNonDgs: number; totalConnected: number;
     totalAktifNonDgs: number; totalAktifConnected: number;
@@ -638,8 +710,7 @@ export default function ManajemenAmPage() {
         role: data.role,
         tipe: data.tipe,
         divisi: data.role === "ACCOUNT_MANAGER" ? data.divisi : "DPS",
-        segmen: data.role === "ACCOUNT_MANAGER" ? (data.segmen || null) : null,
-        witel: data.role === "ACCOUNT_MANAGER" ? data.witel : "SURAMADU",
+        witel: data.role === "ACCOUNT_MANAGER" || data.role === "INPUTER" ? data.witel : "SURAMADU",
         telegramChatId: data.role === "ACCOUNT_MANAGER" ? (data.telegramChatId || null) : null,
         telegramUsername: data.role === "ACCOUNT_MANAGER" ? (data.telegramUsername || null) : null,
         telegramDisplayName: data.role === "ACCOUNT_MANAGER" ? (data.telegramDisplayName || null) : null,
@@ -659,8 +730,7 @@ export default function ManajemenAmPage() {
           role: data.role,
           tipe: data.tipe,
           divisi: data.role === "ACCOUNT_MANAGER" ? data.divisi : undefined,
-          segmen: data.role === "ACCOUNT_MANAGER" ? (data.segmen || null) : null,
-          witel: data.role === "ACCOUNT_MANAGER" ? data.witel : undefined,
+          witel: data.role === "ACCOUNT_MANAGER" || data.role === "INPUTER" ? data.witel : undefined,
           telegramChatId: data.role === "ACCOUNT_MANAGER" ? (data.telegramChatId || null) : undefined,
           telegramUsername: data.role === "ACCOUNT_MANAGER" ? (data.telegramUsername || null) : undefined,
           telegramDisplayName: data.role === "ACCOUNT_MANAGER" ? (data.telegramDisplayName || null) : undefined,
@@ -676,28 +746,84 @@ export default function ManajemenAmPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["am-list"] }); setDeleteTarget(null); },
   });
 
-  const amOnly        = users.filter(u => u.role === "ACCOUNT_MANAGER" || u.role === "AM");
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => apiFetch<{ deleted: number }>("/api/am/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["am-list"] });
+      setSelectedIds(new Set());
+      setShowBulkDelete(false);
+    },
+  });
+
+  const amOnly        = users.filter(u => normalizeRole(u.role) === "ACCOUNT_MANAGER");
   const activeAmOnly  = amOnly.filter(u => u.aktif);
   const managers      = users.filter(u => u.role === "MANAGER");
   const officers      = users.filter(u => u.role === "OFFICER");
+  const inputers      = users.filter(u => u.role === "INPUTER");
   const newAmCount    = amOnly.filter(u => !u.aktif).length;
 
-  const availableWitels = [...new Set(users.map(u => u.witel).filter(Boolean))].sort();
+  // Filtered data
+  const filtered = useMemo(() => {
+    return users.filter(u => {
+      const userRole = normalizeRole(u.role);
+      if (filterRole !== "all" && userRole !== filterRole) return false;
 
-  const filtered = users.filter(u => {
-    if (filterRole !== "all" && u.role !== filterRole) return false;
-    if (filterDivisi !== "all" && (u.role !== "ACCOUNT_MANAGER" || u.divisi !== filterDivisi)) return false;
-    if (filterWitel !== "all" && u.witel !== filterWitel) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return u.nama.toLowerCase().includes(q)
-        || (u.nik || "").includes(q)
-        || (u.segmen || "").toLowerCase().includes(q)
-        || (u.email || "").toLowerCase().includes(q)
-        || (u.witel || "").toLowerCase().includes(q);
+      const isAm = userRole === "ACCOUNT_MANAGER";
+      if (filterDivisi !== "all" && (!isAm || u.divisi !== filterDivisi)) return false;
+
+      if (search) {
+        const q = search.toLowerCase();
+        if (!u.nama.toLowerCase().includes(q) &&
+            !(u.nik || "").toLowerCase().includes(q) &&
+            !(u.email || "").toLowerCase().includes(q) &&
+            !(u.witel || "").toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [users, filterRole, filterDivisi, search]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Sync selected IDs with filtered data
+  const validSelectedIds = useMemo(() =>
+    new Set([...selectedIds].filter(id => filtered.some(u => u.id === id))),
+  [selectedIds, filtered]);
+
+  const allPageSelected = paginated.length > 0 && paginated.every(u => validSelectedIds.has(u.id));
+  const somePageSelected = paginated.some(u => validSelectedIds.has(u.id));
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allPageSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        paginated.forEach(u => next.delete(u.id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        paginated.forEach(u => next.add(u.id));
+        return next;
+      });
     }
-    return true;
-  });
+  }
 
   const dpsCount = activeAmOnly.filter(a => a.divisi === "DPS").length;
   const dssCount = activeAmOnly.filter(a => a.divisi === "DSS").length;
@@ -707,7 +833,7 @@ export default function ManajemenAmPage() {
     return {
       nik: u.nik || "", nama: u.nama, email: u.email || "",
       role: u.role || "AM", tipe: u.tipe || "LESA",
-      divisi: u.divisi, segmen: u.segmen || "", witel: u.witel,
+      divisi: u.divisi, witel: u.witel,
       telegramChatId: u.telegramChatId || "",
       telegramUsername: u.telegramUsername || "",
       telegramDisplayName: u.telegramDisplayName || "",
@@ -721,23 +847,63 @@ export default function ManajemenAmPage() {
     { v: "all", label: "Semua" },
   ];
 
+  const TABS: { id: PageTab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: "list",     label: "List Akun",     icon: <Users className="w-4 h-4" />,        badge: users.length },
+    { id: "telegram", label: "Telegram Akun", icon: <MessageCircle className="w-4 h-4" />, badge: tgStats ? (tgStats.totalNonDgs - tgStats.totalConnected) : undefined },
+  ];
+
   return (
     <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-xl font-display font-bold text-foreground">Manajemen Akun</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Kelola akun Officer, Manager, dan Account Manager Witel Suramadu</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Kelola akun Officer, Manager, Inputer, dan Account Manager Witel Suramadu</p>
         </div>
-        <Button onClick={() => { setFormError(null); setShowAdd(true); }} className="gap-2 shrink-0">
+        <Button onClick={() => { setFormError(null); setShowAdd(true); }} className="gap-2 shrink-0 w-full sm:w-auto">
           <Plus className="w-4 h-4" />
-          Tambah Anggota
+          <span className="sm:hidden">Tambah</span>
+          <span className="hidden sm:inline">Tambah Anggota</span>
         </Button>
       </div>
 
+      {/* Page Button Group: List Akun / Telegram Akun */}
+      <div className="flex items-center gap-1 bg-secondary/60 p-1 rounded-xl w-fit border border-border overflow-x-auto max-w-full">
+        {TABS.map(tab => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all shrink-0",
+                isActive
+                  ? "bg-card text-foreground shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+              )}
+              aria-pressed={isActive}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+              {typeof tab.badge === "number" && (
+                <span className={cn(
+                  "text-[10px] font-black px-1.5 py-0.5 rounded-md",
+                  isActive ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                )}>
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── List Akun Tab ── */}
+      {activeTab === "list" && (
+        <>
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard
           icon={<Users className="w-5 h-5 text-primary" />}
           label="AM Aktif"
@@ -758,6 +924,12 @@ export default function ManajemenAmPage() {
           color="bg-purple-50 dark:bg-purple-950/30"
         />
         <StatCard
+          icon={<MessageCircle className="w-5 h-5 text-teal-600" />}
+          label="Inputer" value={inputers.length}
+          sub="Input data"
+          color="bg-teal-50 dark:bg-teal-950/30"
+        />
+        <StatCard
           icon={<MessageSquare className="w-5 h-5 text-emerald-600" />}
           label="Telegram Aktif" value={tgStats?.totalConnected ?? 0}
           sub={`dari ${tgStats?.totalNonDgs ?? activeAmOnly.length} pengguna aktif`}
@@ -765,7 +937,7 @@ export default function ManajemenAmPage() {
         />
       </div>
 
-      {/* ── Info: AM baru nonaktif (jika ada) ── */}
+      {/* Info: AM baru nonaktif */}
       {isPrivileged && newAmCount > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700">
           <ToggleLeft className="w-5 h-5 text-amber-600 shrink-0" />
@@ -779,146 +951,156 @@ export default function ManajemenAmPage() {
       <div className="bg-card border border-border rounded-xl shadow-sm">
 
         {/* Filter Bar */}
-        <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-3 flex-wrap">
-
-          {/* Role filter — dropdown */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs font-semibold text-muted-foreground">Role:</span>
-            <select
-              value={filterRole}
-              onChange={e => setFilterRole(e.target.value as FilterRole)}
-              className={cn(
-                "h-8 pl-3 pr-7 text-xs font-semibold rounded-lg border border-border bg-background",
-                "focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer",
-                "appearance-none"
-              )}
-              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
-            >
-              <option value="all">Semua Role</option>
-              <option value="ACCOUNT_MANAGER">Account Manager</option>
-              <option value="MANAGER">Manager</option>
-              <option value="OFFICER">Officer</option>
-              <option value="ADMIN">Admin</option>
-            </select>
-          </div>
-
-          {/* Witel filter — dropdown */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs font-semibold text-muted-foreground">Witel:</span>
-            <select
-              value={filterWitel}
-              onChange={e => setFilterWitel(e.target.value)}
-              className={cn(
-                "h-8 pl-3 pr-7 text-xs font-semibold rounded-lg border border-border bg-background",
-                "focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer",
-                "appearance-none",
-                filterWitel !== "all" && "border-primary/50 ring-1 ring-primary/20 text-primary"
-              )}
-              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
-            >
-              <option value="all">Semua Witel</option>
-              {availableWitels.map(w => (
-                <option key={w} value={w}>{w}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Divisi filter — button group (only when showing AM) */}
-          {(filterRole === "all" || filterRole === "ACCOUNT_MANAGER") && (
-            <div className="flex items-center gap-1">
-              {divisiButtons.map(d => (
-                <button
-                  key={d.v}
-                  onClick={() => setFilterDivisi(d.v)}
-                  className={cn(
-                    "h-8 px-3 rounded-lg text-xs font-bold transition-all duration-150 border",
-                    filterDivisi === d.v
-                      ? "bg-primary text-white border-primary shadow-sm"
-                      : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
-                  )}
-                >
-                  {d.label}
-                </button>
-              ))}
+        <div className="px-3 sm:px-4 py-3 border-b border-border bg-secondary/20 space-y-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Role filter */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs font-semibold text-muted-foreground">Role:</span>
+              <select
+                value={filterRole}
+                onChange={e => { setFilterRole(e.target.value as FilterRole); setPage(1); setSelectedIds(new Set()); }}
+                className={cn(
+                  "h-8 pl-3 pr-7 text-xs font-semibold rounded-lg border border-border bg-background",
+                  "focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer",
+                  "appearance-none"
+                )}
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
+              >
+                <option value="all">Semua Role</option>
+                <option value="ACCOUNT_MANAGER">Account Manager</option>
+                <option value="MANAGER">Manager</option>
+                <option value="OFFICER">Officer</option>
+                <option value="INPUTER">Inputer</option>
+                <option value="ADMIN">Admin</option>
+              </select>
             </div>
-          )}
 
-          {/* Search */}
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            {/* Divisi filter */}
+            {(filterRole === "all" || filterRole === "ACCOUNT_MANAGER") && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {divisiButtons.map(d => (
+                  <button
+                    key={d.v}
+                    onClick={() => { setFilterDivisi(d.v); setPage(1); setSelectedIds(new Set()); }}
+                    className={cn(
+                      "h-8 px-3 rounded-lg text-xs font-bold transition-all duration-150 border",
+                      filterDivisi === d.v
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Search full width */}
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
               placeholder="Cari nama, NIK, email…"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
               className="pl-8 pr-7 py-1.5 text-sm bg-background border border-border rounded-lg w-full focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground/60"
             />
             {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          <span className="text-xs text-muted-foreground ml-auto shrink-0">
+          <span className="text-xs text-muted-foreground block">
             {filtered.length} dari {users.length} anggota
           </span>
         </div>
 
+        {/* Bulk action bar */}
+        {isPrivileged && validSelectedIds.size > 0 && (
+          <div className="px-3 sm:px-4 py-2 bg-primary/5 border-b border-primary/20 flex items-center gap-2 sm:gap-3 flex-wrap">
+            <span className="text-xs font-semibold text-primary">{validSelectedIds.size} dipilih</span>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setShowBulkDelete(true)}
+              className="gap-1.5 h-7 text-xs"
+            >
+              <Trash2 className="w-3 h-3" /> Hapus Terpilih
+            </Button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-muted-foreground hover:text-foreground sm:ml-auto"
+            >
+              Batal
+            </button>
+          </div>
+        )}
+
         {/* Table */}
-        <div className="p-3">
+        <div className="p-2 sm:p-3">
           <div className="border border-border overflow-hidden">
           <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse">
+          <table className="w-full text-left text-sm border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-red-700 text-white text-xs font-black uppercase tracking-wide">
-                <th className="px-4 py-3 whitespace-nowrap w-28">NIK</th>
-                <th className="px-4 py-3 min-w-[200px]">Nama</th>
-                <th className="px-4 py-3 w-24">Role</th>
-                <th className="px-4 py-3 w-20">Tipe</th>
-                <th className="px-4 py-3 w-20">Divisi</th>
-                <th className="px-4 py-3 w-28">Witel</th>
-                <th className="px-4 py-3 w-28">Segmen</th>
-                <th className="px-4 py-3 w-32">Telegram</th>
-                <th className="px-4 py-3 w-32">Status</th>
-                <th className="px-4 py-3 w-32">Aksi</th>
+                <th className="px-3 sm:px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={paginated.length > 0 && allPageSelected}
+                    ref={el => { if (el) el.indeterminate = !allPageSelected && somePageSelected; }}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-white/50 accent-white cursor-pointer"
+                  />
+                </th>
+                <th className="px-3 sm:px-4 py-3 whitespace-nowrap w-28">NIK</th>
+                <th className="px-3 sm:px-4 py-3 min-w-[200px]">Nama</th>
+                <th className="px-3 sm:px-4 py-3 w-24">Role</th>
+                <th className="px-3 sm:px-4 py-3 w-20">Tipe</th>
+                <th className="px-3 sm:px-4 py-3 w-20">Divisi</th>
+                <th className="px-3 sm:px-4 py-3 w-28">Witel</th>
+                <th className="px-3 sm:px-4 py-3 w-32">Telegram</th>
+                <th className="px-3 sm:px-4 py-3 w-32">Status</th>
+                <th className="px-3 sm:px-4 py-3 w-32">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 [...Array(5)].map((_, i) => (
                   <tr key={i} className="border-b border-border/50">
-                    {[...Array(9)].map((_, j) => (
+                    {[...Array(10)].map((_, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-secondary rounded animate-pulse" style={{ width: `${[60, 160, 60, 40, 40, 80, 70, 80, 90][j]}px` }} />
+                        <div className="h-4 bg-secondary rounded animate-pulse" style={{ width: `${[40, 60, 160, 60, 40, 40, 80, 80, 90, 90][j]}px` }} />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : error ? (
-                <tr><td colSpan={10} className="text-center py-12">
+                <tr><td colSpan={11} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <AlertTriangle className="w-6 h-6 text-destructive" />
                     <p className="text-sm">Gagal memuat data</p>
                   </div>
                 </td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-16">
+              ) : paginated.length === 0 ? (
+                <tr><td colSpan={11} className="text-center py-16">
                   <div className="flex flex-col items-center gap-3 text-muted-foreground">
                     <Users className="w-8 h-8 opacity-30" />
                     <p className="text-sm font-medium">
-                      {search || filterDivisi !== "all" || filterRole !== "all" || filterWitel !== "all"
+                      {search || filterDivisi !== "all" || filterRole !== "all"
                         ? "Tidak ada anggota yang cocok dengan filter"
                         : "Belum ada data anggota"}
                     </p>
-                    {!search && filterDivisi === "all" && filterRole === "all" && filterWitel === "all" && (
+                    {!search && filterDivisi === "all" && filterRole === "all" && (
                       <Button size="sm" onClick={() => setShowAdd(true)}>
                         <Plus className="w-3.5 h-3.5" /> Tambah Anggota Pertama
                       </Button>
                     )}
                   </div>
                 </td></tr>
-              ) : filtered.map(u => (
+              ) : paginated.map(u => (
                 <UserRow
                   key={u.id}
                   user={u}
@@ -927,12 +1109,15 @@ export default function ManajemenAmPage() {
                   isPrivileged={!!isPrivileged}
                   onToggleAktif={() => aktifMutation.mutate({ id: u.id, aktif: !u.aktif })}
                   togglingAktif={togglingAktifId === u.id}
+                  selected={validSelectedIds.has(u.id)}
+                  onToggleSelect={() => toggleSelect(u.id)}
                 />
               ))}
             </tbody>
           </table>
           </div>
           </div>
+          <Pagination total={filtered.length} page={currentPage} onPage={p => setPage(p)} />
         </div>
       </div>
 
@@ -969,6 +1154,37 @@ export default function ManajemenAmPage() {
         name={deleteTarget?.nama ?? ""}
         loading={deleteMutation.isPending}
       />
+
+      {/* Bulk Delete Confirm */}
+      <Dialog open={showBulkDelete} onOpenChange={v => !v && setShowBulkDelete(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+              </div>
+              <DialogTitle className="text-base">Hapus {validSelectedIds.size} Anggota</DialogTitle>
+            </div>
+            <DialogDescription className="text-sm text-muted-foreground leading-relaxed">
+              Apakah kamu yakin ingin menghapus <span className="font-semibold text-foreground">{validSelectedIds.size} anggota</span> yang dipilih? Data ini tidak dapat dikembalikan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowBulkDelete(false)} disabled={bulkDeleteMutation.isPending}>Batal</Button>
+            <Button variant="destructive" onClick={() => bulkDeleteMutation.mutate([...validSelectedIds])} disabled={bulkDeleteMutation.isPending}>
+              {bulkDeleteMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Hapus {validSelectedIds.size} Anggota
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+        </>
+      )}
+
+      {/* ── Telegram Akun Tab ── */}
+      {activeTab === "telegram" && (
+        <VerifikasiSection />
+      )}
     </div>
   );
 }

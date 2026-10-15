@@ -5,8 +5,30 @@ import { desc, eq, and, sql } from "drizzle-orm";
 import { detectPeriod, extractSnapshotDateFromUrl, slugify } from "../import/excel";
 import { downloadDriveFileAsRows, runDriveImport } from "./importer";
 import { checkDriveFolderAndLog } from "./scheduler";
+import { sendReminderToAllAMs, notifyPerformanceSnapshot } from "../telegram/service";
+import { logger } from "../../shared/logger";
 
 const router: IRouter = Router();
+
+/** Send Telegram reminders after a successful GDrive import */
+async function triggerGdriveReminders(type: string, importId: number, period: string): Promise<void> {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.autoSendOnImport || !settings?.telegramBotToken) {
+    logger.info({ autoSendOnImport: settings?.autoSendOnImport, hasToken: !!settings?.telegramBotToken }, "GDrive reminder skipped: setting disabled");
+    return;
+  }
+  logger.info({ type, importId, period }, "GDrive sync: triggering Telegram reminders");
+  if (type === "performance") {
+    const result = await notifyPerformanceSnapshot(importId);
+    logger.info({ ...result }, "GDrive performance reminder result");
+  } else {
+    await sendReminderToAllAMs(period, {
+      includePerformance: false,
+      includeFunnel: type === "funnel",
+      includeActivity: type === "activity",
+    });
+  }
+}
 
 const DRIVE_FOLDER_KEYS: Record<string, keyof typeof appSettingsTable.$inferSelect> = {
   performance: "gDriveFolderPerformance",
@@ -123,6 +145,14 @@ router.post("/sync", requireAuth, async (req, res): Promise<void> => {
       snapshotDate,
       sheetName || undefined,
     );
+
+    // ── Trigger Telegram reminder for successfully imported data ────────────
+    if (result && (result as any).importId) {
+      const reminderPeriod = (result as any).period || "";
+      triggerGdriveReminders(String(type), (result as any).importId, reminderPeriod).catch((err) => {
+        logger.error({ err, type: String(type) }, "GDrive sync reminder failed");
+      });
+    }
 
     res.json({ ...result, fileName: targetFile.name, fileModified: targetFile.modifiedTime, snapshotDate });
   } catch (e: any) {

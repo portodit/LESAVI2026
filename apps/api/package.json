@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "pnpm run build && pnpm run start",
+    "dev:dashboard": "pnpm run build:dashboard && pnpm run dev",
+    "build:dashboard": "cd ../dashboard && pnpm run build",
     "build": "node ./build.mjs",
-    "start": "node --max-old-space-size=1024 ./dist/index.mjs",
+    "start": "node --env-file=../../.env --max-old-space-size=1024 ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed:build": "node ./build-seeds.mjs",
     "seed": "pnpm run seed:build && node ./dist-seeds/index.mjs",

@@ -3,7 +3,7 @@ import { db, telegramLogsTable, accountManagersTable, appSettingsTable, telegram
 import { eq, desc, inArray, and, isNull, isNotNull, gt } from "drizzle-orm";
 import { requireAuth } from "../../shared/auth";
 import { checkPermission } from "../../shared/permissions";
-import { sendReminderToAllAMs, sendToTelegram } from "../telegram/service";
+import { sendReminderToAllAMs, sendToTelegram, notifyPerformanceSnapshot } from "../telegram/service";
 import { getBotUsers, pollOnce } from "./poller";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -512,6 +512,40 @@ router.post("/clear-all-links", requireAuth, async (req, res): Promise<void> => 
     .where(inArray(telegramAccessCodesTable.status, ["ACTIVE"]));
 
   res.json({ success: true, clearedCount });
+});
+
+// ── Test: trigger performance snapshot notification for any import ID ────────────
+router.post("/test-notify/:importId", async (req, res): Promise<void> => {
+  try {
+    const importId = parseInt(req.params.importId, 10);
+    if (isNaN(importId)) {
+      res.status(400).json({ error: "importId harus angka" });
+      return;
+    }
+
+    const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+    if (!imp) {
+      res.status(404).json({ error: "Import tidak ditemukan" });
+      return;
+    }
+    if (imp.type !== "performance") {
+      res.status(400).json({ error: "Hanya support tipe performance" });
+      return;
+    }
+
+    const result = await notifyPerformanceSnapshot(importId);
+    res.json({
+      success: true,
+      importId,
+      period: imp.period,
+      type: imp.type,
+      ...result,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/test-notify]", msg);
+    res.status(500).json({ error: msg });
+  }
 });
 
 export default router;

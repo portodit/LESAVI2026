@@ -1,7 +1,13 @@
 import { db, appSettingsTable, accountManagersTable, performanceDataTable, salesFunnelTable, salesActivityTable, telegramLogsTable, dataImportsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
-import { getPublicBaseUrl } from "../../shared/publicUrl";
+import { getPublicBaseUrlSafe, toHttpsUrl, isLocalUrl } from "../../shared/publicUrl";
+import {
+  type PerfAnnouncementCtx,
+  renderPerfAnnouncement,
+  formatSnapshotNameId,
+  getGreetingWIB,
+} from "./announcementTemplates";
 
 const MONTH_NAMES = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -21,25 +27,28 @@ function formatSnapshotDate(snapshotDate: string | null | undefined, period: str
 
 // ── Snapshot-aware helpers ──────────────────────────────────────────────────
 
-async function getSnapshotAwarePerfs(year: number, month: number) {
-  const [latestImport] = await db.select()
+interface SnapshotPerfResult {
+  rows: typeof performanceDataTable.$inferSelect[];
+  importId: number | null;
+}
+
+export async function getLatestSnapshotId(): Promise<number | null> {
+  const [snap] = await db.select({ id: dataImportsTable.id })
     .from(dataImportsTable)
     .where(eq(dataImportsTable.type, "performance"))
-    .orderBy(desc(dataImportsTable.createdAt))
+    .orderBy(desc(dataImportsTable.id))
     .limit(1);
+  return snap?.id ?? null;
+}
 
-  if (latestImport) {
-    const fromLatest = await db.select().from(performanceDataTable)
-      .where(and(
-        eq(performanceDataTable.importId, latestImport.id),
-        eq(performanceDataTable.tahun, year),
-        eq(performanceDataTable.bulan, month),
-      ));
-    if (fromLatest.length > 0) return fromLatest;
-  }
-
-  return db.select().from(performanceDataTable)
-    .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
+async function getSnapshotAwarePerfs(snapshotId: number, year: number, month: number): Promise<SnapshotPerfResult> {
+  const rows = await db.select().from(performanceDataTable)
+    .where(and(
+      eq(performanceDataTable.importId, snapshotId),
+      eq(performanceDataTable.tahun, year),
+      eq(performanceDataTable.bulan, month),
+    ));
+  return { rows, importId: snapshotId };
 }
 
 export async function getAvailablePerfPeriods(nik: string): Promise<{ tahun: number; bulan: number }[]> {
@@ -47,7 +56,19 @@ export async function getAvailablePerfPeriods(nik: string): Promise<{ tahun: num
     tahun: performanceDataTable.tahun,
     bulan: performanceDataTable.bulan,
   }).from(performanceDataTable)
-    .where(eq(performanceDataTable.nik, nik));
+    .where(and(
+      eq(performanceDataTable.nik, nik),
+      sql`(${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0)`,
+    ));
+  return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
+}
+
+export async function getAvailablePerfPeriodsAll(): Promise<{ tahun: number; bulan: number }[]> {
+  const rows = await db.selectDistinct({
+    tahun: performanceDataTable.tahun,
+    bulan: performanceDataTable.bulan,
+  }).from(performanceDataTable)
+    .where(sql`(${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0)`);
   return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
 }
 
@@ -105,13 +126,13 @@ function buildFeedback(firstName: string, achCm: number, achYtd: number, monthNa
 }
 
 function getEmbedUrl(importId?: number): string {
-  const base = `${getPublicBaseUrl()}/presentation`;
-  if (importId) return `${base}?type=performance&id=${importId}`;
-  return base;
+  const base = getPublicBaseUrlSafe();
+  if (importId) return `${base}/presentation?type=performance&id=${importId}`;
+  return `${base}/presentation`;
 }
 
 function getFunnelDetailUrl(): string {
-  return `${getPublicBaseUrl()}/visualisasi/funnel`;
+  return `${getPublicBaseUrlSafe()}/visualisasi/funnel`;
 }
 
 // ── Funnel helpers ──────────────────────────────────────────────────────────
@@ -141,14 +162,17 @@ function countByStatus(lops: { statusF?: string | null }[]): FunnelCounts {
 async function buildPerformanceMessage(
   nik: string,
   period: string,
+  options: { autoFallback?: boolean } = {},
 ): Promise<{ parts: string[]; keyboard: object } | null> {
-  const [year, month] = period.split("-").map(Number);
+  // Period may come in as "YYYY-MM" (2026-08) or "YYYYMM" (202608)
+  const parsedYear = period.length === 6
+    ? Number(period.slice(0, 4))
+    : Number(period.split("-")[0]);
 
   const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
   if (!am) return null;
 
   const firstName = am.nama.split(" ")[0];
-  const monthName = MONTH_NAMES[month] || String(month);
 
   // Get active AM NIKs (same rule as dashboard: ACCOUNT_MANAGER or AM, aktif=true)
   const allAms = await db.select().from(accountManagersTable);
@@ -158,54 +182,162 @@ async function buildPerformanceMessage(
       .map(m => m.nik)
   );
 
-  const allPerfs = await getSnapshotAwarePerfs(year, month);
-  // Only include active AMs
-  const activePerfs = allPerfs.filter(p => activeNikSet.has(p.nik));
+  // ── Auto-fallback: when autoFallback is on (Laporan Terkini, current month),
+  //    we lock onto the LATEST snapshot, then walk back to find the latest month
+  //    in THAT snapshot that has real revenue. This is the "bulan terkini yang ada
+  //    data lengkapnya" — the most recent month in the latest snapshot.
+  const snapshotId = await getLatestSnapshotId();
 
-  // Deduplicate: keep one entry per NIK (the one with highest achRate)
-  const byNik = new Map<string, typeof activePerfs[0]>();
-  for (const p of activePerfs) {
-    const existing = byNik.get(p.nik);
-    if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
-      byNik.set(p.nik, p);
+  let [year, month] = parsedYear > 2000
+    ? [parsedYear, Number(period.length === 6 ? period.slice(4, 6) : period.split("-")[1])]
+    : [parsedYear, Number(period.slice(4, 6))];
+
+  if (options.autoFallback && snapshotId) {
+    // Walk back within the latest snapshot to find month with real revenue
+    for (let step = 0; step < 12; step++) {
+      const { rows: probePerfs } = await getSnapshotAwarePerfs(snapshotId, year, month);
+      const probeByNik = new Map<string, typeof probePerfs[0]>();
+      for (const x of probePerfs) {
+        if (!activeNikSet.has(x.nik)) continue;
+        const existing = probeByNik.get(x.nik);
+        if (!existing || parseFloat(String(x.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+          probeByNik.set(x.nik, x);
+        }
+      }
+      const probeRow = probeByNik.get(nik);
+      const probeTotalReal =
+        parseFloat(String(probeRow?.realReguler ?? 0)) +
+        parseFloat(String(probeRow?.realSustain ?? 0)) +
+        parseFloat(String(probeRow?.realScaling ?? 0)) +
+        parseFloat(String(probeRow?.realNgtma ?? 0));
+      if (probeTotalReal > 0) break;
+      month--;
+      if (month === 0) { month = 12; year--; }
     }
   }
-  const uniquePerfs = [...byNik.values()];
 
-  const p = uniquePerfs.find(x => x.nik === nik);
-  // Rank relative to unique active AMs who have perf data
-  const totalAMs = uniquePerfs.length;
+  const monthName = MONTH_NAMES[month] || String(month);
 
-  const sortedByCm = [...uniquePerfs].sort((a, b) =>
-    (parseFloat(String(b.achRate ?? 0)) - parseFloat(String(a.achRate ?? 0))));
-  const rankCm = sortedByCm.findIndex(x => x.nik === nik) + 1;
-  const sortedByYtd = [...uniquePerfs].sort((a, b) =>
-    (parseFloat(String(b.achRateYtd ?? 0)) - parseFloat(String(a.achRateYtd ?? 0))));
-  const rankYtd = sortedByYtd.findIndex(x => x.nik === nik) + 1;
+  // CM: query from the locked snapshot for (year, month)
+  const { rows: allPerfs } = snapshotId
+    ? await getSnapshotAwarePerfs(snapshotId, year, month)
+    : ({ rows: [], importId: null } as SnapshotPerfResult);
 
-  const ytdPerfs = await db.select().from(performanceDataTable)
-    .where(and(eq(performanceDataTable.nik, nik), eq(performanceDataTable.tahun, year)));
+  // Aggregate all rows per NIK to get AM-level sums (same as dashboard).
+  // Each NIK can have multiple customer rows; we SUM all of them to get the
+  // true AM-level real/target/achievement — NOT pick one customer row.
+  const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
+  const byNik = new Map<string, {
+    nik: string;
+    realReguler: number; targetReguler: number;
+    realSustain: number; targetSustain: number;
+    realScaling: number; targetScaling: number;
+    realNgtma: number; targetNgtma: number;
+  }>();
+  for (const p of allPerfs) {
+    if (!activeNikSet.has(p.nik)) continue;
+    const cur = byNik.get(p.nik) ?? {
+      nik: p.nik,
+      realReguler: 0, targetReguler: 0,
+      realSustain: 0, targetSustain: 0,
+      realScaling: 0, targetScaling: 0,
+      realNgtma: 0, targetNgtma: 0,
+    };
+    byNik.set(p.nik, {
+      nik: p.nik,
+      realReguler: cur.realReguler + fmtNum(p.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(p.targetReguler),
+      realSustain: cur.realSustain + fmtNum(p.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(p.targetSustain),
+      realScaling: cur.realScaling + fmtNum(p.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(p.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(p.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(p.targetNgtma),
+    });
+  }
+
+  const amList = [...byNik.values()].filter(a =>
+    (a.realReguler + a.realSustain + a.realScaling + a.realNgtma) > 0
+    || (a.targetReguler + a.targetSustain + a.targetScaling + a.targetNgtma) > 0
+  );
+  const totalAMs = amList.length;
+
+  const myAm = byNik.get(nik);
+  if (!myAm) return null;
+
+  // Rank CM: by Reguler achievement only (matching dashboard /am-rank default "Reguler")
+  const computeAch = (real: number, target: number) => target > 0 ? (real / target) * 100 : 0;
+  const sortedByCm = [...amList].sort((a, b) => {
+    const achA = computeAch(a.realReguler, a.targetReguler);
+    const achB = computeAch(b.realReguler, b.targetReguler);
+    return achB - achA;
+  });
+  const rankCm = sortedByCm.findIndex(a => a.nik === nik) + 1;
+
+  // YTD: query all months Jan→month from the same snapshot for this AM
+  const ytdPerfs = snapshotId
+    ? await db.select().from(performanceDataTable)
+        .where(and(
+          eq(performanceDataTable.nik, nik),
+          eq(performanceDataTable.tahun, year),
+          eq(performanceDataTable.importId, snapshotId),
+        ))
+    : [];
   const ytdUpTo = ytdPerfs.filter(x => x.bulan <= month);
 
-  const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
+  // Aggregate YTD per-AM for ranking (include all active AMs, not just this one)
+  const ytdByNik = new Map<string, { nik: string; realReguler: number; targetReguler: number; realSustain: number; targetSustain: number; realScaling: number; targetScaling: number; realNgtma: number; targetNgtma: number }>();
+  for (const row of (snapshotId
+    ? await db.select().from(performanceDataTable)
+        .where(and(eq(performanceDataTable.importId, snapshotId), eq(performanceDataTable.tahun, year)))
+    : [])) {
+    if (!activeNikSet.has(row.nik)) continue;
+    if (row.bulan > month) continue;
+    const cur = ytdByNik.get(row.nik) ?? {
+      nik: row.nik,
+      realReguler: 0, targetReguler: 0,
+      realSustain: 0, targetSustain: 0,
+      realScaling: 0, targetScaling: 0,
+      realNgtma: 0, targetNgtma: 0,
+    };
+    ytdByNik.set(row.nik, {
+      nik: row.nik,
+      realReguler: cur.realReguler + fmtNum(row.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(row.targetReguler),
+      realSustain: cur.realSustain + fmtNum(row.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(row.targetSustain),
+      realScaling: cur.realScaling + fmtNum(row.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(row.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(row.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(row.targetNgtma),
+    });
+  }
+  // Rank YTD: by Reguler achievement only (matching dashboard /am-rank default "Reguler")
+  const ytdList = [...ytdByNik.values()].filter(a =>
+    a.realReguler > 0 || a.targetReguler > 0
+  );
+  const sortedByYtd = [...ytdList].sort((a, b) => {
+    const achA = computeAch(a.realReguler, a.targetReguler);
+    const achB = computeAch(b.realReguler, b.targetReguler);
+    return achB - achA;
+  });
+  const rankYtd = sortedByYtd.findIndex(a => a.nik === nik) + 1;
 
-  const realRegulerCm = fmtNum(p?.realReguler);
-  const targetRegulerCm = fmtNum(p?.targetReguler);
+  const realRegulerCm = myAm.realReguler;
+  const targetRegulerCm = myAm.targetReguler;
+  const realSustainCm = myAm.realSustain;
+  const targetSustainCm = myAm.targetSustain;
+  const realScalingCm = myAm.realScaling;
+  const targetScalingCm = myAm.targetScaling;
+  const realNgtmaCm = myAm.realNgtma;
+  const targetNgtmaCm = myAm.targetNgtma;
+
   const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realReguler), 0);
   const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetReguler), 0);
-
-  const realSustainCm = fmtNum(p?.realSustain);
-  const targetSustainCm = fmtNum(p?.targetSustain);
   const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realSustain), 0);
   const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetSustain), 0);
-
-  const realScalingCm = fmtNum(p?.realScaling);
-  const targetScalingCm = fmtNum(p?.targetScaling);
   const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realScaling), 0);
   const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetScaling), 0);
-
-  const realNgtmaCm = fmtNum(p?.realNgtma);
-  const targetNgtmaCm = fmtNum(p?.targetNgtma);
   const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realNgtma), 0);
   const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetNgtma), 0);
 
@@ -225,13 +357,12 @@ async function buildPerformanceMessage(
   const totalTargetYtd = targetRegulerYtd + targetSustainYtd + targetScalingYtd + targetNgtmaYtd;
   const achTotalYtd = totalTargetYtd > 0 ? (totalRealYtd / totalTargetYtd) * 100 : 0;
 
-  const [latestImport] = await db.select().from(dataImportsTable)
-    .where(eq(dataImportsTable.type, "performance"))
-    .orderBy(desc(dataImportsTable.createdAt))
-    .limit(1);
-  const snapDate = formatSnapshotDate(latestImport?.snapshotDate ?? null, latestImport?.period ?? null, "-");
+  const [snapshotInfo] = snapshotId
+    ? await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, snapshotId))
+    : [];
+  const snapDate = formatSnapshotDate(snapshotInfo?.snapshotDate ?? null, snapshotInfo?.period ?? null, "-");
 
-  const noRealData = !p || (totalRealCm === 0 && totalRealYtd === 0);
+  const noRealData = !myAm || (totalRealCm === 0 && totalRealYtd === 0);
   const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
 
   // ── Part 1: Header + Section A, B, C, D ──────────────────────────────────
@@ -304,9 +435,9 @@ async function buildPerformanceMessage(
   part2 += `<b>📈 RINGKASAN PERFORMANSI</b>\n`;
   part2 += `━━━━━━━━━━━━━━━━━━\n\n`;
   part2 += `<b>① Current Month — ${monthName} ${year}</b>\n`;
-  part2 += `Capaian: <b>${fmtPct(achTotalCm)}</b> · Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>\n\n`;
+  part2 += `Capaian: <b>${fmtPct(achRegulerCm)}</b> · Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>\n\n`;
   part2 += `<b>② Year To Date — Januari s/d ${monthName} ${year}</b>\n`;
-  part2 += `Capaian: <b>${fmtPct(achTotalYtd)}</b> · Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>\n\n`;
+  part2 += `Capaian: <b>${fmtPct(achRegulerYtd)}</b> · Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>\n\n`;
 
   part2 += `━━━━━━━━━━━━━━━━━━\n`;
   part2 += `<b>💬 FEEDBACK PERFORMANSI</b>\n`;
@@ -317,7 +448,7 @@ async function buildPerformanceMessage(
     part2 += feedback ?? "";
   }
 
-  const embedUrl = getEmbedUrl(latestImport?.id);
+  const embedUrl = getEmbedUrl(snapshotId ?? undefined);
   const keyboard = {
     inline_keyboard: [
       [{ text: "🔄 Pilih Bulan", callback_data: "perf:menu" }],
@@ -699,13 +830,13 @@ async function buildActivityMessage(nik: string, _period: string): Promise<strin
 export async function buildTelegramMessages(
   nik: string,
   period: string,
-  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean }
+  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean; autoFallback?: boolean }
 ): Promise<{ messages: string[]; perfKeyboard?: object }> {
   const messages: string[] = [];
   let perfKeyboard: object | undefined;
 
   if (options.includePerformance) {
-    const result = await buildPerformanceMessage(nik, period);
+    const result = await buildPerformanceMessage(nik, period, { autoFallback: options.autoFallback });
     if (result) {
       messages.push(...result.parts);
       perfKeyboard = result.keyboard;
@@ -729,10 +860,27 @@ export async function buildTelegramMessages(
 export async function buildTelegramMessage(
   nik: string,
   period: string,
-  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean }
+  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean; autoFallback?: boolean }
 ): Promise<string> {
   const result = await buildTelegramMessages(nik, period, options);
   return result.messages.join("\n\n");
+}
+
+async function fetchWith429Retry(
+  url: string,
+  init: RequestInit,
+  maxRetries = 3,
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000), ...init });
+    if (response.status !== 429) return response;
+    const data = await response.json() as { parameters?: { retry_after?: number } };
+    const waitSec = data.parameters?.retry_after ?? Math.pow(2, attempt);
+    logger.warn({ attempt, waitSec, url }, "Telegram 429 rate limited — waiting before retry");
+    await new Promise(r => setTimeout(r, (waitSec + 1) * 1000));
+  }
+  // Final attempt without retry-after
+  return fetch(url, { signal: AbortSignal.timeout(15000), ...init });
 }
 
 export async function sendToTelegram(
@@ -740,15 +888,14 @@ export async function sendToTelegram(
   chatId: string,
   message: string,
   replyMarkup?: object
-): Promise<void> {
+): Promise<number | null> {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   const body: Record<string, unknown> = { chat_id: chatId, text: message, parse_mode: "Markdown" };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url, {
+  const response = await fetchWith429Retry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {
@@ -756,6 +903,9 @@ export async function sendToTelegram(
     logger.error({ status: response.status, chatId, error: data.description }, "sendToTelegram failed");
     throw new Error(data.description || "Telegram API error");
   }
+
+  const data = await response.json() as { ok: boolean; result?: { message_id?: number } };
+  return data.result?.message_id ?? null;
 }
 
 export async function sendPhotoToTelegram(
@@ -775,11 +925,10 @@ export async function sendPhotoToTelegram(
     body.parse_mode = "Markdown";
   }
   if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url, {
+  const response = await fetchWith429Retry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
@@ -803,11 +952,10 @@ export async function editMessageText(
     parse_mode: "Markdown",
   };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url, {
+  const response = await fetchWith429Retry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) {
     const data = await response.json() as { description?: string };
@@ -838,7 +986,7 @@ export async function sendToTelegramHtml(
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   const body: Record<string, unknown> = { chat_id: chatId, text: message, parse_mode: "HTML" };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url, {
+  const response = await fetchWith429Retry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -851,7 +999,7 @@ export async function sendToTelegramHtml(
 }
 
 export async function answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string): Promise<void> {
-  await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+  await fetchWith429Retry(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
@@ -914,6 +1062,9 @@ export async function sendReminderToAllAMs(
         nik: am.nik, namaAm: am.nama, telegramChatId: am.telegramChatId,
         status: "sent", period, messageType: "reminder",
       });
+
+      // Delay between different AMs to avoid rate limiting (Telegram limit ~30 msg/sec)
+      await new Promise(r => setTimeout(r, 120));
     } catch (error) {
       failed++;
       const errMsg = error instanceof Error ? error.message : "Unknown error";
@@ -926,6 +1077,758 @@ export async function sendReminderToAllAMs(
 
       logger.error({ nik: am.nik, error: errMsg }, "Failed to send Telegram message");
     }
+  }
+
+  return { sent, failed, skipped, details };
+}
+
+// ── Performance Snapshot Notification (personalized per-AM) ─────────────────────
+
+interface RankedAm {
+  nik: string;
+  namaAm: string;
+  telegramChatId: string | null;
+  /** Latest month (tahun, bulan) with real revenue in the snapshot. */
+  periodYear: number;
+  periodMonth: number;
+  /** Reguler component current-month totals (used in CM highlight). */
+  realReguler: number;
+  targetReguler: number;
+  achReguler: number;
+  /** Aggregated current-month totals across all customers (kept for compatibility). */
+  realRevenue: number;
+  targetRevenue: number;
+  achRate: number;
+  /** Aggregated YTD totals (Jan..periodMonth, same year). */
+  realRevenueYtd: number;
+  targetRevenueYtd: number;
+  achRateYtd: number;
+  /** Reguler component YTD (used in the highlight). */
+  ytdRegulerActual: number;
+  ytdRegulerTarget: number;
+  ytdRegulerAchPct: number;
+  rankCm: number;
+  rankYtd: number;
+  /** Total AMs in the CM ranking (so the rank sentence says "dari N AM" correctly). */
+  rankCmTotal: number;
+  /** Total AMs in the YTD ranking. */
+  rankYtdTotal: number;
+}
+
+function fmtNum(v: unknown): number {
+  return parseFloat(String(v ?? 0)) || 0;
+}
+
+const MONTH_NAMES_ID = [
+  "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/**
+ * Walk back inside a snapshot from the latest (tahun, bulan) until we find
+ * a month that actually has revenue (any of realReguler/Sustain/Scaling/Ngtma
+ * is > 0). Returns the (tahun, bulan) of that month, or 0/0 if the snapshot
+ * has no revenue-bearing rows at all.
+ *
+ * Mirrors the autoFallback logic in buildPerformanceMessage so the
+ * notification uses the same data period as the Laporan Terkini view.
+ */
+function resolveDataPeriod(rows: { tahun: number; bulan: number; realReguler: unknown; realSustain: unknown; realScaling: unknown; realNgtma: unknown }[]): { year: number; month: number } {
+  let year = 0, month = 0;
+  for (const r of rows) {
+    if (r.tahun > year || (r.tahun === year && r.bulan > month)) {
+      year = r.tahun;
+      month = r.bulan;
+    }
+  }
+  if (year === 0) return { year, month };
+
+  for (let step = 0; step < 12; step++) {
+    const totalAtMonth = rows.reduce((s, r) => {
+      if (r.tahun !== year || r.bulan !== month) return s;
+      return s + fmtNum(r.realReguler) + fmtNum(r.realSustain) + fmtNum(r.realScaling) + fmtNum(r.realNgtma);
+    }, 0);
+    if (totalAtMonth > 0) return { year, month };
+    month--;
+    if (month === 0) { month = 12; year--; }
+  }
+  return { year, month };
+}
+
+async function computeSnapshotRanks(snapshotId: number): Promise<Map<string, RankedAm>> {
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms
+      .filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || ""))
+      .map(m => m.nik)
+  );
+  const chatIdMap = new Map(allAms.map(m => [m.nik, m.telegramChatId]));
+  const nameMap = new Map(allAms.map(m => [m.nik, m.nama]));
+
+  const rows = await db.select().from(performanceDataTable)
+    .where(eq(performanceDataTable.importId, snapshotId));
+
+  // Filter to active AMs only — keep NIKs for ranking set
+  const activeRows = rows.filter(r => r.nik && activeNikSet.has(r.nik));
+  if (activeRows.length === 0) return new Map<string, RankedAm>();
+
+  const { year: periodYear, month: periodMonth } = resolveDataPeriod(activeRows);
+  if (periodYear === 0) return new Map<string, RankedAm>();
+
+  // Aggregate CM totals per NIK: SUM all customer rows for the data period
+  interface AmTotals {
+    nik: string;
+    realReguler: number; targetReguler: number;
+    realSustain: number; targetSustain: number;
+    realScaling: number; targetScaling: number;
+    realNgtma: number; targetNgtma: number;
+  }
+  const cmByNik = new Map<string, AmTotals>();
+  for (const r of activeRows) {
+    if (r.tahun !== periodYear || r.bulan !== periodMonth) continue;
+    const cur = cmByNik.get(r.nik) ?? {
+      nik: r.nik,
+      realReguler: 0, targetReguler: 0,
+      realSustain: 0, targetSustain: 0,
+      realScaling: 0, targetScaling: 0,
+      realNgtma: 0, targetNgtma: 0,
+    };
+    cmByNik.set(r.nik, {
+      nik: r.nik,
+      realReguler: cur.realReguler + fmtNum(r.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(r.targetReguler),
+      realSustain: cur.realSustain + fmtNum(r.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(r.targetSustain),
+      realScaling: cur.realScaling + fmtNum(r.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(r.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(r.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(r.targetNgtma),
+    });
+  }
+
+  // Aggregate YTD per NIK: SUM all customer rows where tahun=periodYear AND bulan<=periodMonth
+  const ytdByNik = new Map<string, AmTotals>();
+  for (const r of activeRows) {
+    if (r.tahun !== periodYear) continue;
+    if (r.bulan > periodMonth) continue;
+    const cur = ytdByNik.get(r.nik) ?? {
+      nik: r.nik,
+      realReguler: 0, targetReguler: 0,
+      realSustain: 0, targetSustain: 0,
+      realScaling: 0, targetScaling: 0,
+      realNgtma: 0, targetNgtma: 0,
+    };
+    ytdByNik.set(r.nik, {
+      nik: r.nik,
+      realReguler: cur.realReguler + fmtNum(r.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(r.targetReguler),
+      realSustain: cur.realSustain + fmtNum(r.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(r.targetSustain),
+      realScaling: cur.realScaling + fmtNum(r.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(r.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(r.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(r.targetNgtma),
+    });
+  }
+
+  // Rank by Reguler achievement only (matching dashboard /am-rank default)
+  const computeAch = (real: number, target: number) => target > 0 ? (real / target) * 100 : 0;
+  const sumTotals = (a: AmTotals) => ({
+    real: a.realReguler + a.realSustain + a.realScaling + a.realNgtma,
+    target: a.targetReguler + a.targetSustain + a.targetScaling + a.targetNgtma,
+  });
+  const achReguler = (a: AmTotals) => computeAch(a.realReguler, a.targetReguler);
+
+  // For ranking we include any AM that has either CM data or YTD data with
+  // a non-zero Reguler target, so we don't push AMs with only target rows off the board.
+  const candidates = new Set<string>([...cmByNik.keys(), ...ytdByNik.keys()]);
+  const candidateRows = [...candidates].map(nik => {
+    const cm = cmByNik.get(nik) ?? null;
+    const ytd = ytdByNik.get(nik) ?? null;
+    return { nik, cm, ytd };
+  });
+
+  // CM rank — sort by Reguler achievement (CM), include AMs that have CM data
+  const cmRanked = candidateRows
+    .filter(c => c.cm !== null)
+    .map(c => ({ nik: c.nik, ach: achReguler(c.cm!), target: c.cm!.targetReguler }))
+    .filter(c => c.target > 0 || c.ach > 0)
+    .sort((a, b) => b.ach - a.ach);
+
+  // YTD rank — sort by Reguler achievement (YTD)
+  const ytdRanked = candidateRows
+    .filter(c => c.ytd !== null)
+    .map(c => ({ nik: c.nik, ach: achReguler(c.ytd!), target: c.ytd!.targetReguler }))
+    .filter(c => c.target > 0 || c.ach > 0)
+    .sort((a, b) => b.ach - a.ach);
+
+  const result = new Map<string, RankedAm>();
+  cmRanked.forEach((c, i) => {
+    const cm = cmByNik.get(c.nik)!;
+    const ytd = ytdByNik.get(c.nik);
+    const cmSum = sumTotals(cm);
+    const ytdSum = ytd ? sumTotals(ytd) : { real: 0, target: 0 };
+    const ytdRegulerAchPct = ytd ? achReguler(ytd) : 0;
+    result.set(c.nik, {
+      nik: c.nik,
+      namaAm: cm ? (nameMap.get(c.nik) ?? c.nik) : (nameMap.get(c.nik) ?? c.nik),
+      telegramChatId: chatIdMap.get(c.nik) ?? null,
+      periodYear, periodMonth,
+      realReguler: cm.realReguler,
+      targetReguler: cm.targetReguler,
+      achReguler: cm.targetReguler > 0 ? (cm.realReguler / cm.targetReguler) * 100 : 0,
+      realRevenue: cmSum.real,
+      targetRevenue: cmSum.target,
+      achRate: cmSum.target > 0 ? (cmSum.real / cmSum.target) * 100 : 0,
+      realRevenueYtd: ytdSum.real,
+      targetRevenueYtd: ytdSum.target,
+      achRateYtd: ytdSum.target > 0 ? (ytdSum.real / ytdSum.target) * 100 : 0,
+      ytdRegulerActual: ytd?.realReguler ?? 0,
+      ytdRegulerTarget: ytd?.targetReguler ?? 0,
+      ytdRegulerAchPct,
+      rankCm: i + 1,
+      rankYtd: 0,
+      rankCmTotal: cmRanked.length,
+      rankYtdTotal: ytdRanked.length,
+    });
+  });
+  ytdRanked.forEach((y, i) => {
+    const existing = result.get(y.nik);
+    if (existing) {
+      existing.rankYtd = i + 1;
+    } else {
+      // AM has YTD data but no CM data — include with rankYtd only
+      const ytd = ytdByNik.get(y.nik)!;
+      const ytdSum = sumTotals(ytd);
+      result.set(y.nik, {
+        nik: y.nik,
+        namaAm: nameMap.get(y.nik) ?? y.nik,
+        telegramChatId: chatIdMap.get(y.nik) ?? null,
+        periodYear, periodMonth,
+        realReguler: 0,
+        targetReguler: 0,
+        achReguler: 0,
+        realRevenue: 0,
+        targetRevenue: 0,
+        achRate: 0,
+        realRevenueYtd: ytdSum.real,
+        targetRevenueYtd: ytdSum.target,
+        achRateYtd: ytdSum.target > 0 ? (ytdSum.real / ytdSum.target) * 100 : 0,
+        ytdRegulerActual: ytd.realReguler,
+        ytdRegulerTarget: ytd.targetReguler,
+        ytdRegulerAchPct: ytd.targetReguler > 0 ? (ytd.realReguler / ytd.targetReguler) * 100 : 0,
+        rankCm: 0,
+        rankYtd: i + 1,
+        rankCmTotal: cmRanked.length,
+        rankYtdTotal: ytdRanked.length,
+      });
+    }
+  });
+
+  return result;
+}
+
+// ── Manager Snapshot Notification (ringkasan level manager ke semua MANAGER) ──────
+
+export interface ManagerSnapshotCtx {
+  greeting: string;
+  managerName: string;
+  snapshotName: string;
+  periodMonth: string;           // e.g. "Juli 2026"
+  bulanYtd: string;              // e.g. "Januari s.d. Juli 2026"
+  uploaderName: string;          // bold
+  uploaderRole: string;          // italic
+  // CM
+  capaianCm: string;             // "79,8%"
+  gapCm: string;                 // "Rp 110,91 jt"
+  // YTD
+  revRegulerYtd: string;         // "Rp 4,44 M"
+  targetYtd: string;             // "Rp 4,38 M"
+  capaianYtd: string;             // "101,4%"
+  // Ranks
+  rankCm: number;
+  rankYtd: number;
+  totalAms: number;
+}
+
+export function renderManagerSnapshot(ctx: ManagerSnapshotCtx): string {
+  const lines: string[] = [
+    `<b>[UPDATE SNAPSHOT REVENUE PERFORMANCE]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, kak <b>${ctx.managerName}</b> 👋`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${ctx.uploaderName}</b> (<i>${ctx.uploaderRole}</i>) baru saja mengunggah data Revenue Performance terbaru untuk snapshot <b>${ctx.snapshotName}</b>.`,
+    ``,
+    `Berikut highlight untuk data <b>${ctx.bulanYtd}</b>:`,
+    ``,
+    `<b>1. Capaian CM (bulan berjalan) ${ctx.periodMonth}</b>: baru <b>${ctx.capaianCm}</b>, masih kurang <b>${ctx.gapCm}</b> lagi untuk mencapai target.`,
+    ``,
+    `<b>2. YTD Reguler ${ctx.bulanYtd}</b>: ${ctx.revRegulerYtd} dari target ${ctx.targetYtd} (sebesar <b>${ctx.capaianYtd}%</b>). Target YTD tercapai, pertahankan! 🎊`,
+    ``,
+    `<b>3. Peringkat Performansi</b>: <b>#${ctx.rankCm}</b> untuk CM dan <b>#${ctx.rankYtd}</b> untuk YTD (berdasarkan % capaian reguler) dari <b>${ctx.totalAms} AM aktif</b> di LESA VI.`,
+    ``,
+    `<b>Klik tombol di bawah untuk lihat laporan lengkap dan visualisasi datanya 👇</b>`,
+    ``,
+    `<b>Ayo genjot closing, yuk kejar target bareng! Gas lanjut, kak! 🔥</b>`,
+  ];
+
+  return lines.join("\n");
+}
+
+export async function notifyManagerSnapshot(
+  importId: number,
+  uploader?: { nama: string; role: string; nik?: string },
+): Promise<{
+  sent: number; failed: number; skipped: number;
+  details: { nama: string; status: string; error?: string }[];
+}> {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const base = getPublicBaseUrlSafe();
+
+  // Latest snapshot
+  const [latestImp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!latestImp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+
+  // Resolve the actual data period from the rows (walk back to month with real revenue)
+  const MONTH_NAMES_ID = [
+    "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+  ];
+  const MONTH_SHORT_ID = [
+    "", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+    "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+  ];
+
+  // Find the latest month that has real revenue (same walk-back as computeSnapshotRanks)
+  const allRows = await db.select().from(performanceDataTable)
+    .where(eq(performanceDataTable.importId, importId));
+
+  const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
+
+  // Find latest month with revenue
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms
+      .filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || ""))
+      .map(m => m.nik)
+  );
+  const nameMap = new Map(allAms.map(m => [m.nik, m.nama]));
+
+  let periodYear = 0, periodMonth = 0;
+  for (const r of allRows) {
+    if (!activeNikSet.has(r.nik)) continue;
+    const total = fmtNum(r.realReguler) + fmtNum(r.realSustain) + fmtNum(r.realScaling) + fmtNum(r.realNgtma);
+    if (total <= 0) continue;
+    if (r.tahun > periodYear || (r.tahun === periodYear && r.bulan > periodMonth)) {
+      periodYear = r.tahun;
+      periodMonth = r.bulan;
+    }
+  }
+
+  // Walk back to find month with real revenue
+  for (let step = 0; step < 12; step++) {
+    const totalHere = allRows.reduce((s, r) => {
+      if (r.tahun !== periodYear || r.bulan !== periodMonth) return s;
+      if (!activeNikSet.has(r.nik)) return s;
+      return s + fmtNum(r.realReguler) + fmtNum(r.realSustain) + fmtNum(r.realScaling) + fmtNum(r.realNgtma);
+    }, 0);
+    if (totalHere > 0) break;
+    periodMonth--;
+    if (periodMonth === 0) { periodMonth = 12; periodYear--; }
+  }
+
+  const periodMonthName = MONTH_NAMES_ID[periodMonth] ?? String(periodMonth);
+  const periodMonthShort = MONTH_SHORT_ID[periodMonth] ?? String(periodMonth);
+
+  // Aggregate CM totals (Reguler only) for ALL active AMs
+  const cmReguler = allRows
+    .filter(r => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realReguler), 0);
+  const cmTargetReguler = allRows
+    .filter(r => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.targetReguler), 0);
+  const cmSustain = allRows
+    .filter(r => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realSustain), 0);
+  const cmScaling = allRows
+    .filter(r => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realScaling), 0);
+  const cmNgtma = allRows
+    .filter(r => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realNgtma), 0);
+
+  // Aggregate YTD totals (Jan..periodMonth) for ALL active AMs
+  const ytdReguler = allRows
+    .filter(r => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realReguler), 0);
+  const ytdTargetReguler = allRows
+    .filter(r => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.targetReguler), 0);
+  const ytdSustain = allRows
+    .filter(r => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realSustain), 0);
+  const ytdScaling = allRows
+    .filter(r => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realScaling), 0);
+  const ytdNgtma = allRows
+    .filter(r => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik))
+    .reduce((s, r) => s + fmtNum(r.realNgtma), 0);
+
+  // Achievement percentages
+  const achCm = cmTargetReguler > 0 ? (cmReguler / cmTargetReguler) * 100 : 0;
+  const achYtd = ytdTargetReguler > 0 ? (ytdReguler / ytdTargetReguler) * 100 : 0;
+
+  // Per-AM CM and YTD for breakdown
+  const cmByNik = new Map<string, number>();
+  const cmTargetByNik = new Map<string, number>();
+  const ytdByNik = new Map<string, number>();
+  const ytdTargetByNik = new Map<string, number>();
+  const namaByNik = new Map<string, string>();
+
+  for (const r of allRows) {
+    if (!activeNikSet.has(r.nik)) continue;
+    const nik = r.nik;
+    namaByNik.set(nik, nameMap.get(nik) ?? r.namaAm ?? nik);
+    if (r.tahun === periodYear && r.bulan === periodMonth) {
+      cmByNik.set(nik, (cmByNik.get(nik) ?? 0) + fmtNum(r.realReguler));
+      cmTargetByNik.set(nik, (cmTargetByNik.get(nik) ?? 0) + fmtNum(r.targetReguler));
+    }
+    if (r.tahun === periodYear && r.bulan <= periodMonth) {
+      ytdByNik.set(nik, (ytdByNik.get(nik) ?? 0) + fmtNum(r.realReguler));
+      ytdTargetByNik.set(nik, (ytdTargetByNik.get(nik) ?? 0) + fmtNum(r.targetReguler));
+    }
+  }
+
+  // AM breakdown
+  const reached100Cm = [...cmByNik.entries()]
+    .filter(([, real]) => real > 0)
+    .filter(([nik, real]) => {
+      const target = cmTargetByNik.get(nik) ?? 0;
+      return target > 0 && real / target >= 1;
+    })
+    .map(([nik]) => namaByNik.get(nik) ?? nik);
+
+  const notReachedCm = [...cmByNik.entries()]
+    .filter(([nik]) => !reached100Cm.includes(namaByNik.get(nik) ?? nik))
+    .filter(([, real]) => {
+      const target = cmTargetByNik.get(reached100Cm.find(n => n === reached100Cm.find(() => false)) ?? "") ?? 0;
+      return true;
+    })
+    .filter(([nik, real]) => {
+      const target = cmTargetByNik.get(nik) ?? 0;
+      return target > 0 || real > 0;
+    })
+    .map(([nik]) => namaByNik.get(nik) ?? nik);
+
+  // Cleaner approach for not reached CM
+  const allNikWithData = [...cmByNik.keys()];
+  const notReachedCmClean = allNikWithData
+    .filter(nik => !reached100Cm.includes(namaByNik.get(nik) ?? nik))
+    .filter(nik => {
+      const real = cmByNik.get(nik) ?? 0;
+      const target = cmTargetByNik.get(nik) ?? 0;
+      return target > 0 || real > 0;
+    })
+    .map(nik => namaByNik.get(nik) ?? nik);
+
+  const reached100Ytd = [...ytdByNik.entries()]
+    .filter(([, real]) => real > 0)
+    .filter(([nik, real]) => {
+      const target = ytdTargetByNik.get(nik) ?? 0;
+      return target > 0 && real / target >= 1;
+    })
+    .map(([nik]) => namaByNik.get(nik) ?? nik);
+
+  const notReachedYtdClean = [...ytdByNik.keys()]
+    .filter(nik => !reached100Ytd.includes(namaByNik.get(nik) ?? nik))
+    .filter(nik => {
+      const real = ytdByNik.get(nik) ?? 0;
+      const target = ytdTargetByNik.get(nik) ?? 0;
+      return target > 0 || real > 0;
+    })
+    .map(nik => namaByNik.get(nik) ?? nik);
+
+  // Count active AMs with performance data
+  const activeAmCount = [...cmByNik.entries()].filter(([, real]) => {
+    const target = cmTargetByNik.get(reached100Cm.find(() => false) ?? "") ?? 0;
+    return true;
+  }).length;
+  const activeAmCountClean = allNikWithData.filter(nik => {
+    const real = cmByNik.get(nik) ?? 0;
+    const target = cmTargetByNik.get(nik) ?? 0;
+    return target > 0 || real > 0;
+  }).length;
+
+  // Helper: format currency
+  function fmtCurrency(v: number): string {
+    if (v >= 1_000_000_000) return `Rp ${(v / 1_000_000_000).toFixed(2).replace(".", ",")} M`;
+    if (v >= 1_000_000) return `Rp ${(v / 1_000_000).toFixed(2).replace(".", ",")} jt`;
+    if (v >= 1_000) return `Rp ${(v / 1_000).toFixed(0)} rb`;
+    if (v === 0) return `Rp 0`;
+    return `Rp ${v.toLocaleString("id-ID")}`;
+  }
+
+  function fmtPct(v: number): string {
+    return v.toFixed(1).replace(".", ",");
+  }
+
+  // Format list names (shorten if too many)
+  const fmtNames = (names: string[], max: number = 3): string => {
+    if (names.length === 0) return "—";
+    if (names.length <= max) return names.join(", ");
+    const first = names.slice(0, max).join(", ");
+    const rest = names.slice(max);
+    // Shorten long names
+    const shortRest = rest.map(n => n.split(" ")[0]);
+    return `${first}, ${shortRest.join(", ")} (+${rest.length})`;
+  };
+
+  const publicHttps = toHttpsUrl(base);
+  const reportUrl = `${publicHttps}/presentation?type=performance&id=${importId}`;
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const localMode = isLocalUrl(publicHttps);
+
+  const bulanYtd = `Januari s.d. ${periodMonthName} ${periodYear}`;
+
+  // Compute uploader's rank
+  const latestRanks = await computeSnapshotRanks(importId);
+  if (latestRanks.size === 0) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+
+  const totalAms = activeAmCountClean;
+  let rankCm = 0, rankYtd = 0;
+  if (uploader?.nik) {
+    const rankedAm = latestRanks.get(uploader.nik);
+    if (rankedAm) {
+      rankCm = rankedAm.rankCm > 0 ? rankedAm.rankCm : rankedAm.rankCmTotal;
+      rankYtd = rankedAm.rankYtd > 0 ? rankedAm.rankYtd : rankedAm.rankYtdTotal;
+    }
+  }
+
+  const gap = cmTargetReguler - cmReguler;
+
+  const baseCtx = {
+    greeting: getGreetingWIB(new Date()),
+    snapshotName: formatSnapshotNameId(latestImp.snapshotDate),
+    periodMonth: `${periodMonthName} ${periodYear}`,
+    bulanYtd,
+    uploaderName: uploader?.nama || "Officer",
+    uploaderRole: uploader?.role === "OFFICER" ? "Officer"
+      : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager"
+      : uploader?.role === "MANAGER" ? "Manager"
+      : uploader?.role || "Officer",
+    capaianCm: fmtPct(achCm),
+    gapCm: fmtCurrency(gap),
+    revRegulerYtd: fmtCurrency(ytdReguler),
+    targetYtd: fmtCurrency(ytdTargetReguler),
+    capaianYtd: fmtPct(achYtd),
+    rankCm,
+    rankYtd,
+    totalAms,
+  };
+
+  // Inline keyboard buttons
+  const keyboard = localMode
+    ? {
+        inline_keyboard: [
+          [{ text: "📊 Visualisasi Data", callback_data: "perf:vis" }],
+          [{ text: "🏆 Leaderboard", callback_data: "perf:peringkat" }],
+        ],
+      }
+    : {
+        inline_keyboard: [
+          [
+            { text: "📊 Visualisasi Data", url: visualizationUrl },
+            { text: "🏆 Leaderboard", url: `${publicHttps}/presentation?type=performance&id=${importId}` },
+          ],
+        ],
+      };
+
+  // Get all MANAGER role users with telegramChatId
+  const managers = await db.select().from(accountManagersTable)
+    .where(eq(accountManagersTable.role, "MANAGER"));
+
+  const linkedManagers = managers.filter(m => m.telegramChatId);
+  if (linkedManagers.length === 0) {
+    return { sent: 0, failed: 0, skipped: linkedManagers.length, details: [] };
+  }
+
+  let sent = 0, failed = 0;
+  const details: { nama: string; status: string; error?: string }[] = [];
+
+  for (const mgr of linkedManagers) {
+    if (!mgr.telegramChatId) {
+      details.push({ nama: mgr.nama, status: "skipped" });
+      continue;
+    }
+    const ctx: ManagerSnapshotCtx = { ...baseCtx, managerName: mgr.nama };
+    const body = renderManagerSnapshot(ctx);
+    try {
+      await sendToTelegramHtml(token, mgr.telegramChatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? null,
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "sent",
+        period: latestImp.period,
+        messageType: "manager_snapshot_notification",
+      });
+      sent++;
+      details.push({ nama: mgr.nama, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: mgr.nik, error: errMsg }, "notifyManagerSnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? null,
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "failed",
+        period: latestImp.period,
+        messageType: "manager_snapshot_notification",
+        error: errMsg,
+      });
+      failed++;
+      details.push({ nama: mgr.nama, status: "failed", error: errMsg });
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return { sent, failed, skipped: managers.length - linkedManagers.length, details };
+}
+
+export async function notifyPerformanceSnapshot(
+  importId: number,
+  uploader?: { nama: string; role: string },
+): Promise<{
+  sent: number; failed: number; skipped: number;
+  details: { nik: string; status: string; error?: string }[];
+}> {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const base = getPublicBaseUrlSafe();
+
+  // Latest snapshot
+  const [latestImp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!latestImp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+
+  // Previous snapshot (2nd newest)
+  const allImports = await db.select().from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "performance"))
+    .orderBy(desc(dataImportsTable.createdAt))
+    .limit(10);
+  const prevImp = allImports.find(imp => imp.id !== importId) ?? null;
+
+  const latestRanks = await computeSnapshotRanks(importId);
+  const prevRanks = prevImp ? await computeSnapshotRanks(prevImp.id) : new Map<string, RankedAm>();
+
+  const snapshotName = formatSnapshotNameId(latestImp.snapshotDate);
+  const greeting = getGreetingWIB(new Date());
+  const publicHttps = toHttpsUrl(base);
+  const reportUrl = `${publicHttps}/presentation?type=performance&id=${importId}`;
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const localMode = isLocalUrl(publicHttps);
+
+  let sent = 0, failed = 0, skipped = 0;
+  const details: { nik: string; status: string; error?: string }[] = [];
+
+  for (const [nik, curr] of latestRanks) {
+    if (!curr.telegramChatId) {
+      skipped++;
+      details.push({ nik, status: "skipped" });
+      continue;
+    }
+
+    const prev = prevRanks.get(nik) ?? null;
+    // Use Reguler-only values to match the dashboard "Revenue: Reguler" slide
+    const achRate = curr.targetReguler > 0 ? (curr.realReguler / curr.targetReguler) * 100 : 0;
+
+    const periodLabel = `${MONTH_NAMES_ID[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+    const cmMonthName = `${MONTH_NAMES_ID[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+    const ytdLabel = `Januari – ${MONTH_NAMES_ID[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+
+    const uploaderName = uploader?.nama?.split(" ")[0] || "Officer";
+    const uploaderRole = uploader?.role || "OFFICER";
+
+    const perfCtx: PerfAnnouncementCtx = {
+      amName: curr.namaAm,
+      officerName: uploaderName,
+      officerRole: uploaderRole,
+      snapshotName,
+      revenueActual: curr.realReguler,
+      achievementPct: achRate,
+      targetRevenue: curr.targetReguler,
+      rankCurrent: curr.rankCm,
+      rankTotal: curr.rankCmTotal,
+      rankPrevious: prev?.rankCm ?? null,
+      greeting,
+      periodLabel,
+      cmMonthName,
+      ytdLabel,
+      ytdRegulerActual: curr.ytdRegulerActual,
+      ytdRegulerTarget: curr.ytdRegulerTarget,
+      ytdRegulerAchPct: curr.ytdRegulerAchPct,
+      rankCm: curr.rankCm,
+      rankYtd: curr.rankYtd,
+      rankYtdTotal: curr.rankYtdTotal,
+    };
+
+    const textBody = renderPerfAnnouncement(perfCtx);
+
+    // 2 inline buttons. In local/dev mode Telegram rejects URL buttons that
+    // point to private hosts, so fall back to callback buttons which the
+    // bot responds to with a text containing the URL.
+    const keyboard = localMode
+      ? {
+          inline_keyboard: [
+            [{ text: "📄 Laporan Terkini", callback_data: "perf:lap" }],
+            [{ text: "📊 Visualisasi Data", callback_data: "perf:vis" }],
+          ],
+        }
+      : {
+          inline_keyboard: [
+            [
+              { text: "📄 Laporan Terkini", url: reportUrl },
+              { text: "📊 Visualisasi Data", url: visualizationUrl },
+            ],
+          ],
+        };
+
+    try {
+      await sendToTelegramHtml(token, curr.telegramChatId, textBody, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik, namaAm: curr.namaAm,
+        telegramChatId: curr.telegramChatId,
+        status: "sent",
+        period: latestImp.period,
+        messageType: "snapshot_notification",
+      });
+      sent++;
+      details.push({ nik, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik, error: errMsg }, "notifyPerformanceSnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik, namaAm: curr.namaAm,
+        telegramChatId: curr.telegramChatId,
+        status: "failed",
+        period: latestImp.period,
+        messageType: "snapshot_notification",
+        error: errMsg,
+      });
+      failed++;
+      details.push({ nik, status: "failed", error: errMsg });
+    }
+
+    // Rate limit between sends (500ms + retry backoff handles 429s gracefully)
+    await new Promise(r => setTimeout(r, 500));
   }
 
   return { sent, failed, skipped, details };

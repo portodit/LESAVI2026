@@ -154,8 +154,8 @@ export function requireManagerOrOfficer(req: Request, res: Response, next: NextF
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (!["ADMIN", "OFFICER", "MANAGER"].includes(user.role)) {
-    res.status(403).json({ error: "Akses ditolak. Hanya Admin, Officer, atau Manager yang dapat mengakses fitur ini." });
+  if (!["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Akses ditolak. Hanya Admin, Officer, Manager, atau Inputer yang dapat mengakses fitur ini." });
     return;
   }
   next();

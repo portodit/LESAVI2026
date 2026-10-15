@@ -1,6 +1,7 @@
 import { db, appSettingsTable } from "@workspace/db";
 import { runGSheetsSync } from "./sync";
 import { logger } from "../../shared/logger";
+import { sendReminderToAllAMs } from "../telegram/service";
 
 let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -31,6 +32,25 @@ async function tick() {
     const skipped = result.results.filter(r => r.status === "skipped").length;
     const errors = result.results.filter(r => r.status === "error").length;
     logger.info({ imported, skipped, errors, sheetsFound: result.sheetsFound }, "GSheets scheduled sync complete");
+
+    // Auto-send Telegram reminders for newly imported sheets
+    if (imported > 0) {
+      const [settings] = await db.select().from(appSettingsTable);
+      if (settings?.autoSendOnImport && settings?.telegramBotToken) {
+        const importedResults = result.results.filter(r => r.status === "imported");
+        const period =
+          importedResults.find(r => r.type === "performance")?.period ??
+          importedResults.find(r => r.type === "funnel")?.period ??
+          importedResults.find(r => r.type === "activity")?.period ??
+          "";
+        logger.info({ importedTypes: importedResults.map(r => r.type), period }, "GSheets scheduler: triggering Telegram reminders");
+        await sendReminderToAllAMs(period, {
+          includePerformance: importedResults.some(r => r.type === "performance"),
+          includeFunnel: importedResults.some(r => r.type === "funnel"),
+          includeActivity: importedResults.some(r => r.type === "activity"),
+        });
+      }
+    }
   } catch (err) {
     logger.error({ err }, "GSheets scheduled sync failed");
   }

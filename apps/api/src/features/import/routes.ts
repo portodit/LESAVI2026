@@ -8,7 +8,7 @@ import {
   cleanFunnelRows, cleanActivityRows,
   detectExcelFormat, parsePivotCache, parseNipnas2AmSheet, pivotCacheRowsToParsedRows, pivotCacheRowsToParsedRowsFromCache2, ParsedRow,
 } from "./excel";
-import { sendReminderToAllAMs } from "../telegram/service";
+import { sendReminderToAllAMs, notifyPerformanceSnapshot, notifyManagerSnapshot } from "../telegram/service";
 
 // ── Helper: auto-register new AM to accounts table with aktif=false ───────────
 export async function autoRegisterNewAms(entries: { nik: string; nama: string; divisi: string; witel?: string }[], source: string): Promise<number> {
@@ -318,6 +318,8 @@ router.post("/activity", requireAuth, async (req, res): Promise<void> => {
 // ── Import Performance AM ──────────────────────────────────────────────────────
 router.post("/performance", requireAuth, async (req, res): Promise<void> => {
   const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite } = req.body;
+  const currentUser = (req as any).user;
+  const uploader = currentUser ? { nama: currentUser.nama ?? "Officer", role: currentUser.role ?? "OFFICER" } : undefined;
 
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
@@ -576,6 +578,24 @@ router.post("/performance", requireAuth, async (req, res): Promise<void> => {
     "import_performance"
   );
 
+  // ── Send personalized snapshot notifications to all linked AMs
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+
+  // ── Send manager-level summary to all linked MANAGER role users
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
+  }
+
   const amCount = new Set(validRecords.map(r => r.nik)).size;
 
   res.json({
@@ -589,7 +609,11 @@ router.post("/performance", requireAuth, async (req, res): Promise<void> => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
-    message: `${validRecords.length} dari ${rows.length} baris performance berhasil diimport${newPerfAmCount > 0 ? `. ${newPerfAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}`,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
+    message: `${validRecords.length} dari ${rows.length} baris performance berhasil diimport${newPerfAmCount > 0 ? `. ${newPerfAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}${notifResult.sent > 0 ? ` ${notifResult.sent} AM dinotifikasi via Telegram.` : ""}${managerNotifResult.sent > 0 ? ` ${managerNotifResult.sent} Manager dinotifikasi via Telegram.` : ""}`,
     importId: imp.id,
   });
 });
@@ -798,9 +822,10 @@ router.post("/internal/performance", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  // Forward to the main handler by calling it inline (reuse all the logic above)
-  // We replicate just the key parts needed by the Telegram bot
-  const { fileData, snapshotDate, period: bodyPeriod } = req.body as { fileData?: string; snapshotDate?: string; period?: string };
+  const { fileData, snapshotDate, period: bodyPeriod, uploader } = req.body as {
+    fileData?: string; snapshotDate?: string; period?: string;
+    uploader?: { nama: string; role: string };
+  };
 
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
@@ -988,6 +1013,24 @@ router.post("/internal/performance", async (req, res): Promise<void> => {
 
   const amCount = new Set(records.map(r => r.nik)).size;
 
+  // ── Notify all linked AMs of their personalized performance snapshot
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+
+  // ── Send manager-level summary to all linked MANAGER role users
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
+  }
+
   res.json({
     success: true,
     rowsImported: records.length,
@@ -998,8 +1041,12 @@ router.post("/internal/performance", async (req, res): Promise<void> => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
-    message: `${records.length} dari ${rows.length} baris performance berhasil diimport.`,
+    message: `${records.length} dari ${rows.length} baris performance berhasil diimport.${managerNotifResult.sent > 0 ? ` Manager telah dinotifikasi.` : ""}`,
     importId: imp.id,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
   });
 });
 

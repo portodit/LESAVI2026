@@ -1,13 +1,41 @@
 import { Router, type IRouter } from "express";
 import { db, appSettingsTable } from "@workspace/db";
 import { requireAuth } from "../../shared/auth";
-import { runGSheetsSync, listAllSheets, syncSelectedSheets, extractSpreadsheetId } from "./sync";
+import { runGSheetsSync, listAllSheets, syncSelectedSheets, extractSpreadsheetId, type SyncResult } from "./sync";
+import { sendReminderToAllAMs } from "../telegram/service";
+import { logger } from "../../shared/logger";
 
 const router: IRouter = Router();
+
+/** Send Telegram reminders based on what types were imported in a GSheets sync */
+async function triggerSyncReminders(result: SyncResult): Promise<void> {
+  if (!result.results || result.results.length === 0) return;
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.autoSendOnImport || !settings?.telegramBotToken) return;
+
+  const imported = result.results.filter((r) => r.status === "imported");
+  if (imported.length === 0) return;
+
+  // Use the period from the most recently imported funnel/activity/performance sheet
+  const period =
+    imported.find((r) => r.type === "performance")?.period ??
+    imported.find((r) => r.type === "funnel")?.period ??
+    imported.find((r) => r.type === "activity")?.period ??
+    "";
+
+  logger.info({ importedTypes: imported.map((r) => r.type), period }, "GDrive sync: triggering Telegram reminders");
+  await sendReminderToAllAMs(period, {
+    includePerformance: imported.some((r) => r.type === "performance"),
+    includeFunnel: imported.some((r) => r.type === "funnel"),
+    includeActivity: imported.some((r) => r.type === "activity"),
+  });
+}
 
 // ── Manual sync trigger (all auto-detected sheets) ─────────────────────────────
 router.post("/sync", requireAuth, async (req, res): Promise<void> => {
   const result = await runGSheetsSync();
+  // Auto-send Telegram reminders for newly imported sheets
+  triggerSyncReminders(result).catch((err) => logger.error({ err }, "GDrive sync reminders failed"));
   res.json(result);
 });
 
@@ -21,6 +49,8 @@ router.post("/sync-selected", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   const result = await syncSelectedSheets(selections);
+  // Auto-send Telegram reminders for newly imported sheets
+  triggerSyncReminders(result).catch((err) => logger.error({ err }, "GDrive sync-selected reminders failed"));
   res.json(result);
 });
 

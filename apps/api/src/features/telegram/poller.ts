@@ -1,9 +1,9 @@
 import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, telegramBulkLinksTable, dataImportsTable, salesFunnelTable, salesActivityTable, performanceDataTable } from "@workspace/db";
-import { eq, and, gt, inArray, desc } from "drizzle-orm";
-import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, buildActivityReport } from "./service";
+import { eq, and, gt, inArray, desc, sql } from "drizzle-orm";
+import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, editMessageText, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, getAvailablePerfPeriodsAll, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
 import { logger } from "../../shared/logger";
-import { getPublicBaseUrl } from "../../shared/publicUrl";
+import { getPublicBaseUrl, toHttpsUrl, isLocalUrl } from "../../shared/publicUrl";
 import bcrypt from "bcryptjs";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -126,7 +126,11 @@ function extractPeriodFromFilename(filename: string): string | null {
 }
 
 // ── Download file from Telegram ───────────────────────────────────────────────
-async function downloadTelegramFile(token: string, fileId: string): Promise<Buffer> {
+async function downloadTelegramFile(
+  token: string,
+  fileId: string,
+  onProgress?: (downloadedBytes: number, totalBytes: number) => void,
+): Promise<Buffer> {
   const getFileResp = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
   const getFileData = await getFileResp.json() as { ok: boolean; result?: { file_path?: string } };
   if (!getFileData.ok || !getFileData.result?.file_path) {
@@ -134,9 +138,33 @@ async function downloadTelegramFile(token: string, fileId: string): Promise<Buff
   }
   const filePath = getFileData.result.file_path;
   const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+
   const fileResp = await fetch(downloadUrl);
-  const arrayBuffer = await fileResp.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  if (!fileResp.ok || !fileResp.body) {
+    throw new Error("Gagal download file dari Telegram");
+  }
+
+  const totalBytes = parseInt(fileResp.headers.get("content-length") || "0", 10);
+  const reader = fileResp.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let downloaded = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    downloaded += value.length;
+    if (onProgress) onProgress(downloaded, totalBytes);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function buildProgressBar(pct: number, width = 20): string {
+  const safePct = Math.max(0, Math.min(100, Math.round(pct)));
+  const filled = Math.round((safePct / 100) * width);
+  const empty = width - filled;
+  return `[${"█".repeat(filled)}${"░".repeat(empty)}] ${safePct}%`;
 }
 
 // ── Process import (shared by confirm and overwrite handlers) ───────────────────
@@ -169,17 +197,33 @@ async function doProcessImport(
     ],
   };
 
-  const sendMsg = (msg: string, kb?: object) =>
-    sendToTelegram(token, chatId, msg, kb).catch((e: unknown) =>
-      logger.error({ err: e }, `sendToTelegram failed for chatId ${chatId}`)
-    );
+  const SPINNER_FRAMES = ["⏳", "⌛", "⏳", "⌛"];
 
-  await sendMsg(
+  const sendMsg = async (msg: string, kb?: object): Promise<number | null> =>
+    sendToTelegram(token, chatId, msg, kb).catch((e: unknown) => {
+      logger.error({ err: e }, `sendToTelegram failed for chatId ${chatId}`);
+      return null;
+    });
+
+  const progressMsgId = await sendMsg(
     `📥 *Import ${typeLabel} — Sedang Berlangsung*\n\n` +
-    `⏳ Memproses file...\n\n` +
+    `${SPINNER_FRAMES[0]} Memproses file...\n\n` +
     `_Mohon tunggu sebentar ya kak 🙏_`,
     PROGRESS_KEYBOARD
   );
+
+  // Animate spinner every 700ms while the internal API call is in flight
+  let spinnerIdx = 0;
+  const spinnerInterval = progressMsgId != null
+    ? setInterval(() => {
+        spinnerIdx = (spinnerIdx + 1) % SPINNER_FRAMES.length;
+        editMessageText(token, chatId, progressMsgId!,
+          `📥 *Import ${typeLabel} — Sedang Berlangsung*\n\n` +
+          `${SPINNER_FRAMES[spinnerIdx]} Memproses file...\n\n` +
+          `_Mohon tunggu sebentar ya kak 🙏_`
+        ).catch(() => {});
+      }, 700)
+    : null;
 
   try {
     const apiResp = await fetch(`${internalBase}/api/internal${endpoint}`, {
@@ -190,11 +234,13 @@ async function doProcessImport(
         snapshotDate: state.extractedDate || undefined,
         period: state.period || undefined,
         forceOverwrite,
+        uploader: { nama: linkedAm.nama, role: linkedAm.role },
       }),
     });
 
     const apiData = await apiResp.json() as {
       error?: string; rowsImported?: number; rows?: number; conflict?: boolean; importId?: number;
+      managerNotifSent?: number; managerNotifFailed?: number;
     };
 
     if (apiData.conflict) {
@@ -206,7 +252,7 @@ async function doProcessImport(
           [{ text: "❌ Batalkan", callback_data: "import:cancel" }],
         ],
       };
-      sendMsg(`⚠️ *Snapshot Sudah Ada*\n\n${existingMsg}\n\n` +
+      await sendMsg(`⚠️ *Snapshot Sudah Ada*\n\n${existingMsg}\n\n` +
         `⚠️ Mengimpor ulang akan *MENIMPA* snapshot lama.\n\n` +
         `Lanjutkan timpa snapshot lama kak *${linkedAm.nama.split(" ")[0]}*? 👇`,
         OVERWRITE_KEYBOARD
@@ -225,38 +271,59 @@ async function doProcessImport(
     } else {
       const rows = apiData.rowsImported ?? apiData.rows ?? 0;
       const snapId = apiData.importId;
-      const snapUrl = snapId ? `${domain}/import/detail/${dbType}/${snapId}` : `${domain}/import`;
-      const presUrl = snapId ? `${domain}/presentation?type=${dbType}&snapshot=${snapId}` : `${domain}/presentation`;
+      const httpsDomain = toHttpsUrl(domain);
+      const snapUrl = snapId ? `${httpsDomain}/import/detail/${dbType}/${snapId}` : `${httpsDomain}/import`;
+      const presUrl = snapId ? `${httpsDomain}/presentation?type=${dbType}&snapshot=${snapId}` : `${httpsDomain}/presentation`;
       const typeLabelLower = state.importType === "performance" ? "Performansi AM" : state.importType === "funnel" ? "Sales Funnel" : "Sales Activity";
       const snapName = state.period
         ? `${typeLabelLower} — ${state.period}`
         : `${typeLabelLower}`;
+      const isLocal = isLocalUrl(httpsDomain);
 
-      const SUCCESS_KEYBOARD = {
-        inline_keyboard: [
-          [{ text: "📋 Lihat Snapshot", url: snapUrl }],
-          [{ text: "📊 Lihat Visualisasi", url: presUrl }],
-          [{ text: "◀️ Kembali ke Menu", callback_data: "/import" }],
-        ],
-      };
+      // Telegram rejects URL buttons pointing to localhost (HTTP) — use callback buttons + URLs in text instead
+      const SUCCESS_KEYBOARD = isLocal
+        ? {
+            inline_keyboard: [
+              [{ text: "📋 Lihat Snapshot", callback_data: `import:view:${dbType}:${snapId ?? 0}` }],
+              [{ text: "📊 Lihat Visualisasi", callback_data: `import:vis:${dbType}:${snapId ?? 0}` }],
+              [{ text: "◀️ Kembali ke Menu", callback_data: "/import" }],
+            ],
+          }
+        : {
+            inline_keyboard: [
+              [
+                { text: "📋 Lihat Snapshot", url: snapUrl },
+                { text: "📊 Lihat Visualisasi", url: presUrl },
+              ],
+              [{ text: "◀️ Kembali ke Menu", callback_data: "/import" }],
+            ],
+          };
 
-      sendMsg(
+      const urlHint = isLocal
+        ? `\n🔗 *Akses:*\n• [Buka Snapshot](${snapUrl})\n• [Buka Visualisasi](${presUrl})\n`
+        : "";
+
+      await sendMsg(
         `✅ *Import ${typeLabel} Berhasil!*\n\n` +
         `📋 *Nama Snapshot:* ${snapName}\n` +
         `📊 *Tipe:* ${typeLabelLower}\n` +
-        `📦 *Total Baris:* *${rows.toLocaleString("id-ID")}* baris data\n\n` +
-        `Silakan pilih aksi di bawah ya kak 🙏`,
+        `📦 *Total Baris:* *${rows.toLocaleString("id-ID")}* baris data\n` +
+        (apiData.managerNotifSent ? `👔 *Manager telah dinotifikasi.*\n` : "") +
+        urlHint +
+        `\nSilakan pilih aksi di bawah ya kak 🙏`,
         SUCCESS_KEYBOARD
       );
     }
   } catch (err) {
     logger.error({ err }, "Failed to call internal import API from Telegram");
-    sendMsg(
+    await sendMsg(
       `❌ *Gagal Import ${typeLabel}*\n\n` +
       `Terjadi kesalahan koneksi ke server. Silakan coba lagi nanti.`,
       getMainKeyboard(linkedAm.role)
     );
   }
+
+  if (spinnerInterval) clearInterval(spinnerInterval);
 
   importState.delete(chatId);
   funnelFileData.delete(chatId);
@@ -598,7 +665,7 @@ function buildSnapshotListKeyboard(snaps: SnapshotState["snapshots"], dataType: 
   const rows: any[] = [];
   for (const snap of snaps) {
     const date = snap.snapshotDate
-      ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+      ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
       : (snap.period || "-");
     rows.push({ text: `📅 ${date} — ${typeLabel}`, callback_data: `snap:select:${dataType}:${snap.id}` });
   }
@@ -820,6 +887,36 @@ function currentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Return the period (YYYY-MM) of the most recent snapshot of `type` in the
+ * data_imports table. Falls back to today's calendar month if no snapshot
+ * exists yet, so handlers always get a usable period string.
+ *
+ * The "current month" for AM-facing reports should be the month covered by
+ * the latest snapshot, not the calendar month — because targets may exist
+ * for the current calendar month but real data has not been imported yet.
+ * For example, if the latest snapshot is 2026-08 but today is 2026-10, the
+ * report should show August (data exists) rather than October (no real
+ * revenue yet, only a target).
+ */
+async function latestSnapshotPeriod(type: "performance" | "funnel" | "activity"): Promise<string> {
+  const [latest] = await db.select({ period: dataImportsTable.period, snapshotDate: dataImportsTable.snapshotDate })
+    .from(dataImportsTable)
+    .where(eq(dataImportsTable.type, type))
+    .orderBy(desc(dataImportsTable.createdAt))
+    .limit(1);
+  if (latest?.period) {
+    return latest.period;
+  }
+  if (latest?.snapshotDate) {
+    const d = new Date(latest.snapshotDate);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+  }
+  return currentPeriod();
+}
+
 // Persist across poll cycles to prevent double-processing same update ID
 // (module-level so it survives recursive pollOnce calls via setTimeout)
 const processedUpdates = new Set<number>();
@@ -984,8 +1081,8 @@ export async function pollOnce() {
 
           // ── perf:laporan — latest performance report ───────────────────────
           if (cbData === "perf:laporan") {
-            const period = currentPeriod();
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            const period = await latestSnapshotPeriod("performance");
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
             if (!result.messages.length) {
               const now = new Date();
               await sendToTelegram(token, cbChatId,
@@ -1077,65 +1174,6 @@ export async function pollOnce() {
             const masterAms = await db.select().from(accountManagersTable);
             const activeAms = masterAms.filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
 
-            // Get all perfs for this month
-            const [latestImport] = await db.select().from(dataImportsTable)
-              .where(eq(dataImportsTable.type, "performance"))
-              .orderBy(desc(dataImportsTable.createdAt))
-              .limit(1);
-
-            let allPerfsRaw: typeof performanceDataTable.$inferSelect[] = [];
-            if (latestImport) {
-              allPerfsRaw = await db.select().from(performanceDataTable)
-                .where(and(
-                  eq(performanceDataTable.importId, latestImport.id),
-                  eq(performanceDataTable.tahun, year),
-                  eq(performanceDataTable.bulan, month),
-                ));
-              if (!allPerfsRaw.length) {
-                allPerfsRaw = await db.select().from(performanceDataTable)
-                  .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
-              }
-            } else {
-              allPerfsRaw = await db.select().from(performanceDataTable)
-                .where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
-            }
-
-            // Deduplicate by NIK
-            const byNik = new Map<string, typeof allPerfsRaw[0]>();
-            for (const p of allPerfsRaw) {
-              const existing = byNik.get(p.nik);
-              if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
-                byNik.set(p.nik, p);
-              }
-            }
-            const uniquePerfs = [...byNik.values()];
-
-            // Filter by divisi
-            const matchesDivisi = (recordDivisiCc: string | null | undefined, recordDivisi: string | null | undefined): boolean => {
-              if (divisi === "LESA") {
-                if (recordDivisiCc === "DPS" || recordDivisiCc === "DSS" || recordDivisiCc === "DGS") return true;
-                if (recordDivisi === "DPS" || recordDivisi === "DSS" || recordDivisi === "DES" || recordDivisi === "DGS") return true;
-                return false;
-              }
-              if (recordDivisiCc === divisi) return true;
-              return recordDivisi === divisi;
-            };
-
-            // YTD data: all perfs up to current month for this year
-            const allYtdRaw = latestImport
-              ? await db.select().from(performanceDataTable)
-                  .where(eq(performanceDataTable.importId, latestImport.id))
-              : await db.select().from(performanceDataTable)
-                  .where(eq(performanceDataTable.tahun, year));
-            const ytdByNik = new Map<string, typeof allYtdRaw[0]>();
-            for (const p of allYtdRaw) {
-              if (p.bulan! > month) continue;
-              const existing = ytdByNik.get(p.nik);
-              if (!existing || (parseFloat(String(p.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0)))) {
-                ytdByNik.set(p.nik, p);
-              }
-            }
-
             const fmtNum = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
             const fmtPct = (v: number) => `${Math.round(v * 100) / 100}`.replace(".", ",") + "%";
             const fmtRev = (v: number) => {
@@ -1145,43 +1183,158 @@ export async function pollOnce() {
               return `Rp${v.toFixed(0)}`;
             };
             const MEDALS = ["🥇", "🥈", "🥉"];
+            const activeNikSet = new Set(activeAms.map(a => a.nik));
 
-            // Compute CM + YTD stats per AM
+            // Step 1: find highest importId per (nik, bulan, divisi) across ALL snapshots
+            // — mirrors PerformaPage.tsx deduplication: pick row with max importId per key
+            const latestImportMap = new Map<string, number>();
+            const allRowsForKey = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              divisi: performanceDataTable.divisi,
+              divisiCc: performanceDataTable.divisiCc,
+              importId: performanceDataTable.importId,
+            }).from(performanceDataTable)
+              .where(and(
+                eq(performanceDataTable.tahun, year),
+                eq(performanceDataTable.bulan, month),
+                sql`${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0`,
+              ));
+            for (const r of allRowsForKey) {
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              if (!latestImportMap.has(k) || r.importId > latestImportMap.get(k)!) {
+                latestImportMap.set(k, r.importId);
+              }
+            }
+
+            // Step 2: fetch all rows from all snapshots and keep only the latest per (nik, bulan, divisi)
+            const allPerfRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              realReguler: performanceDataTable.realReguler,
+              targetReguler: performanceDataTable.targetReguler,
+              divisiCc: performanceDataTable.divisiCc,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId,
+            }).from(performanceDataTable)
+              .where(and(
+                eq(performanceDataTable.tahun, year),
+                eq(performanceDataTable.bulan, month),
+              ));
+            const dedupedRows = allPerfRows.filter(r => {
+              if (!activeNikSet.has(r.nik)) return false;
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              return latestImportMap.get(k) === r.importId;
+            });
+
+            // Step 3: aggregate deduped rows by NIK (CM)
+            const cmAgg = new Map<string, { real: number; target: number }>();
+            for (const am of activeAms) {
+              cmAgg.set(am.nik, { real: 0, target: 0 });
+            }
+            for (const r of dedupedRows) {
+              if (!cmAgg.has(r.nik)) continue;
+              const prev = cmAgg.get(r.nik)!;
+              cmAgg.set(r.nik, {
+                real: prev.real + fmtNum(r.realReguler),
+                target: prev.target + fmtNum(r.targetReguler),
+              });
+            }
+
+            // Step 4: YTD — deduplicate across all months Jan→month
+            const ytdLatestImportMap = new Map<string, number>();
+            const allYtdRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId,
+            }).from(performanceDataTable)
+              .where(and(
+                eq(performanceDataTable.tahun, year),
+                sql`${performanceDataTable.bulan} <= ${month}`,
+                sql`${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0`,
+              ));
+            for (const r of allYtdRows) {
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              if (!ytdLatestImportMap.has(k) || r.importId > ytdLatestImportMap.get(k)!) {
+                ytdLatestImportMap.set(k, r.importId);
+              }
+            }
+            const allYtdPerfRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              realReguler: performanceDataTable.realReguler,
+              targetReguler: performanceDataTable.targetReguler,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId,
+            }).from(performanceDataTable)
+              .where(and(
+                eq(performanceDataTable.tahun, year),
+                sql`${performanceDataTable.bulan} <= ${month}`,
+              ));
+            const dedupedYtdRows = allYtdPerfRows.filter(r => {
+              if (!activeNikSet.has(r.nik)) return false;
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              return ytdLatestImportMap.get(k) === r.importId;
+            });
+
+            const ytdAgg = new Map<string, { real: number; target: number }>();
+            for (const am of activeAms) {
+              ytdAgg.set(am.nik, { real: 0, target: 0 });
+            }
+            for (const r of dedupedYtdRows) {
+              if (!ytdAgg.has(r.nik)) continue;
+              const prev = ytdAgg.get(r.nik)!;
+              ytdAgg.set(r.nik, {
+                real: prev.real + fmtNum(r.realReguler),
+                target: prev.target + fmtNum(r.targetReguler),
+              });
+            }
+
+            // Build ranked list
             interface AmRank {
               nik: string; nama: string;
-              cmAch: number; cmReal: number; cmTarget: number;
-              ytdAch: number; ytdReal: number; ytdTarget: number;
+              cmReal: number; cmTarget: number;
+              ytdReal: number; ytdTarget: number;
             }
             const amRanks: AmRank[] = [];
-
             for (const am of activeAms) {
-              // CM
-              const cmPerf = uniquePerfs.find(p => p.nik === am.nik);
-              if (!cmPerf) continue;
-              if (!matchesDivisi(cmPerf.divisiCc, cmPerf.divisi)) continue;
-
-              const cmTarget = fmtNum(cmPerf.targetReguler) + fmtNum(cmPerf.targetSustain) + fmtNum(cmPerf.targetScaling) + fmtNum(cmPerf.targetNgtma);
-              const cmReal = fmtNum(cmPerf.realReguler) + fmtNum(cmPerf.realSustain) + fmtNum(cmPerf.realScaling) + fmtNum(cmPerf.realNgtma);
-              const cmAch = cmTarget > 0 ? (cmReal / cmTarget) * 100 : 0;
-
-              // YTD
-              const ytdPerfs = allYtdRaw.filter(p => p.nik === am.nik && p.bulan! <= month);
-              const ytdTarget = ytdPerfs.reduce((s, p) => s + fmtNum(p.targetReguler) + fmtNum(p.targetSustain) + fmtNum(p.targetScaling) + fmtNum(p.targetNgtma), 0);
-              const ytdReal = ytdPerfs.reduce((s, p) => s + fmtNum(p.realReguler) + fmtNum(p.realSustain) + fmtNum(p.realScaling) + fmtNum(p.realNgtma), 0);
-              const ytdAch = ytdTarget > 0 ? (ytdReal / ytdTarget) * 100 : 0;
-
-              amRanks.push({ nik: am.nik, nama: am.nama, cmAch, cmReal, cmTarget, ytdAch, ytdReal, ytdTarget });
+              const cm = cmAgg.get(am.nik);
+              const ytd = ytdAgg.get(am.nik);
+              if (!cm || !ytd) continue;
+              if (cm.real <= 0 && ytd.real <= 0) continue;
+              amRanks.push({
+                nik: am.nik,
+                nama: am.nama,
+                cmReal: cm.real,
+                cmTarget: cm.target,
+                ytdReal: ytd.real,
+                ytdTarget: ytd.target,
+              });
             }
 
-            const sortedCm = [...amRanks].sort((a, b) => b.cmAch - a.cmAch);
-            const sortedYtd = [...amRanks].sort((a, b) => b.ytdAch - a.ytdAch);
+            const sortedCm = [...amRanks].sort((a, b) => {
+              const achA = a.cmTarget > 0 ? a.cmReal / a.cmTarget : 0;
+              const achB = b.cmTarget > 0 ? b.cmReal / b.cmTarget : 0;
+              return achB - achA;
+            });
+            const sortedYtd = [...amRanks].sort((a, b) => {
+              const achA = a.ytdTarget > 0 ? a.ytdReal / a.ytdTarget : 0;
+              const achB = b.ytdTarget > 0 ? b.ytdReal / b.ytdTarget : 0;
+              return achB - achA;
+            });
 
             const divisiLabel = divisi === "LESA" ? "LESA (DPS + DSS)" : divisi;
-            const showTop = (rows: AmRank[], sorted: AmRank[], label: string, key: "cm" | "ytd") => {
+            const fmtDivisiShort = divisi === "LESA" ? "Divisi LESA" : `Divisi ${divisi}`;
+            const showTop = (sorted: AmRank[], label: string, key: "cm" | "ytd") => {
               let msg = `🏆 *PAPAN PERINGKAT — ${label}*\n\n`;
               msg += `📅 Periode : *${monthLabel}*\n`;
               msg += `📋 Divisi  : *${divisiLabel}*\n`;
-              msg += `📑 KPI     : Achievement Rate (CM / YTD)\n\n`;
+              msg += `📑 KPI     : Reguler Revenue Achievement Rate\n\n`;
+
+              const getAch = (a: AmRank) => a[key + "Target"] > 0 ? (a[key + "Real"] / a[key + "Target"]) * 100 : 0;
+              const getRev = (a: AmRank) => a[key + "Real"];
+              const getTarget = (a: AmRank) => a[key + "Target"];
 
               const top10 = sorted.slice(0, 10);
               for (let i = 0; i < top10.length; i++) {
@@ -1189,7 +1342,7 @@ export async function pollOnce() {
                 const medal = MEDALS[i] || `${i + 1}.`;
                 const badge = a.nik === resolvedAm.nik ? " 👈" : "";
                 msg += `${medal} *${a.nama}*${badge}\n`;
-                msg += `Ach: *${fmtPct(a[key + "Ach"])}* · Revenue: *${fmtRev(a[key + "Real"])}*\n\n`;
+                msg += `Ach: *${fmtPct(getAch(a))}* · Real: *${fmtRev(getRev(a))}* · Target: *${fmtRev(getTarget(a))}*\n\n`;
               }
 
               const myIdx = sorted.findIndex(a => a.nik === resolvedAm.nik);
@@ -1197,17 +1350,37 @@ export async function pollOnce() {
                 const myA = sorted[myIdx];
                 const isShown = top10.some(a => a.nik === resolvedAm.nik);
                 if (!isShown) {
-                  msg += `📌 *${amFirstName}* · Ach: *${fmtPct(myA[key + "Ach"])}* · Revenue: *${fmtRev(myA[key + "Real"])}* (#${myIdx + 1}/${sorted.length})\n`;
+                  msg += `📌 *${amFirstName}* · Ach: *${fmtPct(getAch(myA))}* · Real: *${fmtRev(getRev(myA))}* · Target: *${fmtRev(getTarget(myA))}* (#${myIdx + 1}/${sorted.length})\n`;
                 } else {
                   msg += `📌 Posisi kak: *#${myIdx + 1}* dari *${sorted.length} AM*\n`;
                 }
               }
+
+              // Summary footer
+              let totalReal = 0, totalTarget = 0;
+              let aboveTarget = 0, belowTarget = 0;
+              for (const a of sorted) {
+                totalReal += getRev(a);
+                totalTarget += getTarget(a);
+                if (getAch(a) >= 100) aboveTarget++;
+                else belowTarget++;
+              }
+              const overallAch = totalTarget > 0 ? (totalReal / totalTarget) * 100 : 0;
+              const ytdLabel = key === "ytd" ? " YTD" : "";
+
+              msg += `\n> 📊 *Ringkasan ${fmtDivisiShort}${ytdLabel}*\n`;
+              msg += `> ✅ AM Di Atas Target : *${aboveTarget}* dari *${sorted.length}* AM\n`;
+              msg += `> ❌ AM Di Bawah Target: *${belowTarget}* AM\n`;
+              msg += `> 💰 Total Real${ytdLabel}  : *${fmtRev(totalReal)}*\n`;
+              msg += `> 🎯 Total Target${ytdLabel}: *${fmtRev(totalTarget)}*\n`;
+              msg += `> 📈 Capaian${ytdLabel}      : *${fmtPct(overallAch)}*`;
+
               return msg;
             };
 
             // Pesan 1: CM Ranking
             await sendToTelegram(token, cbChatId,
-              showTop(amRanks, sortedCm, "PERINGKAT CM (Current Month)", "cm"),
+              showTop(sortedCm, "PERINGKAT CM (Current Month)", "cm"),
               {
                 inline_keyboard: [
                   [{ text: "◀️ Ganti Divisi", callback_data: "perf:rankbulan:" + period }],
@@ -1221,7 +1394,7 @@ export async function pollOnce() {
 
             // Pesan 2: YTD Ranking
             await sendToTelegram(token, cbChatId,
-              showTop(amRanks, sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
+              showTop(sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
               {
                 inline_keyboard: [
                   [{ text: "📋 Laporan Terkini", callback_data: "perf:laporan" }],
@@ -1235,8 +1408,8 @@ export async function pollOnce() {
 
           // ── perf:current — current month, snapshot-aware ─────────────────
           if (cbData === "perf:current") {
-            const period = currentPeriod();
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            const period = await latestSnapshotPeriod("performance");
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
             if (!result.messages.length) {
               const now = new Date();
               await sendToTelegram(token, cbChatId,
@@ -1306,12 +1479,66 @@ export async function pollOnce() {
               .orderBy(desc(dataImportsTable.createdAt))
               .limit(1);
             const base = getPublicBaseUrl();
-            const dashUrl = latestImport?.id ? `${base}/presentation?type=performance&id=${latestImport.id}` : `${base}/presentation`;
+            const dashUrl = latestImport?.id
+              ? toHttpsUrl(`${base}/presentation?type=performance&id=${latestImport.id}`)
+              : toHttpsUrl(`${base}/presentation`);
+            const localDash = isLocalUrl(dashUrl);
             await sendToTelegram(token, cbChatId,
               `📎 *Dashboard LESAVI*\n\n` +
               `Kak bisa lihat visualisasi data performansi dan laporan lengkap di dashboard LESAVI:\n\n` +
               `${dashUrl}`,
-              { inline_keyboard: [[{ text: "📊 Buka Dashboard", url: dashUrl }], [{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+              localDash
+                ? { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+                : { inline_keyboard: [[{ text: "📊 Buka Dashboard", url: dashUrl }], [{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:lap — Laporan Terkini (latest performance snapshot) ──────
+          if (cbData === "perf:lap") {
+            const [latestImport] = await db.select().from(dataImportsTable)
+              .where(eq(dataImportsTable.type, "performance"))
+              .orderBy(desc(dataImportsTable.createdAt))
+              .limit(1);
+            const base = getPublicBaseUrl();
+            const reportUrl = latestImport?.id
+              ? toHttpsUrl(`${base}/presentation?type=performance&id=${latestImport.id}`)
+              : toHttpsUrl(`${base}/presentation`);
+            await sendToTelegram(token, cbChatId,
+              `📊 *Laporan Terkini*\n\n` +
+              `Berikut laporan performance terbaru. Klik link di bawah untuk membuka di browser:\n\n` +
+              `🔗 ${reportUrl}`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:profil — Profil AM (AM-specific presentation page) ───────
+          if (cbData === "perf:profil") {
+            const base = getPublicBaseUrl();
+            const profileUrl = toHttpsUrl(`${base}/presentation/am/${encodeURIComponent(resolvedAm.nik)}`);
+            const amPublicUrl = resolvedAm.slug
+              ? toHttpsUrl(`${base}/am-public/${encodeURIComponent(resolvedAm.slug)}`)
+              : null;
+            await sendToTelegram(token, cbChatId,
+              `👤 *Profil AM — ${resolvedAm.nama}*\n\n` +
+              `Halaman profil untuk AM ini. Pilih link di bawah:\n\n` +
+              `🔗 Dashboard AM: ${profileUrl}\n` +
+              (amPublicUrl ? `🔗 Halaman Publik: ${amPublicUrl}\n` : ``),
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── perf:vis — Visualisasi Data (performance visualization) ───────
+          if (cbData === "perf:vis") {
+            const base = getPublicBaseUrl();
+            const visUrl = toHttpsUrl(`${base}/visualisasi/performa`);
+            await sendToTelegram(token, cbChatId,
+              `📈 *Visualisasi Data Performance*\n\n` +
+              `Halaman visualisasi interaktif untuk data performance AM Witel Suramadu.\n\n` +
+              `🔗 ${visUrl}`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
             ).catch(() => {});
             continue;
           }
@@ -1430,8 +1657,8 @@ export async function pollOnce() {
 
             const currentSnap = latestImport.snapshotDate || latestImport.createdAt?.toISOString().slice(0, 10) || "-";
             const currentSnapLabel = latestImport.snapshotDate
-              ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
-              : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+              ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+              : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
 
             // ── PESAN 1: LAPORAN TERKINI ────────────────────────────────
             let msg1 = `📋 *LAPORAN TERKINI SALES FUNNELING*\n\n`;
@@ -1458,8 +1685,8 @@ export async function pollOnce() {
               // Truncate (bukan round) agar 12.91% jadi 12.9%, bukan 13.0%
               const fmtRate = (r: number) => `${Math.trunc(r * 10) / 10}%`;
               const prevSnapLabel = prevImport.snapshotDate
-                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
-                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
 
               msg1 += `📈 *Perubahan dibanding snapshot sebelumnya:*\n`;
               msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "▲" : "▼"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})\n`;
@@ -1491,8 +1718,8 @@ export async function pollOnce() {
               }
 
               const prevSnapLabel = prevImport.snapshotDate
-                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
-                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
 
               let msg2 = `📈 *ANALISIS PERKEMBANGAN LOP*\n\n`;
               msg2 += `Benchmark: Snapshot #${latestImport.id} (terbaru) vs #${prevImport.id} (${prevSnapLabel})\n\n`;
@@ -1572,7 +1799,9 @@ export async function pollOnce() {
               msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
 
               const stagnanKeyboard = stagnanNon.length > 10
-                ? { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnanNon.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] }
+                ? isLocalUrl(toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`))
+                  ? undefined
+                  : { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnanNon.length} LOP`, url: toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`) }]] }
                 : undefined;
               await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {});
             }
@@ -2089,7 +2318,10 @@ export async function pollOnce() {
             if (!resolvedAm || resolvedAm.role === "ACCOUNT_MANAGER") { continue; }
             const amFirstName = resolvedAm.nama.split(" ")[0];
             perfRankState.delete(cbChatId);
-            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            const isAm = ["ACCOUNT_MANAGER", "AM"].includes(resolvedAm.role || "");
+            const periods = isAm
+              ? await getAvailablePerfPeriods(resolvedAm.nik)
+              : await getAvailablePerfPeriodsAll();
             if (!periods.length) {
               await sendToTelegram(token, cbChatId, `❌ Belum ada data performansi tersimpan kak *${amFirstName}*.`, getMainKeyboard(resolvedAm.role)).catch(() => {});
               continue;
@@ -2167,23 +2399,39 @@ export async function pollOnce() {
             const snap = snaps[0];
             const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
             const date = snap.snapshotDate
-              ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+              ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
               : "-";
             const rows = snap.rowsImported != null ? `${snap.rowsImported.toLocaleString("id-ID")} baris data` : "belum diketahui";
             const domain = getPublicBaseUrl();
+            const httpsDomain = toHttpsUrl(domain);
+            const snapUrl = `${httpsDomain}/import/detail/${dataType}/${snapId}`;
+            const presUrl = `${httpsDomain}/presentation?type=${dataType}&snapshot=${snapId}`;
+            const isLocal = isLocalUrl(httpsDomain);
+
+            // Telegram rejects URL buttons pointing to localhost (HTTP) — use callback buttons + URLs in text instead
+            const urlButtons = isLocal
+              ? [
+                  { text: "📋 Akses Data", callback_data: `import:view:${dataType}:${snapId}` },
+                  { text: "📊 Lihat Visualisasi", callback_data: `import:vis:${dataType}:${snapId}` },
+                ]
+              : [
+                  { text: "📋 Akses Data", url: snapUrl },
+                  { text: "📊 Lihat Visualisasi", url: presUrl },
+                ];
+
+            const urlHint = "";
 
             const msg =
               `✅ *Snapshot Dipilih*\n\n` +
               `📊 Tipe Data: *${typeLabel}*\n` +
               `📅 Tanggal: *${date}*\n` +
-              `📦 Jumlah: *${rows}*\n\n` +
-              `🔗 *Link Akses:*\n` +
-              `• Akses Data: ${domain}/import/detail/${dataType}/${snapId}\n` +
-              `• Lihat Visualisasi: ${domain}/presentation?type=${dataType}&snapshot=${snapId}\n\n` +
-              `Silakan pilih aksi di bawah ya kak 👇`;
+              `📦 Jumlah: *${rows}*` +
+              urlHint +
+              `\nSilakan pilih aksi di bawah ya kak 👇`;
 
             const keyboard = {
               inline_keyboard: [
+                urlButtons,
                 [
                   { text: "🗑 Hapus Data", callback_data: `snap:delete:${dataType}:${snapId}` },
                   { text: "◀️ Pilih Snapshot Lain", callback_data: "snap:back_to_list" },
@@ -2207,7 +2455,7 @@ export async function pollOnce() {
               continue;
             }
             const date = snap[0].snapshotDate
-              ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+              ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
               : "-";
             const CONFIRM_DELETE_KEYBOARD = {
               inline_keyboard: [
@@ -2235,8 +2483,31 @@ export async function pollOnce() {
               await sendToTelegram(token, cbChatId, `❌ Snapshot tidak ditemukan.`, LIST_SNAPSHOT_TYPE_KEYBOARD).catch(() => {});
               continue;
             }
+            const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const date = snap[0].snapshotDate
+              ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
+              : "-";
+            const importEmoji = dataType === "performance" ? "📊" : dataType === "funnel" ? "🔻" : "📅";
+            const importShort = dataType === "performance" ? "Performance" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapShort = dataType === "performance" ? "perf" : dataType === "funnel" ? "funnel" : "activity";
             await db.delete(dataImportsTable).where(eq(dataImportsTable.id, snapId));
-            await sendToTelegram(token, cbChatId, `✅ Snapshot berhasil dihapus.`).catch(() => {});
+
+            const msg =
+              `✅ *Snapshot berhasil dihapus.*\n\n` +
+              `📅 Tanggal: *${date}*\n` +
+              `📊 Tipe: *${typeLabel}*\n\n` +
+              `⚠️ *Data snapshot yang sudah dihapus tidak dapat dipulihkan kembali.*\n` +
+              `Satu-satunya cara untuk mengembalikannya adalah dengan melakukan *import data ulang* menggunakan snapshot (tanggal & tipe) yang sama.\n\n` +
+              `Silakan pilih langkah selanjutnya ya kak 👇`;
+
+            const keyboard = {
+              inline_keyboard: [
+                [{ text: `${importEmoji} Import ${importShort}`, callback_data: `import:type:${dataType}` }],
+                [{ text: `📋 List Snapshot ${typeLabel}`, callback_data: `snap:${snapShort}` }],
+                [{ text: "🏠 Kembali ke Menu", callback_data: "nav:main" }],
+              ],
+            };
+            await sendToTelegram(token, cbChatId, msg, keyboard).catch(() => {});
             continue;
           }
 
@@ -2281,7 +2552,7 @@ export async function pollOnce() {
               `📋 *Daftar Akun* — Lihat daftar semua akun (AM, Officer, Manager, Admin)\n\n` +
               `➕ *Tambah Akun* — Buat akun baru dengan role tertentu\n\n` +
               `🔑 *Kode Verifikasi* — Generate kode akses Telegram untuk AM baru\n\n` +
-              `📎 Dashboard penuh:\n${domain}/manajemen-akun`,
+              `📎 Dashboard penuh:\n[Dashboard Penuh](${domain}/manajemen-akun)`,
               AKUN_MAIN_KEYBOARD
             ).catch(() => {});
             continue;
@@ -2443,7 +2714,7 @@ export async function pollOnce() {
                 `├ Nama   : *${state.nama}*\n` +
                 (isAm ? `├ NIK    : *${state.nik}*\n├ Divisi : *${state.divisi}*\n` : "") +
                 `└ ID     : #${apiData.id}\n\n` +
-                `📎 Kelola di Dashboard:\n${domain}/manajemen-akun`,
+                `📎 Kelola di Dashboard:\n[Kelola di Dashboard](${domain}/manajemen-akun)`,
                 AKUN_MAIN_KEYBOARD
               ).catch(() => {});
             } catch (err) {
@@ -2935,6 +3206,36 @@ export async function pollOnce() {
             ).catch(() => {});
             continue;
           }
+
+          // ── import:view:* — show snapshot URL (local-mode fallback for URL button) ──
+          if (cbData.startsWith("import:view:")) {
+            const parts = cbData.split(":");
+            const viewType = parts[2];
+            const viewId = parseInt(parts[3], 10);
+            const url = toHttpsUrl(`${getPublicBaseUrl()}/import/detail/${viewType}/${viewId}`);
+            await sendToTelegram(token, cbChatId,
+              `📋 *Snapshot — ${viewType}*\n\n` +
+              `Klik link di bawah untuk membuka di browser:\n\n` +
+              `🔗 [Buka Snapshot](${url})`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "/import" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── import:vis:* — show visualization URL (local-mode fallback for URL button) ──
+          if (cbData.startsWith("import:vis:")) {
+            const parts = cbData.split(":");
+            const visType = parts[2];
+            const visId = parseInt(parts[3], 10);
+            const url = toHttpsUrl(`${getPublicBaseUrl()}/presentation?type=${visType}&snapshot=${visId}`);
+            await sendToTelegram(token, cbChatId,
+              `📊 *Visualisasi — ${visType}*\n\n` +
+              `Klik link di bawah untuk membuka di browser:\n\n` +
+              `🔗 [Buka Visualisasi](${url})`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "/import" }]] }
+            ).catch(() => {});
+            continue;
+          }
         } catch (cbErr) {
           logger.error({ err: cbErr, cbData, chatId: cbChatId }, "Callback handler error");
         }
@@ -2960,23 +3261,54 @@ export async function pollOnce() {
       });
 
       // ── Document / file handling — import flow ───────────────────────────
-      const doc = (msg as any).document as { file_id: string; file_name?: string } | undefined;
+      const doc = (msg as any).document as { file_id: string; file_name?: string; file_size?: number } | undefined;
       if (doc) {
         const state = importState.get(chatId);
         if (state?.step === "waiting_file") {
-          try {
-            await sendToTelegram(token, chatId,
+          try {            // Send initial progress message, capture message_id for live updates
+            const progressMsgId = await sendToTelegram(token, chatId,
               `📥 *File Diterima!*\n\n` +
               `⏳ Mendownload file dari Telegram...\n\n` +
+              `${buildProgressBar(0)}\n\n` +
               `_Sabarin sebentar ya kak_`
-            ).catch(() => {});
+            ).catch(() => null);
 
             const [linkedAm] = await db.select().from(accountManagersTable)
               .where(eq(accountManagersTable.telegramChatId, chatId));
 
             const filename = doc.file_name || "file";
-            const buffer = await downloadTelegramFile(token, doc.file_id);
+
+            // Throttled progress callback: edit same message at most every 1500ms (avoid rate limits)
+            let lastEditTime = 0;
+            let lastPctShown = -1;
+            const onProgress = (downloaded: number, total: number) => {
+              if (progressMsgId == null) return;
+              const now = Date.now();
+              if (now - lastEditTime < 1500) return;
+              const pct = total > 0 ? Math.floor((downloaded / total) * 100) : 0;
+              if (pct === lastPctShown) return;
+              lastEditTime = now;
+              lastPctShown = pct;
+              const bar = buildProgressBar(pct);
+              editMessageText(token, chatId, progressMsgId,
+                `📥 *File Diterima!*\n\n` +
+                `⏳ Mendownload file dari Telegram...\n\n` +
+                `${bar}\n\n` +
+                `_Sabarin sebentar ya kak_`
+              ).catch(() => {});
+            };
+
+            const buffer = await downloadTelegramFile(token, doc.file_id, onProgress);
             const base64 = buffer.toString("base64");
+
+            // Update progress message to show completion before sending next message
+            if (progressMsgId != null) {
+              await editMessageText(token, chatId, progressMsgId,
+                `📥 *File Diterima!*\n\n` +
+                `✅ *Download selesai!*\n\n` +
+                `${buildProgressBar(100)}`
+              ).catch(() => {});
+            }
 
             const extractedPeriod = extractPeriodFromFilename(filename);
             const amFirstName = linkedAm?.nama.split(" ")[0] || "Kak";
@@ -3026,6 +3358,23 @@ export async function pollOnce() {
             ).catch(() => {});
           }
           continue;
+        } else {
+          // File received but no active import session — happens when API
+          // restarts and the in-memory importState was cleared while the user
+          // was still in the /import flow. Tell them to restart from menu.
+          const [uploader] = await db.select().from(accountManagersTable)
+            .where(eq(accountManagersTable.telegramChatId, chatId)).limit(1);
+          const canImport = uploader && ["ADMIN", "OFFICER", "MANAGER"].includes(uploader.role || "");
+          if (canImport) {
+            const name = uploader!.nama.split(" ")[0] || "Kak";
+            await sendToTelegram(token, chatId,
+              `📎 *File Diterima — Sesi Import Belum Aktif*\n\n` +
+              `Maaf ${name}, sepertinya sesi import sebelumnya terputus (bot baru saja restart). ` +
+              `Silakan mulai ulang dari menu *Impor Data* ya kak 👇`,
+              { inline_keyboard: [[{ text: "📥 Buka Menu Impor Data", callback_data: "/import" }]] }
+            ).catch(() => {});
+          }
+          // For AMs (who can't import anyway), silently ignore the file.
         }
       }
 
@@ -3310,8 +3659,9 @@ export async function pollOnce() {
 
         // /performansi → show period picker
         if (text === "/performansi") {
-          const now2 = new Date();
-          const displayMonth = `${MONTH_NAMES[now2.getMonth() + 1]} ${now2.getFullYear()}`;
+          const period = await latestSnapshotPeriod("performance");
+          const [pickerYear, pickerMonth] = period.split("-").map(Number);
+          const displayMonth = `${MONTH_NAMES[pickerMonth] || pickerMonth} ${pickerYear}`;
           const pickerKeyboard = {
             inline_keyboard: [
               [{ text: `📅 Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],

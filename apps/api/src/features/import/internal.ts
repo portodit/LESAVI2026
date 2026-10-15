@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dataImportsTable, performanceDataTable, accountManagersTable, salesFunnelTable, salesActivityTable, masterCustomerTable, telegramBulkLinksTable, appSettingsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { autoRegisterNewAms } from "./routes";
+import { notifyPerformanceSnapshot, notifyManagerSnapshot } from "../telegram/service";
 import { logger } from "../../shared/logger";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -24,8 +25,8 @@ router.post("/import-performance", async (req, res): Promise<void> => {
     return;
   }
 
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body as {
-    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body as {
+    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean; uploadedByNik?: string;
   };
 
   if (!fileData) {
@@ -231,6 +232,30 @@ router.post("/import-performance", async (req, res): Promise<void> => {
     "import_performance_telegram"
   );
 
+  // ── Send personalized snapshot notifications to all linked AMs
+  let uploader: { nama: string; role: string; nik?: string } | undefined;
+  if (uploadedByNik) {
+    const [u] = await db.select().from(accountManagersTable)
+      .where(eq(accountManagersTable.nik, uploadedByNik)).limit(1);
+    if (u) uploader = { nama: u.nama, role: u.role || "OFFICER", nik: u.nik || undefined };
+  }
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
+    logger.error({ err }, "notifyPerformanceSnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Performance snapshot notifications sent");
+  }
+
+  // ── Send manager-level summary to all linked MANAGER role users
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
+    logger.error({ err }, "notifyManagerSnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager snapshot notifications sent");
+  }
+
   const amCount = new Set(records.map(r => r.nik)).size;
 
   res.json({
@@ -243,6 +268,10 @@ router.post("/import-performance", async (req, res): Promise<void> => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
     importId: imp.id,
   });
 });
@@ -256,8 +285,8 @@ router.post("/import-funnel", async (req, res): Promise<void> => {
     return;
   }
 
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body as {
-    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body as {
+    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean; uploadedByNik?: string;
   };
 
   if (!fileData) {
@@ -435,8 +464,8 @@ router.post("/import-activity", async (req, res): Promise<void> => {
     return;
   }
 
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body as {
-    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body as {
+    fileData?: string; snapshotDate?: string; period?: string; forceOverwrite?: boolean; uploadedByNik?: string;
   };
 
   if (!fileData) {

@@ -79,9 +79,22 @@ if (fs.existsSync(uploadsPath)) {
 
 // ─── Serve Dashboard Static Build (SPA fallback) ────────────────────────────────
 // Must come BEFORE /api routes so API calls go through first
-const dashboardDistPath = path.resolve(__dirname, "..", "..", "dashboard", "dist", "public");
+// Path resolves from apps/api/dist/ → LESAVI2026/apps/dashboard/dist/public
+const dashboardDistPath = path.resolve(__dirname, "..", "..", "..", "apps", "dashboard", "dist", "public");
 if (fs.existsSync(dashboardDistPath)) {
-  app.use(express.static(dashboardDistPath));
+  app.use(
+    express.static(dashboardDistPath, {
+      // Force the browser to revalidate dashboard assets on every request.
+      // Without this, the browser can hold a stale JS bundle across deploys
+      // and the cache-bust query string only helps on the *first* load after
+      // the asset hash changed.
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      },
+    })
+  );
   // SPA fallback: serve index.html for all non-API routes
   // Cache-bust: inject ?v= hash from built assets so browser always gets fresh files
   app.use((_req, res, next) => {
@@ -94,6 +107,9 @@ if (fs.existsSync(dashboardDistPath)) {
         if (hashMatch) {
           html = html.replace(/\.js"/g, `.js?v=${hashMatch[1]}"`);
         }
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
         res.type("html").send(html);
       } else {
         next();

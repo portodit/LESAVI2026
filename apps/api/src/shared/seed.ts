@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { seedAmFunnelTargets } from "../seeds/seed-am-funnel-targets";
 
 // Role IDs (from RBAC migration)
-const ROLE_ID = { ADMIN: 1, MANAGER: 2, OFFICER: 3, ACCOUNT_MANAGER: 4 };
+const ROLE_ID = { ADMIN: 1, MANAGER: 2, OFFICER: 3, ACCOUNT_MANAGER: 4, INPUTER: 5 };
 
 // Default Google Drive folder IDs (TREG3 Suramadu production folders)
 const DEFAULT_GDRIVE_FOLDERS = {
@@ -85,12 +85,46 @@ const DEFAULT_OFFICERS = [
   },
 ];
 
+const DEFAULT_INPUTERS = [
+  {
+    nik: null,
+    nama: "DATA INPUTER",
+    slug: "data-inputer",
+    role: "INPUTER",
+    roleId: ROLE_ID.INPUTER,
+    tipe: "LESA",
+    divisi: "DPS",
+    witel: "SURAMADU",
+    kpiActivity: 0,
+    aktif: true,
+    crossWitel: false,
+  },
+];
+
 const DEFAULT_FUNNEL_TARGETS = [
   { divisi: "DPS", tahun: 2026, targetFullHo: 97076000000, targetHo: 95973000000 },
   { divisi: "DSS", tahun: 2026, targetFullHo: 73780000000, targetHo: 57036000000 },
 ];
 
 export async function ensureDefaultSeed(): Promise<void> {
+  // ── Seed roles table (idempotent) ─────────────────────────────────────────
+  const existingRoles = await db.select({ id: rolesTable.id, code: rolesTable.code }).from(rolesTable);
+  const existingCodes = new Set(existingRoles.map(r => r.code));
+
+  const rolesToSeed = [
+    { id: 1, code: "ADMIN",           name: "Admin",           level: 10 },
+    { id: 2, code: "MANAGER",         name: "Manager",         level: 20 },
+    { id: 3, code: "OFFICER",         name: "Officer",         level: 30 },
+    { id: 4, code: "ACCOUNT_MANAGER", name: "Account Manager", level: 40 },
+    { id: 5, code: "INPUTER",         name: "Inputer",         level: 35 },
+  ];
+
+  for (const role of rolesToSeed) {
+    if (!existingCodes.has(role.code)) {
+      await db.insert(rolesTable).values(role as any);
+    }
+  }
+
   // ── One-time cleanup: hapus AM non-aktif yang ditemukan dari import (bukan seed asli)
   // Flag disimpan di app_settings.nonAktifAmsCleaned — hanya dijalankan sekali
   const settingsForCleanup = await db.select({ id: appSettingsTable.id, nonAktifAmsCleaned: appSettingsTable.nonAktifAmsCleaned }).from(appSettingsTable).limit(1);
@@ -116,6 +150,11 @@ export async function ensureDefaultSeed(): Promise<void> {
   // Upsert default officers (non-admin — no email/password)
   for (const o of DEFAULT_OFFICERS) {
     await db.insert(accountManagersTable).values(o as any).onConflictDoNothing();
+  }
+
+  // Upsert default inputers
+  for (const inp of DEFAULT_INPUTERS) {
+    await db.insert(accountManagersTable).values(inp as any).onConflictDoNothing();
   }
 
   const googleApiKey = process.env.GOOGLE_API_KEY || null;

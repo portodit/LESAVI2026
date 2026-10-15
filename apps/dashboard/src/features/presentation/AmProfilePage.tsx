@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import {
-  Loader2, Upload, TrendingUp, ChevronDown, Check,
-  ChevronLeft, ChevronRight, BarChart2, Filter, Activity, Search,
+  Loader2, X, Upload, TrendingUp, ChevronDown, Check, Target,
+  TrendingDown, ChevronLeft, ChevronRight, Users, Trophy, CreditCard, MapPin,
+  BarChart2, Filter, Activity, Search, Minimize2, ChevronsUp, ChevronsDown,
   ArrowRight, PlusCircle, AlertTriangle, MinusCircle
 } from "lucide-react";
 import { Bar, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -11,8 +12,10 @@ import { cn, formatRupiahFull } from "@/shared/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
+import { Badge } from "@/shared/ui/badge";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
+const MONTHS_LABEL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 const REVENUE_OPTIONS = [
   { value: "Reguler", label: "Reguler" },
   { value: "Sustain", label: "Sustain" },
@@ -124,7 +127,7 @@ function PergerakanItemRow({ item, variant, index }: { item: PergerakanItem; var
     : { label: "STAGNAN", bg: "bg-gray-800", text: "text-white" };
 
   const reportDate = item.reportDate
-    ? new Date(item.reportDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+    ? new Date(item.reportDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
     : "–";
 
   const cardBorder = variant === "new"
@@ -202,7 +205,7 @@ function PergerakanSection({
   funnelData,
   amNama,
 }: {
-  snapshotComparison: SnapshotComparison;
+  snapshotComparison: ReturnType<typeof import("./AmProfilePage").PergerakanSection>;
   funnelData: any;
   amNama: string;
 }) {
@@ -239,9 +242,9 @@ function PergerakanSection({
     : ".";
 
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
-    new: newLops.length > 0,
-    changed: changedStatus.length > 0,
-    stagnant: stagnanCount > 0,
+    new: false,
+    changed: false,
+    stagnant: false,
   });
 
   if (!prevSnapshotLabel) return null;
@@ -252,7 +255,7 @@ function PergerakanSection({
   return (
     <Card className="overflow-hidden">
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b border-gray-200">
+      <div className="px-4 py-4 md:px-5 md:pt-5 md:pb-4 border-b border-gray-200">
         <h2 className="text-base font-bold text-gray-900 leading-tight">
           Laporan Pergerakan Funnel
         </h2>
@@ -422,7 +425,6 @@ interface CustomerRowDetail extends CustomerRow { bulan: number; tahun: number; 
 interface Snapshot { id: number; label: string; period: string | null; snapshotDate: string | null; }
 interface AmProfileFilters { availableBulan: number[]; selectedBulan: number[]; tipeRevenue: string; }
 interface AmProfileResponse { am: AmProfile; snapshots: Snapshot[]; customers: CustomerRow[]; selectedSnapshotId: number | null; filters: AmProfileFilters; customerRows: CustomerRowDetail[]; summary: { totalTarget: number; totalReal: number; achRate: number; periodText: string; customerCount: number; cmAchRate: number; cmTarget: number; cmReal: number; }; }
-interface SnapshotComparison { newLops: any[]; changedStatus: any[]; newF5: any[]; stagnanLops: any[]; stagnanCount: number; prevCR: number; crDelta: number; currCR: number; totalTercakup: number; }
 interface RankData { myRank: number | null; myAchRate: number | null; totalCount: number; bulan?: number; tahun?: number; }
 type TabId = "performansi" | "salesFunnel" | "salesActivity" | "prognosa";
 interface Props { nik?: string; embedded?: boolean; onAmLoaded?: (am: AmProfile) => void; }
@@ -472,18 +474,21 @@ function Sparkline({ values, color = "#10b981", fill = true }: { values: number[
   };
   const startAngle = -90;
   const filledAngle = startAngle + (clamped / 100) * 360;
-  const bgEndAngle = startAngle + 360;
+  const ringR = (outerR + innerR) / 2;
+  const isFull = clamped >= 100;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
-      {/* Background ring */}
-      <path d={describeArc((outerR + innerR) / 2, startAngle, bgEndAngle)} fill="none" stroke="#e5e7eb" strokeWidth={outerR - innerR} strokeLinecap="round" />
+      {/* Background ring — full circle */}
+      <circle cx={cx} cy={cy} r={ringR} fill="none" stroke="#e5e7eb" strokeWidth={outerR - innerR} />
       {/* Filled ring */}
-      {filledAngle > startAngle + 0.5 ? (
-        <path d={describeArc((outerR + innerR) / 2, startAngle, filledAngle)} fill="none" stroke={color} strokeWidth={outerR - innerR} strokeLinecap="round" />
+      {isFull ? (
+        <circle cx={cx} cy={cy} r={ringR} fill="none" stroke={color} strokeWidth={outerR - innerR} />
+      ) : filledAngle > startAngle + 0.5 ? (
+        <path d={describeArc(ringR, startAngle, filledAngle)} fill="none" stroke={color} strokeWidth={outerR - innerR} strokeLinecap="butt" />
       ) : null}
       {/* Percentage in center */}
-      <text x={cx} y={cy + 5} textAnchor="middle" fontSize={size * 0.17} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
-      <text x={cx} y={cy + size * 0.07 + 8} textAnchor="middle" fontSize={size * 0.065} fill="#6b7280">CAPAIAN</text>
+      <text x={cx} y={cy + 5} textAnchor="middle" fontSize={size * 0.15} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
+      <text x={cx} y={cy + size * 0.07 + 8} textAnchor="middle" fontSize={size * 0.06} fontWeight="600" fill="#6b7280">CAPAIAN</text>
     </svg>
   );
 }
@@ -650,7 +655,7 @@ function FunnelTable({ lopRows, funnelData, propTotalNilai, propTotalLop, funnel
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       {/* ── Overview Cards ── */}
-      <div className="grid grid-cols-4 gap-3 p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3">
         {/* Target Card */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
           <div className="flex-1 flex flex-col justify-between min-w-0">
@@ -1350,51 +1355,6 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
     return () => { cancelled = true; };
   }, [effectiveNik, selectedSnapshot, selectedPeriodes, selectedRevenue, selectedDivisi]);
 
-  // Initialize default snapshot and periode dari data yang sudah ada (bukan current month)
-  useEffect(() => {
-    if (actLoading || !actData) return;
-    // Default snapshot to latest
-    if (actSnapshot === null && actData?.snapshots?.length > 0) {
-      setActSnapshot(actData.snapshots[0].id);
-    }
-    // Default periode to latest month (availableMonths[0] already sorted desc)
-    if (actPeriodes.size === 0 && actData?.availableMonths?.length > 0) {
-      const latest = actData.availableMonths[0];
-      setActPeriodes(new Set([latest]));
-    }
-  }, [actLoading, actData, actSnapshot, actPeriodes]);
-
-  // Fetch activity data
-  useEffect(() => {
-    if (!effectiveNik) return;
-    let cancelled = false;
-    setActLoading(true);
-
-    const params = new URLSearchParams();
-    if (actSnapshot) params.set("snapshotId", String(actSnapshot));
-    if (actDivisi !== "LESA") params.set("divisiCc", actDivisi);
-    // Send selected periodes (empty = fetch all, filter happens on frontend)
-    actPeriodes.forEach(p => {
-      const [y, m] = p.split("-");
-      params.append("bulan", m);
-      params.append("tahun", y);
-    });
-    if (actKategori.size > 0) {
-      actKategori.forEach(k => params.append("kategori", k));
-    }
-    const query = params.toString();
-    const url = `/api/presentation/am-activity/${effectiveNik}${query ? `?${query}` : ""}`;
-    fetch(url, { headers: presHeaders() })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(d => {
-        if (cancelled) return;
-        setActData(d);
-        setActLoading(false);
-      })
-      .catch(e => { if (!cancelled) { setActData(null); setActLoading(false); } });
-    return () => { cancelled = true; };
-  }, [effectiveNik, actSnapshot, actPeriodes, actKategori, actDivisi]);
-
   // Fetch ranks
   // Determine latest selected periode for CM rank
   const latestPeriode = useMemo(() => {
@@ -1468,6 +1428,43 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
       .catch(() => { if (!cancelled) setFunnelLoading(false); });
     return () => { cancelled = true; };
   }, [effectiveNik, embTab, selectedFunnelSnapshot, selectedKontrak]);
+
+  // Initialize activity default snapshot + periode
+  useEffect(() => {
+    if (actLoading || !actData) return;
+    if (actSnapshot === null && actData?.snapshots?.length > 0) {
+      setActSnapshot(actData.snapshots[0].id);
+    }
+    if (actPeriodes.size === 0 && actData?.availableMonths?.length > 0) {
+      const latest = actData.availableMonths[0];
+      setActPeriodes(new Set([latest]));
+    }
+  }, [actLoading, actData, actSnapshot, actPeriodes]);
+
+  // Fetch activity data
+  useEffect(() => {
+    if (!effectiveNik) return;
+    let cancelled = false;
+    setActLoading(true);
+    const params = new URLSearchParams();
+    if (actSnapshot) params.set("snapshotId", String(actSnapshot));
+    if (actDivisi !== "LESA") params.set("divisiCc", actDivisi);
+    actPeriodes.forEach(p => {
+      const [y, m] = p.split("-");
+      params.append("bulan", m);
+      params.append("tahun", y);
+    });
+    if (actKategori.size > 0) {
+      actKategori.forEach(k => params.append("kategori", k));
+    }
+    const query = params.toString();
+    const url = `/api/presentation/am-activity/${effectiveNik}${query ? `?${query}` : ""}`;
+    fetch(url, { headers: presHeaders() })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { if (!cancelled) { setActData(d); setActLoading(false); } })
+      .catch(() => { if (!cancelled) { setActData(null); setActLoading(false); } });
+    return () => { cancelled = true; };
+  }, [effectiveNik, actSnapshot, actPeriodes, actKategori, actDivisi]);
 
   // Upload photo
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1665,9 +1662,23 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           </div>
         </div>
 
+
+        {/* ── Table ── */}
+        <FunnelTable
+          lopRows={filteredFunnelMetrics.filteredLops}
+          funnelData={funnelData}
+          propTotalNilai={filteredFunnelMetrics.filteredTotalNilai}
+          propTotalLop={filteredFunnelMetrics.filteredTotalLop}
+          funnelExpanded={funnelExpanded}
+          setFunnelExpanded={setFunnelExpanded}
+          search={funnelSearch}
+          setSearch={setFunnelSearch}
+          amNama={data?.am?.nama ?? ""}
+        />
+
         {/* ── LOP per Fase + Metrics (3 cols) ── */}
         <div className="bg-card border border-border rounded-xl p-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1.3fr 1fr 1fr" }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:[grid-template-columns:1.3fr_1fr_1fr] gap-4">
             {/* LOP per Fase */}
             <div>
               <h3 className="text-base font-display font-bold text-foreground mb-3">LOP per Fase</h3>
@@ -1724,7 +1735,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 </div>
                 <div className="flex justify-between items-baseline gap-1">
                   <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>Target</span>
-                  <span className="tabular-nums text-black shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
+                  <span className="font-bold tabular-nums text-black shrink-0">{funnelData.targetTotal ? fmtRupiahShort(funnelData.targetTotal) : "—"}</span>
                 </div>
                 {((filteredFunnelMetrics.filteredTotalNilai ?? 0) >= (funnelData.targetTotal ?? 0)) ? (
                   <div className="flex justify-between items-baseline gap-1 pt-1 border-t border-gray-200">
@@ -1752,7 +1763,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                 </div>
                 <div className="flex justify-between items-baseline gap-1">
                   <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>F3 + F4 + F5</span>
-                  <span className="tabular-nums text-black shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
+                  <span className="font-bold tabular-nums text-black shrink-0">{fmtNilai(funnelData.pipelineEligibleNilai ?? 0)}</span>
                 </div>
                 <div className="flex justify-between items-baseline gap-1">
                   <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>Tercapai</span>
@@ -1771,25 +1782,183 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
             amNama={am.nama}
           />
         )}
-
-        {/* ── Table ── */}
-        <FunnelTable
-          lopRows={filteredFunnelMetrics.filteredLops}
-          funnelData={funnelData}
-          propTotalNilai={filteredFunnelMetrics.filteredTotalNilai}
-          propTotalLop={filteredFunnelMetrics.filteredTotalLop}
-          funnelExpanded={funnelExpanded}
-          setFunnelExpanded={setFunnelExpanded}
-          search={funnelSearch}
-          setSearch={setFunnelSearch}
-          amNama={data?.am?.nama ?? ""}
-        />
       </div>
     ) : (
       <div className="bg-card border border-border rounded-xl p-6 text-center text-sm text-muted-foreground/60 italic">
         Data funnel tidak tersedia untuk filter yang dipilih.
       </div>
     );
+
+  const activityContent = actLoading ? (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  ) : (() => {
+    const kpiTarget = actData?.kpiTarget ?? 30;
+    const kpiCount = actData?.kpiCount ?? 0;
+    const activityCount = actData?.activityCount ?? 0;
+    const pct = kpiTarget > 0 ? Math.min(100, (kpiCount / kpiTarget) * 100) : 0;
+    const remaining = Math.max(0, kpiTarget - kpiCount);
+    const isAboveKpi = kpiCount >= kpiTarget;
+    const statusLabel = isAboveKpi ? "Memenuhi KPI" : "Di Bawah KPI";
+    const statusBg = isAboveKpi ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600";
+    const barColor = pct >= 100 ? "from-emerald-600 to-emerald-500" : "from-red-600 to-red-500";
+
+    const kategoriLabel = (label: string | null | undefined): string => {
+      if (!label) return "–";
+      const l = label.toLowerCase();
+      if (l.includes("tanpa")) return "Tanpa Pelanggan";
+      if (l.includes("proyek")) return "Pelanggan Dengan Proyek";
+      return "Dengan Pelanggan";
+    };
+    const kategoriColor = (label: string | null | undefined): string => {
+      if (!label) return "bg-slate-100 text-slate-700";
+      const l = label.toLowerCase();
+      if (l.includes("tanpa")) return "bg-slate-100 text-slate-700";
+      if (l.includes("proyek")) return "bg-teal-50 text-teal-700";
+      return "bg-blue-50 text-blue-700";
+    };
+
+    const filteredActivities = (actData?.activities ?? []) as any[];
+    const searchedActivities = actSearch.trim()
+      ? filteredActivities.filter((a: any) => {
+          const q = actSearch.toLowerCase();
+          return (
+            (a.caName || "").toLowerCase().includes(q) ||
+            (a.label || "").toLowerCase().includes(q) ||
+            (a.activityType || "").toLowerCase().includes(q) ||
+            (a.activityNotes || "").toLowerCase().includes(q) ||
+            (a.picName || "").toLowerCase().includes(q)
+          );
+        })
+      : filteredActivities;
+
+    const safePage = Math.min(actPage, Math.max(1, Math.ceil(searchedActivities.length / actPageSize)));
+    const paginatedActivities = searchedActivities.slice((safePage - 1) * actPageSize, safePage * actPageSize);
+    const totalPages = Math.max(1, Math.ceil(searchedActivities.length / actPageSize));
+
+    return (
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-3">
+          <span className="text-sm font-bold text-foreground">Monitoring KPI Aktivitas</span>
+          <span className="bg-secondary border border-border text-foreground text-xs font-bold px-2 py-0.5 rounded-full">{effectiveNik}</span>
+          <div className="flex-1" />
+          <div className="h-8 flex items-center gap-2 bg-background border border-border rounded-lg px-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-colors min-w-[220px]">
+            <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+            <input type="text" placeholder="Cari tipe, label, pelanggan, catatan…" value={actSearch}
+              onChange={e => setActSearch(e.target.value)}
+              className="border-none outline-none text-xs text-foreground placeholder:text-muted-foreground/60 bg-transparent flex-1 min-w-0" />
+          </div>
+        </div>
+
+
+        {paginatedActivities.length > 0 && (
+          <div className="grid text-xs font-black uppercase tracking-wide text-white font-display px-3 py-2.5 [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_112px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6" style={{ background: "rgb(185, 28, 28)" }}>
+            <div>#</div>
+            <div>Tanggal</div>
+            <div>Pelanggan &amp; Catatan</div>
+            <div className="hidden sm:block">Tipe Aktivitas</div>
+            <div className="hidden sm:block">Kategori</div>
+            <div>KPI</div>
+          </div>
+        )}
+
+        {paginatedActivities.length === 0 ? (
+          <div className="flex items-center gap-3 px-6 py-8 text-sm text-foreground/50 justify-center">
+            <Activity className="w-4 h-4" />
+            <span>Tidak ada data aktivitas pada periode yang dipilih.</span>
+          </div>
+        ) : paginatedActivities.map((act: any, idx: number) => {
+          const [datePart] = (act.activityEndDate ?? "").split(" ");
+          const dateObj = datePart ? new Date(datePart) : null;
+          const dayStr = dateObj ? `${String(dateObj.getDate()).padStart(2,"0")} ${MONTHS_FULL[dateObj.getMonth()]} ${dateObj.getFullYear()}` : "–";
+          const monthStr = dateObj ? dateObj.toLocaleDateString("id-ID", { weekday: "long" }) : "–";
+          const kat = kategoriLabel(act.label);
+          const katCls = kategoriColor(act.label);
+          return (
+            <div key={act.id} className="border-b border-slate-300 last:border-b-0">
+              <div className="grid items-start px-3 py-3.5 hover:bg-secondary/40 transition-colors [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_112px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6">
+                <div className="text-xs font-bold text-foreground/50 font-mono pt-0.5">{idx + 1}</div>
+                <div>
+                  <div className="text-sm font-bold text-foreground font-mono whitespace-nowrap">{dayStr}</div>
+                  <div className="text-[11px] font-semibold text-primary mt-0.5 capitalize">{monthStr}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-foreground truncate">{act.caName || "–"}</div>
+                  {act.activityNotes && (
+                    <div className="text-xs text-foreground/70 mt-1 pl-2.5 border-l-2 border-slate-300 bg-slate-50 rounded-r-md py-1 pr-2 italic leading-relaxed">
+                      "{act.activityNotes}"
+                    </div>
+                  )}
+                </div>
+                <div className="pt-0.5 hidden sm:block">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap" style={{ background: "rgb(227, 242, 253)", color: "rgb(21, 101, 192)" }}>
+                    {act.activityType || "–"}
+                  </span>
+                </div>
+                <div className="pt-0.5 hidden sm:block">
+                  <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap", katCls)}>{kat}</span>
+                </div>
+                <div className="pt-0.5">
+                  <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold whitespace-nowrap", act.isKpi ? "text-emerald-700 bg-emerald-50" : "text-slate-500 bg-slate-50")}>
+                    {act.isKpi ? "✓ Ya" : "✗ Tidak"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {searchedActivities.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-secondary/20">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Tampilkan:</span>
+              {[10, 20, 50].map(size => (
+                <button key={size} onClick={() => { setActPageSize(size); setActPage(1); }}
+                  className={cn("h-6 px-2.5 rounded text-[11px] font-semibold border transition-colors",
+                    actPageSize === size ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
+                  {size}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-medium text-foreground/60">
+                {(safePage - 1) * actPageSize + 1}–{Math.min(safePage * actPageSize, searchedActivities.length)} dari {searchedActivities.length}
+              </span>
+              <button onClick={() => setActPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}
+                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
+                const page = start + i;
+                if (page > totalPages) return null;
+                return (
+                  <button key={page} onClick={() => setActPage(page)}
+                    className={cn("h-7 min-w-[28px] px-1 flex items-center justify-center rounded text-[11px] font-semibold border transition-colors",
+                      safePage === page ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
+                    {page}
+                  </button>
+                );
+              })}
+              <button onClick={() => setActPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}
+                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {paginatedActivities.length > 0 && (
+          <div className="flex items-center gap-5 px-6 py-3 border-t-2 border-primary/20 bg-primary/5">
+            <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-wide">Ringkasan:</span>
+            <span className="text-sm font-bold text-emerald-700">{kpiCount} aktivitas KPI</span>
+            <span className="text-sm font-semibold text-foreground/60">({activityCount} total)</span>
+          </div>
+        )}
+      </div>
+    );
+  })();
 
   return (
       <>
@@ -1835,7 +2004,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
               </div>
             </div>
             {/* Bottom: Tab Menu */}
-            <div className="flex items-center gap-0 mt-auto pt-[30px]">
+            <div className="flex items-stretch gap-0 mt-auto pt-[30px]">
               {([
                 { id: "performansi" as TabId, label: "PERFORMANSI", icon: BarChart2 },
                 { id: "salesFunnel" as TabId, label: "SALES FUNNEL", icon: Filter },
@@ -1844,13 +2013,13 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
               ]).map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => setEmbTab(id)}
                   className={cn(
-                    "flex items-center gap-2 px-2 py-2 text-[11px] md:text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap border-b-[3px]",
+                    "flex-1 md:flex-none flex items-center justify-center md:justify-start gap-1.5 md:gap-2 px-2 py-2 text-[11px] md:text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap border-b-[3px]",
                     embTab === id
                       ? "text-white border-white"
                       : "text-white/50 border-white/20 hover:text-white/80"
                   )}>
                   <Icon className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
-                  <span>{label}</span>
+                  <span className={cn(embTab === id ? "inline" : "hidden md:inline")}>{label}</span>
                 </button>
               ))}
             </div>
@@ -1864,18 +2033,18 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           {embTab === "performansi" && (
             <div className="w-full">
               {/* ── Filter Section ─────────────────────────────────── */}
-              <div className="border border-border rounded-xl overflow-hidden mb-4">
-                <div className="grid grid-cols-4 divide-x divide-border">
+              <div className="bg-card border border-border rounded-xl p-3">
+                <div className="flex items-end gap-2 flex-nowrap overflow-x-auto">
                   {/* Snapshot */}
-                  <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Snapshot</label>
+                  <div className="flex flex-col gap-1 w-44 shrink-0">
+                    <label className="text-xs font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Snapshot</label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                          <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                        <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                          <span className="flex-1 truncate font-medium text-foreground">
                             {data?.snapshots?.find(s => s.id === selectedSnapshot)?.label ?? "Pilih Snapshot"}
                           </span>
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 160 }}>
@@ -1895,17 +2064,17 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                   </div>
 
                   {/* Periode */}
-                  <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Periode</label>
+                  <div className="flex flex-col gap-1 w-48 shrink-0">
+                    <label className="text-xs font-display font-bold uppercase tracking-wide" style={{ color: "#1e1e1e" }}>Periode</label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                          <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                        <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                          <span className="flex-1 truncate font-medium text-foreground">
                             {selectedPeriodes.size === availablePeriodes.length ? `Semua (${availablePeriodes.length})`
                               : selectedPeriodes.size === 0 ? `Pilih Periode`
                               : `${selectedPeriodes.size} Periode dipilih`}
                           </span>
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
@@ -1952,15 +2121,15 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                   </div>
 
                   {/* Divisi */}
-                  <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold text-foreground uppercase tracking-wide">Divisi</label>
+                  <div className="flex flex-col gap-1 w-40 shrink-0">
+                    <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Divisi</label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                          <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                        <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                          <span className="flex-1 truncate font-medium text-foreground">
                             {DIVISI_OPTIONS_EMB.find(o => o.value === selectedDivisi)?.label ?? "LESA (All)"}
                           </span>
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 160 }}>
@@ -1980,13 +2149,13 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                   </div>
 
                   {/* Revenue */}
-                  <div className="flex flex-col gap-1 p-3">
-                    <label className="text-[10px] font-display font-bold text-foreground uppercase tracking-wide">Revenue</label>
+                  <div className="flex flex-col gap-1 w-40 shrink-0">
+                    <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Revenue</label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                          <span className="flex-1 text-left truncate font-medium text-foreground text-xs">{selectedRevenue}</span>
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                        <button type="button" className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full disabled:opacity-40 transition-colors text-left">
+                          <span className="flex-1 truncate font-medium text-foreground">{selectedRevenue}</span>
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 140 }}>
@@ -2009,16 +2178,15 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
 
               {/* ── Cards Section ──────────────────────────────────── */}
               {(loading || rankLoading) ? (
-                <div className="grid grid-cols-4 gap-3 mb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 mb-5">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="bg-secondary/50 border border-border rounded-xl p-3 h-[88px] animate-pulse" />
+                    <div key={i} className="bg-white border border-slate-200 rounded-xl p-3 h-[88px] animate-pulse" />
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-4 gap-3 mb-4">
-                  {/* TARGET | REAL */}
-                  <div className="col-span-2 bg-secondary/50 border border-border rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden">
-                    {/* TARGET */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 mb-5">
+                  {/* TARGET */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden shadow-sm">
                     <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide leading-none">Target</div>
                       <div className="text-2xl font-black tabular-nums leading-none text-foreground">{fmtRupiahShort(data?.summary?.totalTarget ?? 0)}</div>
@@ -2029,8 +2197,9 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     <div className="shrink-0 flex items-center">
                       <Sparkline values={monthlyData.targetValues} color="#10b981" />
                     </div>
-                    <div className="w-px bg-border mx-1 shrink-0" />
-                    {/* REAL */}
+                  </div>
+                  {/* REAL */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden shadow-sm">
                     <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide leading-none">Real</div>
                       <div className="text-2xl font-black tabular-nums leading-none text-blue-600">{fmtRupiahShort(data?.summary?.totalReal ?? 0)}</div>
@@ -2043,7 +2212,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     </div>
                   </div>
                   {/* ACH CM | RANK CM */}
-                  <div className="bg-secondary/50 border border-border rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden shadow-sm">
                     {/* ACH CM */}
                     <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide leading-none">ACH CM</div>
@@ -2061,7 +2230,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     </div>
                   </div>
                   {/* ACH YTD | RANK YTD */}
-                  <div className="bg-secondary/50 border border-border rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-stretch h-[88px] overflow-hidden shadow-sm">
                     {/* ACH YTD */}
                     <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide leading-none">ACH YTD</div>
@@ -2108,7 +2277,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
               )}
 
               {/* ── Table Section ──────────────────────────────────── */}
-              <div className="rounded-xl border-2 border-rose-200 overflow-hidden">
+              <div className="rounded-xl border-2 border-rose-200 overflow-hidden mt-5">
                 {/* Table Header */}
                 <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-sm px-4 py-3 border-b border-border">
                   <div className="flex items-center gap-3">
@@ -2323,409 +2492,186 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                   )}</div></div>)}
                 {/* Tab: Sales Funnel */}
                 {embTab === "salesFunnel" && funnelContent}
-                {/* Tab: Sales Activity */}
-          {embTab === "salesActivity" && (
-            <div className="w-full space-y-4">
-              {/* ── Filter Bar (white card) ─────────────────────────── */}
-              <div className="bg-card border border-border rounded-xl p-3">
-                <div className="flex items-end gap-2 flex-wrap min-w-0">
-                  {/* Snapshot */}
-                <div className="flex flex-col gap-1 w-44 shrink-0">
-                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Snapshot</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
-                          {actData?.snapshots?.find((s: any) => s.id === actSnapshot)?.label ?? "Pilih Snapshot"}
-                        </span>
-                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 160 }}>
-                      <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
-                        {(actData?.snapshots ?? []).map((s: any) => (
-                          <button key={s.id} onClick={() => { setActSnapshot(s.id); }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
-                            <span className="w-1.5 shrink-0 flex items-center justify-center">
-                              {actSnapshot === s.id && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                            </span>
-                            <span className={cn("flex-1", actSnapshot === s.id ? "font-semibold text-primary" : "")}>{s.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
 
-                {/* Periode */}
-                <div className="flex flex-col gap-1 shrink-0 w-44">
-                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Periode</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
-                          {actPeriodes.size === 0 ? "Pilih Periode" : actPeriodes.size === 1 ? (
-                            (() => { const p = [...actPeriodes][0]; const [y, m] = p.split("-"); return `${MONTHS_SHORT[parseInt(m)-1]} ${y}`; })()
-                          ) : `${actPeriodes.size} dipilih`}
-                        </span>
-                        {actPeriodes.size > 0 && <span className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none shrink-0">{actPeriodes.size}</span>}
-                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
-                      <div className="bg-popover border border-border rounded-xl shadow-xl w-52 overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
-                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Periode</span>
-                          <div className="flex gap-1.5">
-                            <button onClick={() => setActPeriodes(new Set(actData?.availableMonths ?? []))} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
-                            <span className="text-muted-foreground text-[11px]">·</span>
-                            <button onClick={() => setActPeriodes(new Set())} className="text-[11px] text-muted-foreground font-semibold hover:underline">Reset</button>
-                          </div>
-                        </div>
-                        <div className="max-h-72 overflow-y-auto py-1">
-                          {/* Years */}
-                          {(() => {
-                            const availableMonths = (actData?.availableMonths ?? []) as string[];
-                            const years = [...new Set(availableMonths.map((m: string) => m.split("-")[0]))].sort((a: string, b: string) => b.localeCompare(a));
-                            return years.map((y: string) => {
-                              const monthsOfYear = availableMonths.filter((m: string) => m.startsWith(y + "-"));
-                              return (
-                                <div key={y}>
-                                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-secondary transition-colors cursor-pointer">
-                                    <span className={cn("w-4 h-4 rounded border shrink-0 flex items-center justify-center", actPeriodes.has(y) || monthsOfYear.some((m: string) => actPeriodes.has(m)) ? "border-primary bg-primary/10" : "border-border")}>
-                                      {(actPeriodes.has(y) || monthsOfYear.every((m: string) => actPeriodes.has(m))) && actPeriodes.size > 0 && <span className="text-primary text-[9px] font-black leading-none">–</span>}
+                {/* Tab: Sales Activity */}
+                {embTab === "salesActivity" && (
+                  <div className="w-full space-y-4">
+                    <div className="bg-card border border-border rounded-xl p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-2 sm:flex-wrap min-w-0">
+                        <div className="flex flex-col gap-1 w-full sm:w-44 shrink-0">
+                          <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Snapshot</label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                                  {actData?.snapshots?.find((s: any) => s.id === actSnapshot)?.label ?? "Pilih Snapshot"}
+                                </span>
+                                <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 160 }}>
+                              <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
+                                {(actData?.snapshots ?? []).map((s: any) => (
+                                  <button key={s.id} onClick={() => { setActSnapshot(s.id); }}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
+                                    <span className="w-1.5 shrink-0 flex items-center justify-center">
+                                      {actSnapshot === s.id && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
                                     </span>
-                                    <span className="flex-1 text-sm font-semibold text-foreground">{y}</span>
+                                    <span className={cn("flex-1", actSnapshot === s.id ? "font-semibold text-primary" : "")}>{s.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="flex flex-col gap-1 w-full sm:w-44 shrink-0">
+                          <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Periode</label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                                  {actPeriodes.size === 0 ? "Pilih Periode" : actPeriodes.size === 1 ? (
+                                    (() => { const p = [...actPeriodes][0]; const [y, m] = p.split("-"); return `${MONTHS_SHORT[parseInt(m)-1]} ${y}`; })()
+                                  ) : `${actPeriodes.size} dipilih`}
+                                </span>
+                                {actPeriodes.size > 0 && <span className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none shrink-0">{actPeriodes.size}</span>}
+                                <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
+                              <div className="bg-popover border border-border rounded-xl shadow-xl w-52 overflow-hidden">
+                                <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Periode</span>
+                                  <div className="flex gap-1.5">
+                                    <button onClick={() => setActPeriodes(new Set(actData?.availableMonths ?? []))} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
+                                    <span className="text-muted-foreground text-[11px]">·</span>
+                                    <button onClick={() => setActPeriodes(new Set())} className="text-[11px] text-muted-foreground font-semibold hover:underline">Reset</button>
                                   </div>
-                                  {monthsOfYear.map((m: string) => {
-                                    const monthNum = parseInt(m.split("-")[1]);
-                                    const isSelected = actPeriodes.has(m);
+                                </div>
+                                <div className="max-h-72 overflow-y-auto py-1">
+                                  {(() => {
+                                    const availableMonths = (actData?.availableMonths ?? []) as string[];
+                                    const years = [...new Set(availableMonths.map((m: string) => m.split("-")[0]))].sort((a: string, b: string) => b.localeCompare(a));
+                                    return years.map((y: string) => {
+                                      const monthsOfYear = availableMonths.filter((m: string) => m.startsWith(y + "-"));
+                                      return (
+                                        <div key={y}>
+                                          <div className="flex items-center gap-2 px-3 py-2 hover:bg-secondary transition-colors cursor-pointer">
+                                            <span className={cn("w-4 h-4 rounded border shrink-0 flex items-center justify-center", actPeriodes.has(y) || monthsOfYear.some((m: string) => actPeriodes.has(m)) ? "border-primary bg-primary/10" : "border-border")}>
+                                              {(actPeriodes.has(y) || monthsOfYear.every((m: string) => actPeriodes.has(m))) && actPeriodes.size > 0 && <span className="text-primary text-[9px] font-black leading-none">–</span>}
+                                            </span>
+                                            <span className="flex-1 text-sm font-semibold text-foreground">{y}</span>
+                                          </div>
+                                          {monthsOfYear.map((m: string) => {
+                                            const monthNum = parseInt(m.split("-")[1]);
+                                            const isSelected = actPeriodes.has(m);
+                                            return (
+                                              <button key={m} onClick={() => {
+                                                setActPeriodes(prev => {
+                                                  const next = new Set(prev);
+                                                  if (next.has(m)) next.delete(m); else next.add(m);
+                                                  return next;
+                                                });
+                                              }} className="w-full text-left pl-9 pr-3 py-1.5 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
+                                                <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center", isSelected ? "bg-primary border-primary" : "border-border")}>
+                                                  {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
+                                                </span>
+                                                <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{MONTHS_FULL[monthNum - 1]}</span>
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    });
+                                  })()}
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="flex flex-col gap-1 w-full sm:w-44 shrink-0">
+                          <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Kategori</label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                                  {actKategori.size === 0 ? "Semua" : actKategori.size === 1 ? [...actKategori][0].replace(/_/g, " ") : `${actKategori.size} dipilih`}
+                                </span>
+                                <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
+                              <div className="bg-popover border border-border rounded-xl shadow-xl min-w-[200px] max-w-[260px] overflow-hidden">
+                                <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
+                                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Kategori</span>
+                                  <div className="flex gap-1.5">
+                                    <button onClick={() => setActKategori(new Set())} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
+                                    <span className="text-muted-foreground text-[11px]">·</span>
+                                    <button onClick={() => setActKategori(new Set(KATEGORI_OPTIONS.map(o => o.value)))} className="text-[11px] text-muted-foreground font-semibold hover:underline">Kosongkan</button>
+                                  </div>
+                                </div>
+                                <div className="max-h-56 overflow-y-auto py-1">
+                                  {KATEGORI_OPTIONS.map(opt => {
+                                    const isSelected = actKategori.has(opt.value);
                                     return (
-                                      <button key={m} onClick={() => {
-                                        setActPeriodes(prev => {
+                                      <button key={opt.value} onClick={() => {
+                                        setActKategori(prev => {
                                           const next = new Set(prev);
-                                          if (next.has(m)) next.delete(m); else next.add(m);
+                                          if (next.has(opt.value)) next.delete(opt.value); else next.add(opt.value);
                                           return next;
                                         });
-                                      }} className="w-full text-left pl-9 pr-3 py-1.5 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
+                                      }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
                                         <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center", isSelected ? "bg-primary border-primary" : "border-border")}>
                                           {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
                                         </span>
-                                        <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{MONTHS_FULL[monthNum - 1]}</span>
+                                        <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{opt.label}</span>
                                       </button>
                                     );
                                   })}
                                 </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {/* Kategori */}
-                <div className="flex flex-col gap-1 w-44 shrink-0">
-                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Kategori</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
-                          {actKategori.size === 0 ? "Semua" : actKategori.size === 1 ? [...actKategori][0].replace(/_/g, " ") : `${actKategori.size} dipilih`}
-                        </span>
-                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 200 }}>
-                      <div className="bg-popover border border-border rounded-xl shadow-xl min-w-[200px] max-w-[260px] overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/30">
-                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Kategori</span>
-                          <div className="flex gap-1.5">
-                            <button onClick={() => setActKategori(new Set())} className="text-[11px] text-primary font-semibold hover:underline">Semua</button>
-                            <span className="text-muted-foreground text-[11px]">·</span>
-                            <button onClick={() => setActKategori(new Set(KATEGORI_OPTIONS.map(o => o.value)))} className="text-[11px] text-muted-foreground font-semibold hover:underline">Kosongkan</button>
-                          </div>
-                        </div>
-                        <div className="max-h-56 overflow-y-auto py-1">
-                          {KATEGORI_OPTIONS.map(opt => {
-                            const isSelected = actKategori.has(opt.value);
-                            return (
-                              <button key={opt.value} onClick={() => {
-                                setActKategori(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(opt.value)) next.delete(opt.value); else next.add(opt.value);
-                                  return next;
-                                });
-                              }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary flex items-center gap-2 transition-colors">
-                                <span className={cn("w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center", isSelected ? "bg-primary border-primary" : "border-border")}>
-                                  {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
-                                </span>
-                                <span className={cn(isSelected ? "text-primary font-semibold" : "")}>{opt.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {/* Divisi */}
-                <div className="flex flex-col gap-1 w-28 shrink-0">
-                  <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Divisi</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                        <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
-                          {DIVISI_OPTIONS_EMB.find(o => o.value === actDivisi)?.label ?? "LESA (All)"}
-                        </span>
-                        <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 120 }}>
-                      <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
-                        {DIVISI_OPTIONS_EMB.map(opt => (
-                          <button key={opt.value} onClick={() => setActDivisi(opt.value)}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
-                            <span className="w-1.5 shrink-0 flex items-center justify-center">
-                              {actDivisi === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                            </span>
-                            <span className={cn(actDivisi === opt.value ? "font-semibold text-primary" : "")}>{opt.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-
-              {/* ── KPI Progress + Activity Table ───────────────────── */}
-              {actLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                (() => {
-                  const kpiTarget = actData?.kpiTarget ?? 30;
-                  const kpiCount = actData?.kpiCount ?? 0;
-                  const activityCount = actData?.activityCount ?? 0;
-                  const pct = kpiTarget > 0 ? Math.min(100, (kpiCount / kpiTarget) * 100) : 0;
-                  const remaining = Math.max(0, kpiTarget - kpiCount);
-                  const isAboveKpi = kpiCount >= kpiTarget;
-                  const statusLabel = isAboveKpi ? "Memenuhi KPI" : "Di Bawah KPI";
-                  const statusBg = isAboveKpi ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600";
-                  const barColor = pct >= 100 ? "from-emerald-600 to-emerald-500" : "from-red-600 to-red-500";
-
-                  // Build kategori label
-                  const kategoriLabel = (label: string | null | undefined): string => {
-                    if (!label) return "–";
-                    const l = label.toLowerCase();
-                    if (l.includes("tanpa")) return "Tanpa Pelanggan";
-                    if (l.includes("proyek")) return "Pelanggan Dengan Proyek";
-                    return "Dengan Pelanggan";
-                  };
-                  const kategoriColor = (label: string | null | undefined): string => {
-                    if (!label) return "bg-slate-100 text-slate-700";
-                    const l = label.toLowerCase();
-                    if (l.includes("tanpa")) return "bg-slate-100 text-slate-700";
-                    if (l.includes("proyek")) return "bg-teal-50 text-teal-700";
-                    return "bg-blue-50 text-blue-700";
-                  };
-
-                  // Filter activities by search + pagination
-                  const filteredActivities = (actData?.activities ?? []) as any[];
-                  const searchedActivities = actSearch.trim()
-                    ? filteredActivities.filter((a: any) => {
-                        const q = actSearch.toLowerCase();
-                        return (
-                          (a.caName || "").toLowerCase().includes(q) ||
-                          (a.label || "").toLowerCase().includes(q) ||
-                          (a.activityType || "").toLowerCase().includes(q) ||
-                          (a.activityNotes || "").toLowerCase().includes(q) ||
-                          (a.picName || "").toLowerCase().includes(q)
-                        );
-                      })
-                    : filteredActivities;
-
-                  // Reset page when filters/search change
-                  const safePage = Math.min(actPage, Math.max(1, Math.ceil(searchedActivities.length / actPageSize)));
-                  const paginatedActivities = searchedActivities.slice((safePage - 1) * actPageSize, safePage * actPageSize);
-                  const totalPages = Math.max(1, Math.ceil(searchedActivities.length / actPageSize));
-
-                  return (
-                    <>
-                      {/* KPI Header Card */}
-                      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-                        {/* Header */}
-                        <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-3">
-                          <span className="text-sm font-bold text-foreground">Monitoring KPI Aktivitas</span>
-                          <span className="bg-secondary border border-border text-foreground text-xs font-bold px-2 py-0.5 rounded-full">{effectiveNik}</span>
-                          <div className="flex-1" />
-                          {/* Search */}
-                          <div className="h-8 flex items-center gap-2 bg-background border border-border rounded-lg px-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-colors min-w-[220px]">
-                            <Search className="w-3 h-3 text-muted-foreground shrink-0" />
-                            <input
-                              type="text"
-                              placeholder="Cari tipe, label, pelanggan, catatan…"
-                              value={actSearch}
-                              onChange={e => setActSearch(e.target.value)}
-                              className="border-none outline-none text-xs text-foreground placeholder:text-muted-foreground/60 bg-transparent flex-1 min-w-0"
-                            />
-                          </div>
-                        </div>
-
-                        {/* KPI Progress Bar */}
-                        <div className="grid items-center px-4 py-3 border-b border-border" style={{ gridTemplateColumns: "1fr 240px 100px 72px 64px 110px" }}>
-                          <div>
-                            <div className="text-sm font-bold text-foreground">{data?.am?.nama ?? effectiveNik}</div>
-                            <div className="text-xs font-semibold text-foreground/70 mt-0.5 flex items-center gap-1">
-                              {data?.am?.divisi && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">{data.am.divisi}</span>
-                              )}
-                              <span className="text-foreground/60 font-semibold">· {activityCount} aktivitas</span>
-                            </div>
-                          </div>
-                          <div className="pr-2">
-                            <div className="h-4 bg-secondary rounded-full overflow-hidden mb-2">
-                              <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-700", barColor)} style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className={cn("text-base font-black font-display", isAboveKpi ? "text-emerald-600" : "text-red-600")}>{pct.toFixed(0)}%</span>
-                              <span className="text-sm font-bold font-display text-foreground/70">{kpiCount}/{kpiTarget} aktivitas KPI</span>
-                            </div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-base font-black font-display text-foreground">{kpiCount}</div>
-                            <div className="text-[10px] font-medium text-foreground/50">Aktivitas</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-base font-bold font-display text-foreground/70">{kpiTarget}</div>
-                            <div className="text-[10px] font-medium text-foreground/50">Target</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-base font-bold font-display text-foreground">{remaining}</div>
-                            <div className="text-[10px] font-medium text-foreground/50">Sisa</div>
-                          </div>
-                          <div>
-                            <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold", statusBg)}>
-                              {statusLabel}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Activity Detail Table Header */}
-                        {paginatedActivities.length > 0 && (
-                          <div className="grid text-xs font-black uppercase tracking-wide text-white font-display" style={{ gridTemplateColumns: "28px 96px 1fr 140px 120px 60px", padding: "10px 14px 10px 52px", background: "rgb(185, 28, 28)" }}>
-                            <div>#</div>
-                            <div>Tanggal</div>
-                            <div>Pelanggan &amp; Catatan</div>
-                            <div>Tipe Aktivitas</div>
-                            <div>Kategori</div>
-                            <div>KPI</div>
-                          </div>
-                        )}
-
-                        {/* Activity Rows */}
-                        {paginatedActivities.length === 0 ? (
-                          <div className="flex items-center gap-3 px-6 py-8 text-sm text-foreground/50 justify-center">
-                            <Activity className="w-4 h-4" />
-                            <span>Tidak ada data aktivitas pada periode yang dipilih.</span>
-                          </div>
-                        ) : paginatedActivities.map((act: any, idx: number) => {
-                          const [datePart] = (act.activityEndDate ?? "").split(" ");
-                          const dateObj = datePart ? new Date(datePart) : null;
-                          const dayStr = dateObj ? `${String(dateObj.getDate()).padStart(2,"0")}/${String(dateObj.getMonth()+1).padStart(2,"0")}` : "–";
-                          const monthStr = dateObj ? dateObj.toLocaleDateString("id-ID", { weekday: "short", month: "short", year: "numeric" }).replace(",","") : "–";
-                          const kat = kategoriLabel(act.label);
-                          const katCls = kategoriColor(act.label);
-                          return (
-                            <div key={act.id}>
-                              <div className="grid items-start border-b border-border/20 last:border-b-0 hover:bg-secondary/30 transition-colors"
-                                style={{ gridTemplateColumns: "28px 96px 1fr 140px 120px 60px", padding: "9px 14px 9px 52px" }}>
-                                <div className="text-xs font-bold text-foreground/50 font-mono pt-0.5">{idx + 1}</div>
-                                <div>
-                                  <div className="text-sm font-bold text-foreground font-mono">{dayStr}</div>
-                                  <div className="text-[11px] font-medium text-foreground/60 mt-px">{monthStr}</div>
-                                </div>
-                                <div>
-                                  <div className="text-sm font-bold text-foreground">{act.caName || "–"}</div>
-                                  <div className="text-xs font-medium text-foreground/60 mt-0.5 line-clamp-2">{act.activityNotes || "–"}</div>
-                                </div>
-                                <div className="pt-0.5">
-                                  <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold" style={{ background: "rgb(227, 242, 253)", color: "rgb(21, 101, 192)" }}>
-                                    {act.activityType || "–"}
-                                  </span>
-                                </div>
-                                <div className="pt-0.5">
-                                  <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-semibold", katCls)}>{kat}</span>
-                                </div>
-                                <div className="pt-0.5">
-                                  <span className={cn("text-xs font-bold px-2 py-0.5 rounded", act.isKpi ? "text-emerald-700 bg-emerald-50" : "text-slate-500 bg-slate-50")}>
-                                    {act.isKpi ? "✓ Ya" : "✗ Tidak"}
-                                  </span>
-                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            </PopoverContent>
+                          </Popover>
+                        </div>
 
-                        {/* Pagination Controls */}
-                        {searchedActivities.length > 0 && (
-                          <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-secondary/20">
-                            {/* Page size */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Tampilkan:</span>
-                              {[10, 20, 50].map(size => (
-                                <button key={size} onClick={() => { setActPageSize(size); setActPage(1); }}
-                                  className={cn("h-6 px-2.5 rounded text-[11px] font-semibold border transition-colors",
-                                    actPageSize === size ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
-                                  {size}
-                                </button>
-                              ))}
-                            </div>
-                            {/* Page info + controls */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[11px] font-medium text-foreground/60">
-                                {(safePage - 1) * actPageSize + 1}–{Math.min(safePage * actPageSize, searchedActivities.length)} dari {searchedActivities.length}
-                              </span>
-                              <button onClick={() => setActPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}
-                                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                                <ChevronLeft className="w-3.5 h-3.5" />
+                        <div className="flex flex-col gap-1 w-full sm:w-28 shrink-0">
+                          <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Divisi</label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="h-9 px-3 bg-secondary/50 border border-border rounded-lg text-sm flex items-center gap-1.5 w-full whitespace-nowrap focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                <span className="flex-1 text-left truncate font-medium text-foreground text-xs">
+                                  {DIVISI_OPTIONS_EMB.find(o => o.value === actDivisi)?.label ?? "LESA (All)"}
+                                </span>
+                                <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
                               </button>
-                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
-                                const page = start + i;
-                                if (page > totalPages) return null;
-                                return (
-                                  <button key={page} onClick={() => setActPage(page)}
-                                    className={cn("h-7 min-w-[28px] px-1 flex items-center justify-center rounded text-[11px] font-semibold border transition-colors",
-                                      safePage === page ? "bg-primary border-primary text-white" : "border-border bg-background hover:border-primary/40 text-foreground")}>
-                                    {page}
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0" align="start" sideOffset={4} style={{ width: 120 }}>
+                              <div className="bg-popover border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto py-1">
+                                {DIVISI_OPTIONS_EMB.map(opt => (
+                                  <button key={opt.value} onClick={() => setActDivisi(opt.value)}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors flex items-center gap-2">
+                                    <span className="w-1.5 shrink-0 flex items-center justify-center">
+                                      {actDivisi === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                                    </span>
+                                    <span className={cn(actDivisi === opt.value ? "font-semibold text-primary" : "")}>{opt.label}</span>
                                   </button>
-                                );
-                              })}
-                              <button onClick={() => setActPage(p => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}
-                                className="h-7 w-7 flex items-center justify-center rounded border border-border bg-background hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Summary Footer */}
-                        {paginatedActivities.length > 0 && (
-                          <div className="flex items-center gap-5 px-6 py-3 border-t-2 border-primary/20 bg-primary/5">
-                            <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-wide">Ringkasan:</span>
-                            <span className="text-sm font-bold text-emerald-700">{kpiCount} aktivitas KPI</span>
-                            <span className="text-sm font-semibold text-foreground/60">({activityCount} total)</span>
-                          </div>
-                        )}
+                                ))}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
-                    </>
-                  );
-                })()
-              </div>
+                    </div>
+                    {activityContent}
+                  </div>
+                )}
+                {/* Tab: Sales Activity */}
+          {embTab === "salesActivity" && (
+            <div className="w-full">
+              <div className="text-sm text-muted-foreground/60 italic">Konten Sales Activity — dalam pengembangan</div>
+            </div>
           )}
 
           {/* Tab: Prognosa */}

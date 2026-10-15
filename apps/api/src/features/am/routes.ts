@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, accountManagersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../../shared/auth";
 import { slugify } from "../import/excel";
 
@@ -27,14 +27,14 @@ router.post("/", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const resolvedRole = (["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN"].includes(role) ? role : "ACCOUNT_MANAGER") as "OFFICER" | "MANAGER" | "ACCOUNT_MANAGER" | "ADMIN";
+  const resolvedRole = (["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN", "INPUTER"].includes(role) ? role : "ACCOUNT_MANAGER") as "OFFICER" | "MANAGER" | "ACCOUNT_MANAGER" | "ADMIN" | "INPUTER";
   const resolvedTipe = (["LESA"].includes(tipe) ? tipe : "LESA") as "LESA";
 
   if (resolvedRole === "AM" && !divisi) {
     res.status(400).json({ error: "Divisi wajib diisi untuk role AM" });
     return;
   }
-  if (!nik && resolvedRole !== "OFFICER") {
+  if (!nik && !["OFFICER", "INPUTER"].includes(resolvedRole)) {
     res.status(400).json({ error: "NIK wajib diisi" });
     return;
   }
@@ -66,8 +66,8 @@ router.patch("/:id/aktif", requireAuth, async (req, res): Promise<void> => {
   if (isNaN(id)) { res.status(400).json({ error: "ID tidak valid" }); return; }
 
   const user = (req as any).user;
-  if (!user || !["ADMIN", "OFFICER", "MANAGER"].includes(user.role)) {
-    res.status(403).json({ error: "Hanya Admin, Officer, atau Manager yang dapat mengubah status" });
+  if (!user || !["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Hanya Admin, Officer, Manager, atau Inputer yang dapat mengubah status" });
     return;
   }
 
@@ -98,7 +98,7 @@ router.patch("/:id", requireAuth, async (req, res): Promise<void> => {
 
   const updates: Partial<typeof accountManagersTable.$inferInsert> = {};
   if (nama !== undefined) { updates.nama = nama; updates.slug = slugify(nama) + "-" + Date.now().toString(36); }
-  if (role !== undefined) updates.role = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN"].includes(role) ? role : "ACCOUNT_MANAGER";
+  if (role !== undefined) updates.role = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN", "INPUTER"].includes(role) ? role : "ACCOUNT_MANAGER";
   if (tipe !== undefined) updates.tipe = ["LESA"].includes(tipe) ? tipe : "LESA";
   if (divisi !== undefined) updates.divisi = divisi;
   if (segmen !== undefined) updates.segmen = segmen;
@@ -119,6 +119,29 @@ router.delete("/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(raw, 10);
   await db.delete(accountManagersTable).where(eq(accountManagersTable.id, id));
   res.sendStatus(204);
+});
+
+// Bulk delete — POST /api/am/bulk-delete with body { ids: number[] }
+router.post("/bulk-delete", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  if (!user || !["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Akses ditolak" });
+    return;
+  }
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids array wajib diisi" });
+    return;
+  }
+  const numericIds = ids.map((id: any) => parseInt(id, 10)).filter((id: number) => !isNaN(id));
+  if (numericIds.length === 0) {
+    res.status(400).json({ error: "Tidak ada ID yang valid" });
+    return;
+  }
+  await db.delete(accountManagersTable).where(
+    inArray(accountManagersTable.id, numericIds)
+  );
+  res.json({ deleted: numericIds.length });
 });
 
 export default router;

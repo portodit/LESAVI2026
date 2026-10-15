@@ -11,6 +11,7 @@ router.get("/performance", async (req, res): Promise<void> => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const { importId, divisi } = req.query;
+  console.log(`[/api/public/performance] importId=${importId} divisi=${divisi} url=${req.url}`);
 
   let snapshotId: number | null = null;
 
