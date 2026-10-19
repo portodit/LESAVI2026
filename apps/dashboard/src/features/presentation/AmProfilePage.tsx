@@ -4,7 +4,7 @@ import {
   Loader2, X, Upload, TrendingUp, ChevronDown, Check, Target,
   TrendingDown, ChevronLeft, ChevronRight, Users, Trophy, CreditCard, MapPin,
   BarChart2, Filter, Activity, Search, Minimize2, ChevronsUp, ChevronsDown,
-  ArrowRight, PlusCircle, AlertTriangle, MinusCircle
+  ArrowRight, PlusCircle, AlertTriangle, MinusCircle, Briefcase, UserX
 } from "lucide-react";
 import { Bar, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getPresentationSession } from "@/shared/hooks/use-presentation-auth";
@@ -489,6 +489,68 @@ function Sparkline({ values, color = "#10b981", fill = true }: { values: number[
       {/* Percentage in center */}
       <text x={cx} y={cy + 5} textAnchor="middle" fontSize={size * 0.15} fontWeight="800" fill={color} fontFamily="ui-monospace,monospace">{fmtPct(clamped)}</text>
       <text x={cx} y={cy + size * 0.07 + 8} textAnchor="middle" fontSize={size * 0.06} fontWeight="600" fill="#6b7280">CAPAIAN</text>
+    </svg>
+  );
+}
+
+// ─── Gauge Chart (full circle progress ring + big center %) ───────────────
+function GaugeChart({ pct, color = "#10b981", size = 100 }: { pct: number; color?: string; size?: number }) {
+  const W = size;
+  const H = size;
+  const cx = W / 2;
+  const cy = H / 2;
+  const r = size * 0.4;
+  const strokeWidth = size * 0.085;
+  const clamped = Math.min(100, Math.max(0, pct));
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference - (clamped / 100) * circumference;
+  const gradId = `gr-${color.replace("#", "")}-${size}`;
+  const glowId = `grglow-${size}`;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.55" />
+          <stop offset="100%" stopColor={color} stopOpacity="1" />
+        </linearGradient>
+        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation={size * 0.018} result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {/* Background ring (light gray) */}
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e2e8f0" strokeWidth={strokeWidth} />
+      {/* Progress ring with gradient + glow */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke={`url(#${gradId})`}
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cy})`}
+        filter={`url(#${glowId})`}
+        style={{ transition: "stroke-dashoffset 0.6s ease" }}
+      />
+      {/* Target tick at 100% (top, where ring starts) */}
+      <circle cx={cx} cy={cy - r} r={strokeWidth * 0.4} fill="#0f172a" />
+      {/* Big % number in center */}
+      <text
+        x={cx} y={cy + size * 0.01}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={size * 0.32}
+        fontWeight="900"
+        fill="#0f172a"
+        fontFamily="ui-monospace, monospace"
+        style={{ letterSpacing: "-0.03em" }}
+      >
+        {Math.round(clamped)}%
+      </text>
     </svg>
   );
 }
@@ -1794,7 +1856,9 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
       <Loader2 className="w-8 h-8 animate-spin text-primary" />
     </div>
   ) : (() => {
-    const kpiTarget = actData?.kpiTarget ?? 30;
+    const periodCount = Math.max(1, actPeriodes.size);
+    const kpiTargetBase = actData?.kpiTarget ?? 30;
+    const kpiTarget = kpiTargetBase * periodCount; // kpi target scaled by number of selected periods
     const kpiCount = actData?.kpiCount ?? 0;
     const activityCount = actData?.activityCount ?? 0;
     const pct = kpiTarget > 0 ? Math.min(100, (kpiCount / kpiTarget) * 100) : 0;
@@ -1851,9 +1915,72 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           </div>
         </div>
 
+        {/* ── KPI Summary + Distribution (4 overview cards) ───── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3 border-b border-border bg-secondary/10">
+          {(() => {
+            const cats = [
+              { name: "Dengan Pelanggan", short: "Dengan Pelanggan", icon: Users, numColor: "#2563eb", iconColor: "#3b82f6", isKpi: true },
+              { name: "Pelanggan Dengan Proyek", short: "Pelanggan Dgn Proyek", icon: Briefcase, numColor: "#0d9488", iconColor: "#14b8a6", isKpi: true },
+              { name: "Tanpa Pelanggan", short: "Tanpa Pelanggan", icon: UserX, numColor: "#94a3b8", iconColor: "#94a3b8", isKpi: false },
+            ];
+            const counts = cats.map(cat => filteredActivities.filter((a: any) => kategoriLabel(a.label) === cat.name).length);
+            return (
+              <>
+                {/* Card 1: Capaian Aktivitas (highlight: achievement %) */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+                  <div className="flex-1 flex flex-col justify-between min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-wider leading-none" style={{ color: "#1e1e1e" }}>Capaian Aktivitas</div>
+                    <div className="text-2xl font-black tabular-nums leading-none" style={{ color: isAboveKpi ? "#059669" : "#dc2626" }}>
+                      {kpiTarget > 0 ? `${Math.round((kpiCount / kpiTarget) * 100)}%` : "—"}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider leading-none text-slate-700">
+                      {isAboveKpi && kpiTarget > 0 ? `${(kpiCount / kpiTarget).toFixed(1)}× · ${kpiCount}/${kpiTarget} Aktivitas` : `${Math.max(0, kpiTarget - kpiCount)} kurang dari target`}
+                    </div>
+                  </div>
+                  <div className="flex items-center pl-3">
+                    <div className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center",
+                      isAboveKpi ? "bg-emerald-50" : "bg-red-50"
+                    )}>
+                      <Target className={cn("w-5 h-5", isAboveKpi ? "text-emerald-600" : "text-red-500")} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cards 2-4: Distribusi per Kategori (themed icons) */}
+                {(() => {
+                  const cardStyles = [
+                    { key: "dengan", icon: Users, color: "#3b82f6", bg: "#eff6ff", numColor: "#2563eb", label: "Dengan Pelanggan" },
+                    { key: "proyek", icon: Briefcase, color: "#14b8a6", bg: "#f0fdfa", numColor: "#0d9488", label: "Pelanggan Dgn Proyek" },
+                    { key: "tanpa", icon: UserX, color: "#475569", bg: "#e2e8f0", numColor: "#475569", label: "Tanpa Pelanggan" },
+                  ];
+                  const isKpiList = [true, true, false];
+                  return cardStyles.map((style, i) => {
+                    const count = counts[i];
+                    const Icon = style.icon;
+                    return (
+                      <div key={style.key} className="bg-white border border-slate-200 rounded-xl p-4 flex items-stretch h-[88px] overflow-hidden shadow-sm">
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div className="text-[11px] font-bold uppercase tracking-wider leading-none truncate" style={{ color: "#1e1e1e" }}>{style.label}</div>
+                          <div className="text-2xl font-black tabular-nums leading-none" style={{ color: count > 0 ? style.numColor : "#cbd5e1" }}>{count}</div>
+                          <div className="text-[10px] font-bold uppercase tracking-wider leading-none text-slate-700">{isKpiList[i] ? "KPI · Aktivitas" : "Non-KPI · Aktivitas"}</div>
+                        </div>
+                        <div className="flex items-center pl-3">
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: style.bg }}>
+                            <Icon className="w-5 h-5" style={{ color: style.color }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </>
+            );
+          })()}
+        </div>
 
         {paginatedActivities.length > 0 && (
-          <div className="grid text-xs font-black uppercase tracking-wide text-white font-display px-3 py-2.5 [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_112px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6" style={{ background: "rgb(185, 28, 28)" }}>
+          <div className="grid text-xs font-black uppercase tracking-wide text-white font-display px-3 py-2.5 [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_150px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6" style={{ background: "rgb(185, 28, 28)" }}>
             <div>#</div>
             <div>Tanggal</div>
             <div>Pelanggan &amp; Catatan</div>
@@ -1877,7 +2004,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
           const katCls = kategoriColor(act.label);
           return (
             <div key={act.id} className="border-b border-slate-300 last:border-b-0">
-              <div className="grid items-start px-3 py-3.5 hover:bg-secondary/40 transition-colors [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_112px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6">
+              <div className="grid items-start px-3 py-3.5 hover:bg-secondary/40 transition-colors [grid-template-columns:32px_80px_1fr_50px] sm:[grid-template-columns:36px_150px_1fr_170px_220px_64px] gap-x-4 sm:gap-x-6">
                 <div className="text-xs font-bold text-foreground/50 font-mono pt-0.5">{idx + 1}</div>
                 <div>
                   <div className="text-sm font-bold text-foreground font-mono whitespace-nowrap">{dayStr}</div>
@@ -2667,12 +2794,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
                     {activityContent}
                   </div>
                 )}
-                {/* Tab: Sales Activity */}
-          {embTab === "salesActivity" && (
-            <div className="w-full">
-              <div className="text-sm text-muted-foreground/60 italic">Konten Sales Activity — dalam pengembangan</div>
-            </div>
-          )}
+          {/* Tab: Sales Activity placeholder removed (duplicate) */}
 
           {/* Tab: Prognosa */}
           {embTab === "prognosa" && (

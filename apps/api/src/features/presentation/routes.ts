@@ -892,18 +892,17 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
   let acts = await db.select().from(salesActivityTable)
     .where(eq(salesActivityTable.nik, rawNik));
 
-  // Filter by snapshot (cumulative)
+  // Filter by exact snapshot import (each snapshot is its own dataset, not cumulative)
   if (targetSnapshotId) {
-    const snap = snapshots.find(s => s.id === targetSnapshotId);
-    if (snap?.snapshotDate) {
-      acts = acts.filter(a => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate!);
-    }
+    acts = acts.filter(a => a.importId === targetSnapshotId);
   }
 
   // Filter by tahun/bulan — bulan can be YYYY-MM string or month number 1-12; supports arrays
   if (bulan) {
     const bulanVals = Array.isArray(bulan) ? bulan.map(String) : [String(bulan)];
-    const tahunStr = String(tahun ?? new Date().getFullYear());
+    // tahun can be repeated query param too (one per period); take the first
+    const tahunFirst = Array.isArray(tahun) ? tahun[0] : tahun;
+    const tahunStr = String(tahunFirst ?? new Date().getFullYear());
     const prefixes = bulanVals
       .filter(b => b !== "all")
       .map(b => {
@@ -920,12 +919,19 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
     acts = acts.filter(a => a.divisiCc === String(divisiCc));
   }
 
-  // Distinct labels (kategori) & available months — from ALL activities for this AM (before any filter)
-  const allActsForLabels = await db.select().from(salesActivityTable)
-    .where(eq(salesActivityTable.nik, rawNik));
+  // Distinct labels (kategori) & available months — from ALL activities across all AMs (filtered to snapshot)
+  // so the Periode filter in the AM profile shows all months where ANY AM has data,
+  // not just the months where this specific AM has data.
+  let allActsForLabels = await db.select().from(salesActivityTable);
+  if (targetSnapshotId) {
+    const snap = snapshots.find(s => s.id === targetSnapshotId);
+    if (snap?.snapshotDate) {
+      allActsForLabels = allActsForLabels.filter(a => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate!);
+    }
+  }
   const availableLabels = [...new Set(
     allActsForLabels.map(a => a.label).filter(Boolean) as string[]
-  )].sort();
+ )].sort();
 
   // Compute available months from all activities
   const monthSet = new Set<string>();
@@ -937,11 +943,17 @@ router.get("/am-activity/:nik", requirePresentationAuth, async (req, res): Promi
   }
   const availableMonths = [...monthSet].sort().reverse(); // ["2026-09", "2026-08", ...]
 
-  // Filter by kategori (label)
+  // Filter by kategori (label) — map short frontend values to full DB labels
   if (kategori) {
     const selected = Array.isArray(kategori) ? kategori.map(String) : [String(kategori)];
     if (selected.length > 0 && !selected.includes("all")) {
-      acts = acts.filter(a => selected.includes(a.label ?? ""));
+      const labelMap: Record<string, string> = {
+        "dengan_pelanggan": "Dengan Pelanggan",
+        "proyek": "Pelanggan Dengan Proyek",
+        "tanpa": "Tanpa Pelanggan",
+      };
+      const mappedSelected = selected.map(s => labelMap[s] ?? s);
+      acts = acts.filter(a => mappedSelected.includes(a.label ?? ""));
     }
   }
 
