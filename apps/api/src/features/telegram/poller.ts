@@ -2,6 +2,7 @@ import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, tele
 import { eq, and, gt, inArray, desc, sql } from "drizzle-orm";
 import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, editMessageText, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, getAvailablePerfPeriodsAll, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
+import { htmlEscape, formatSnapshotNameId } from "./announcementTemplates";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl, toHttpsUrl, isLocalUrl } from "../../shared/publicUrl";
 import bcrypt from "bcryptjs";
@@ -2263,6 +2264,22 @@ export async function pollOnce() {
             continue;
           }
 
+          // ── act:vis — Visualisasi Data (tombol di notifikasi per-AM) ──────
+          if (cbData === "act:vis") {
+            await answerCallbackQuery(token, cb.id, "Membuka visualisasi...").catch(() => {});
+            const firstName = resolvedAm.nama.split(" ")[0];
+            const base = getPublicBaseUrl();
+            const url = `${toHttpsUrl(base)}/presentation?type=activity`;
+            await sendToTelegramHtml(token, cbChatId,
+              `📊 <b>Visualisasi Data Sales Activity</b>\n\n` +
+              `Halo kak <b>${firstName}</b>! 👋\n\n` +
+              `Kakak bisa melihat visualisasi data Sales Activity melalui dashboard LESAVI.\n\n` +
+              `🔗 <a href="${url}">Klik Disini Untuk Akses</a>`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
           // ── /logout — putuskan koneksi via inline button ──────────────────
           if (cbData === "/logout") {
             logger.info({ cbChatId, cbFromId, resolvedAmId: resolvedAm?.id, nama: resolvedAm?.nama }, "/logout handler reached");
@@ -3212,11 +3229,21 @@ export async function pollOnce() {
             const parts = cbData.split(":");
             const viewType = parts[2];
             const viewId = parseInt(parts[3], 10);
+            const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, viewId));
+            const typeLabel = viewType === "performance" ? "Performance"
+              : viewType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapDateStr = imp?.snapshotDate ? formatSnapshotNameId(imp.snapshotDate) : "—";
+            const snapName = imp ? `${typeLabel} — ${snapDateStr}` : `${typeLabel} (id ${viewId})`;
+            const rowsInfo = imp?.rowsImported != null
+              ? `📦 <b>Total baris:</b> ${imp.rowsImported.toLocaleString("id-ID")}\n` : "";
             const url = toHttpsUrl(`${getPublicBaseUrl()}/import/detail/${viewType}/${viewId}`);
-            await sendToTelegram(token, cbChatId,
-              `📋 *Snapshot — ${viewType}*\n\n` +
-              `Klik link di bawah untuk membuka di browser:\n\n` +
-              `🔗 [Buka Snapshot](${url})`,
+            await sendToTelegramHtml(token, cbChatId,
+              `📋 <b>Snapshot — ${viewType}</b>\n\n` +
+              `📛 <b>Nama:</b> ${htmlEscape(snapName)}\n` +
+              `📊 <b>Tipe:</b> ${typeLabel}\n` +
+              `📅 <b>Tanggal snapshot:</b> ${htmlEscape(snapDateStr)}\n` +
+              rowsInfo +
+              `\n🔗 <a href="${url}">Klik Disini Untuk Akses</a>`,
               { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "/import" }]] }
             ).catch(() => {});
             continue;
@@ -3227,11 +3254,18 @@ export async function pollOnce() {
             const parts = cbData.split(":");
             const visType = parts[2];
             const visId = parseInt(parts[3], 10);
+            const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, visId));
+            const typeLabel = visType === "performance" ? "Performance"
+              : visType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapDateStr = imp?.snapshotDate ? formatSnapshotNameId(imp.snapshotDate) : "—";
+            const snapName = imp ? `${typeLabel} — ${snapDateStr}` : `${typeLabel} (id ${visId})`;
             const url = toHttpsUrl(`${getPublicBaseUrl()}/presentation?type=${visType}&snapshot=${visId}`);
-            await sendToTelegram(token, cbChatId,
-              `📊 *Visualisasi — ${visType}*\n\n` +
-              `Klik link di bawah untuk membuka di browser:\n\n` +
-              `🔗 [Buka Visualisasi](${url})`,
+            await sendToTelegramHtml(token, cbChatId,
+              `📊 <b>Visualisasi — ${visType}</b>\n\n` +
+              `📛 <b>Nama:</b> ${htmlEscape(snapName)}\n` +
+              `📊 <b>Tipe:</b> ${typeLabel}\n` +
+              `📅 <b>Tanggal snapshot:</b> ${htmlEscape(snapDateStr)}\n` +
+              `\n🔗 <a href="${url}">Klik Disini Untuk Akses</a>`,
               { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "/import" }]] }
             ).catch(() => {});
             continue;

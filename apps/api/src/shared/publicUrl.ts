@@ -17,7 +17,39 @@
  * the correct public URL with "localhost".
  */
 
-let _currentPublicBaseUrl: string = process.env["PUBLIC_BASE_URL"] || "http://localhost:8000";
+let _currentPublicBaseUrl: string;
+
+/** Auto-detect the first non-internal IPv4 address on this machine. */
+function detectLanIp(): string | null {
+  try {
+    const { networkInterfaces } = require("node:os") as typeof import("node:os");
+    const ifaces = networkInterfaces();
+    for (const list of Object.values(ifaces)) {
+      if (!list) continue;
+      for (const info of list) {
+        if (info.family === "IPv4" && !info.internal) return info.address;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function resolveDefaultBaseUrl(): string {
+  if (process.env["PUBLIC_BASE_URL"]) return process.env["PUBLIC_BASE_URL"]!;
+  const lanIp = detectLanIp();
+  if (lanIp) {
+    const port = process.env["PORT"] || "3000";
+    return `http://${lanIp}:${port}`;
+  }
+  return "http://localhost:3000";
+}
+
+_currentPublicBaseUrl = resolveDefaultBaseUrl();
+const _bootBaseUrl = _currentPublicBaseUrl;
+
+// One-time log so admins can see what URL Telegram messages will use
+const _log = (process.env["PUBLIC_BASE_URL"] ? "PUBLIC_BASE_URL" : "auto-detected LAN IP") as string;
+console.log(`[publicUrl] base URL for Telegram links: ${_currentPublicBaseUrl} (${_log})`);
 
 export function getPublicBaseUrl(): string {
   return _currentPublicBaseUrl;

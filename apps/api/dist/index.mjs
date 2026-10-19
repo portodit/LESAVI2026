@@ -1,8 +1,6 @@
 import { createRequire as __bannerCrReq } from 'node:module';
 import __bannerPath from 'node:path';
 import __bannerUrl from 'node:url';
-import { config as __dotenvConfig } from 'dotenv';
-__dotenvConfig({ path: __bannerPath.join(process.cwd(), '.env') });
 
 globalThis.require = __bannerCrReq(import.meta.url);
 globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
@@ -28151,7 +28149,7 @@ var require_pino = __commonJS({
     function pinoBundlerAbsolutePath(p2) {
       try {
         const path4 = __require("path");
-        const outputDir = "C:\\Users\\USER\\Desktop\\LESAVI-SURAMADU\\LESAVI-SURAMADU\\apps\\api\\dist";
+        const outputDir = "C:\\Users\\Bliad\\Documents\\GitHub\\LESAVI2026\\apps\\api\\dist";
         return path4.resolve(outputDir, p2.replace(/^\.\//, ""));
       } catch (e) {
         const f = new Function("p", "return new URL(p, import.meta.url).pathname");
@@ -58349,8 +58347,8 @@ function requireManagerOrOfficer(req, res, next) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (!["ADMIN", "OFFICER", "MANAGER"].includes(user.role)) {
-    res.status(403).json({ error: "Akses ditolak. Hanya Admin, Officer, atau Manager yang dapat mengakses fitur ini." });
+  if (!["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Akses ditolak. Hanya Admin, Officer, Manager, atau Inputer yang dapat mengakses fitur ini." });
     return;
   }
   next();
@@ -58420,6 +58418,2152 @@ var init_logger2 = __esm({
         }
       }
     });
+  }
+});
+
+// src/shared/publicUrl.ts
+function detectLanIp() {
+  try {
+    const { networkInterfaces } = __require("node:os");
+    const ifaces = networkInterfaces();
+    for (const list of Object.values(ifaces)) {
+      if (!list) continue;
+      for (const info of list) {
+        if (info.family === "IPv4" && !info.internal) return info.address;
+      }
+    }
+  } catch {
+  }
+  return null;
+}
+function resolveDefaultBaseUrl() {
+  if (process.env["PUBLIC_BASE_URL"]) return process.env["PUBLIC_BASE_URL"];
+  const lanIp = detectLanIp();
+  if (lanIp) {
+    const port2 = process.env["PORT"] || "3000";
+    return `http://${lanIp}:${port2}`;
+  }
+  return "http://localhost:3000";
+}
+function getPublicBaseUrl() {
+  return _currentPublicBaseUrl;
+}
+function setPublicBaseUrl(url2) {
+  _currentPublicBaseUrl = url2;
+}
+function getPublicBaseUrlSafe() {
+  return process.env["PUBLIC_BASE_URL"] || _currentPublicBaseUrl;
+}
+function toHttpsUrl(url2) {
+  return url2.replace(/^http:\/\//, "https://");
+}
+function isLocalUrl(url2) {
+  try {
+    const u = new URL(url2);
+    const h = u.hostname.toLowerCase();
+    if (h === "localhost" || h === "0.0.0.0") return true;
+    if (h === "127.0.0.1" || /^127\./.test(h)) return true;
+    if (/^10\./.test(h)) return true;
+    if (/^192\.168\./.test(h)) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)) return true;
+    if (h.endsWith(".local") || h.endsWith(".internal")) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+var _currentPublicBaseUrl, _log;
+var init_publicUrl = __esm({
+  "src/shared/publicUrl.ts"() {
+    "use strict";
+    _currentPublicBaseUrl = resolveDefaultBaseUrl();
+    _log = process.env["PUBLIC_BASE_URL"] ? "PUBLIC_BASE_URL" : "auto-detected LAN IP";
+    console.log(`[publicUrl] base URL for Telegram links: ${_currentPublicBaseUrl} (${_log})`);
+  }
+});
+
+// src/features/telegram/announcementTemplates.ts
+function formatRupiahId(n) {
+  if (!Number.isFinite(n)) return "Rp 0";
+  if (n === 0) return "Rp 0";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${sign}Rp ${ID_FMT_2.format(abs / 1e12)} T`;
+  if (abs >= 1e9) return `${sign}Rp ${ID_FMT_2.format(abs / 1e9)} M`;
+  if (abs >= 1e6) return `${sign}Rp ${ID_FMT_2.format(abs / 1e6)} jt`;
+  if (abs >= 1e3) return `${sign}Rp ${ID_FMT_INT.format(abs / 1e3)} rb`;
+  return `${sign}Rp ${ID_FMT_INT.format(abs)}`;
+}
+function formatPctId(n) {
+  if (n == null || !Number.isFinite(n)) return "\u2014";
+  return ID_FMT_PCT1.format(n);
+}
+function formatSnapshotNameId(snapshotDate) {
+  if (!snapshotDate) return "\u2014";
+  const d = typeof snapshotDate === "string" ? new Date(snapshotDate) : snapshotDate;
+  if (isNaN(d.getTime())) return "\u2014";
+  return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+function getGreetingWIB(date6 = /* @__PURE__ */ new Date()) {
+  const wibHour = (date6.getUTCHours() + 7) % 24;
+  if (wibHour >= 4 && wibHour < 11) return "Pagi";
+  if (wibHour >= 11 && wibHour < 15) return "Siang";
+  if (wibHour >= 15 && wibHour < 18) return "Sore";
+  return "Malam";
+}
+function htmlEscape(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function renderPerfAnnouncement(ctx) {
+  const cmReached = ctx.achievementPct >= 100;
+  const ytdReached = (ctx.ytdRegulerAchPct ?? 0) >= 100;
+  const cmPct = formatPctId(ctx.achievementPct);
+  const ytdPct = formatPctId(ctx.ytdRegulerAchPct);
+  const cmGap = Math.max(0, ctx.targetRevenue - ctx.revenueActual);
+  const hasYtd = !!(ctx.ytdLabel && ctx.ytdRegulerActual != null && ctx.ytdRegulerTarget != null && ctx.ytdRegulerTarget > 0);
+  const ytdGap = hasYtd ? Math.max(0, ctx.ytdRegulerTarget - ctx.ytdRegulerActual) : 0;
+  let cmSentence;
+  if (cmReached) {
+    cmSentence = `Capaian <b>CM (bulan berjalan) ${ctx.cmMonthName}</b>: <b>${cmPct}%</b>. Target reguler tercapai, mantap! \u{1F389}`;
+  } else {
+    cmSentence = `Capaian <b>CM (bulan berjalan) ${ctx.cmMonthName}</b>: baru <b>${cmPct}%</b>, masih kurang <b>${formatRupiahId(cmGap)}</b> lagi ke target.`;
+  }
+  let ytdSentence = null;
+  if (hasYtd) {
+    const ytdLabelEsc = htmlEscape(ctx.ytdLabel);
+    if (ytdReached) {
+      ytdSentence = `YTD Reguler <b>${ytdLabelEsc}</b>: <b>${formatRupiahId(ctx.ytdRegulerActual)}</b> dari target <b>${formatRupiahId(ctx.ytdRegulerTarget)}</b> (sebesar <b>${ytdPct}%</b>). Target YTD tercapai, pertahankan! \u{1F38A}`;
+    } else {
+      ytdSentence = `YTD Reguler <b>${ytdLabelEsc}</b>: <b>${formatRupiahId(ctx.ytdRegulerActual)}</b> dari target <b>${formatRupiahId(ctx.ytdRegulerTarget)}</b> (sebesar <b>${ytdPct}%</b>), masih kurang <b>${formatRupiahId(ytdGap)}</b>.`;
+    }
+  }
+  const rankCmStr = ctx.rankCm > 0 ? `#${ctx.rankCm}` : "\u2014";
+  const rankYtdStr = ctx.rankYtd > 0 ? `#${ctx.rankYtd}` : "\u2014";
+  const totalAm = ctx.rankCmTotal || ctx.rankTotal;
+  const rankSentence = `Peringkat: <b>${rankCmStr}</b> untuk CM dan <b>${rankYtdStr}</b> untuk YTD (berdasarkan <b>% capaian reguler</b>) dari <b>${totalAm}</b> AM aktif di LESA VI.`;
+  let closing;
+  if (cmReached && ytdReached) {
+    closing = "Pertahankan performa terbaik ini! \u{1F4AA}";
+  } else if (cmReached) {
+    closing = "CM sudah tercapai, jaga konsistensi di bulan-bulan berikutnya! \u{1F4AA}";
+  } else {
+    closing = "Ayo genjot closing, yuk kejar target bareng! Gas lanjut, kak! \u{1F525}";
+  }
+  const amNameEsc = htmlEscape(ctx.amName);
+  const officerNameEsc = htmlEscape(ctx.officerName);
+  const officerRoleEsc = htmlEscape(ctx.officerRole);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const periodLabelEsc = htmlEscape(ctx.periodLabel);
+  const cmMonthNameEsc = htmlEscape(ctx.cmMonthName);
+  const lines = [
+    `Selamat ${ctx.greeting}, kak <b>${amNameEsc}</b> \u{1F44B}`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${officerNameEsc}</b> baru saja mengunggah data Revenue Performance terbaru untuk snapshot ${snapshotNameEsc}.`,
+    ``,
+    `Berikut highlight untuk <b>data s.d. ${periodLabelEsc}</b>:`,
+    ``
+  ];
+  lines.push(
+    `<b>1.</b> ${cmSentence}`,
+    ``
+  );
+  if (ytdSentence) {
+    lines.push(
+      `<b>2.</b> ${ytdSentence}`,
+      ``
+    );
+  }
+  lines.push(
+    `<b>3.</b> ${rankSentence}`,
+    ``
+  );
+  lines.push(
+    `<blockquote>Klik tombol di bawah untuk lihat laporan lengkap dan visualisasi datanya \u{1F447}</blockquote>`,
+    ``,
+    closing
+  );
+  return lines.join("\n");
+}
+function detectHonorific(fullName) {
+  const firstName = fullName.replace(/^(Drs?|Dr|Ir|Hj|H|Prof)\.?\s+/i, "").trim().split(/\s+/)[0] || "";
+  const lower = firstName.toLowerCase();
+  if (/(i|a|ie|ah|ih|at|ik|un|asi|eti|ani|eni|ini|ita|ati|nti|uli|yati|yani)$/.test(lower)) return "Bu";
+  if (/^(sri|siti|nur|ny|nyai|ni|miss)/i.test(firstName)) return "Bu";
+  return "Pak";
+}
+function getManagerStatusSentence(reachedCount, totalAms, belumCount, isAwalBulan) {
+  if (isAwalBulan) {
+    return "Bulan baru baru berjalan, belum ada AM yang memenuhi KPI. Yuk dorong tim untuk mulai mencatat kegiatan \u{1F525}";
+  }
+  if (totalAms > 0 && reachedCount === totalAms) {
+    return "Seluruh AM aktif sudah memenuhi KPI bulan ini \u{1F389} Kerja bagus, tim!";
+  }
+  if (totalAms > 0 && reachedCount / totalAms >= 0.7) {
+    return `Mayoritas tim sudah on track. Tinggal dorong <b>${belumCount}</b> AM lagi supaya semuanya memenuhi KPI \u{1F4AA}`;
+  }
+  return `Masih ada <b>${belumCount}</b> AM yang perlu didorong untuk memenuhi KPI bulan ini.`;
+}
+function activityStatusSentence(total, kpiTarget, isAwalBulan) {
+  if (isAwalBulan) {
+    return "Bulan baru baru dimulai, saatnya gas catat kegiatan kakak! \u{1F525}";
+  }
+  const sisa = Math.max(0, kpiTarget - total);
+  if (total === 0) {
+    return `Belum ada kegiatan yang tercatat bulan ini. Yuk mulai catat, supaya progres KPI-nya terlihat! Tinggal <b>${sisa}</b> kegiatan lagi untuk mencapai target \u{1F680}`;
+  }
+  const pct = kpiTarget > 0 ? total / kpiTarget * 100 : 0;
+  if (pct >= 100) {
+    return "KPI bulan ini sudah terpenuhi \u{1F389} Terus jaga ritmenya, kak!";
+  }
+  if (pct >= 80) {
+    return `Sedikit lagi! Tinggal <b>${sisa}</b> kegiatan untuk memenuhi KPI bulan ini \u{1F4AA}`;
+  }
+  return `Masih ada <b>${sisa}</b> kegiatan lagi untuk mencapai KPI bulan ini. Yuk dicatat terus kegiatannya, kak!`;
+}
+function renderActivityAmAnnouncement(ctx) {
+  const pct = ctx.pct;
+  const pctDisplay = pct.toFixed(1).replace(".", ",");
+  const statusSentence = activityStatusSentence(ctx.totalKegiatan, ctx.kpiTarget, ctx.isAwalBulan);
+  const amNameEsc = htmlEscape(ctx.amName);
+  const officerNameEsc = htmlEscape(ctx.officerName);
+  const officerRoleEsc = htmlEscape(ctx.officerRole);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const bulanLabelEsc = htmlEscape(ctx.bulanLabel);
+  const tglDataLabelEsc = htmlEscape(ctx.tglDataLabel);
+  return [
+    `<b>[UPDATE SNAPSHOT SALES ACTIVITY]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, kak <b>${amNameEsc}</b> \u{1F44B}`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${officerRoleEsc}</b> baru saja mengunggah data <b>Sales Activity</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    `<b>Highlight ${bulanLabelEsc} (data s.d. ${tglDataLabelEsc}):</b>`,
+    `\u251C <b>Total kegiatan:</b> ${ctx.totalKegiatan} kegiatan`,
+    `\u251C <b>KPI bulanan:</b> ${ctx.kpiTarget} kegiatan`,
+    `\u2514 <b>Ketercapaian KPI:</b> ${pctDisplay}%`,
+    ``,
+    `<blockquote>${statusSentence}</blockquote>`,
+    ``,
+    `Lihat visualisasi datanya lewat tombol di bawah \u{1F447}`
+  ].join("\n");
+}
+function renderActivityManagerAnnouncement(ctx) {
+  const rataPctDisplay = ctx.rataPct.toFixed(1).replace(".", ",");
+  const pctAmDisplay = ctx.pctAmMemenuhi.toFixed(0);
+  const amNameEsc = htmlEscape(ctx.managerName);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const bulanLabelEsc = htmlEscape(ctx.bulanLabel);
+  const tglDataLabelEsc = htmlEscape(ctx.tglDataLabel);
+  const officer = ctx.officerName.toLowerCase() === ctx.officerRole.toLowerCase() ? ctx.officerRole : `${ctx.officerName} (${ctx.officerRole})`;
+  const officerEsc = htmlEscape(officer);
+  const summaryLines = [
+    `<b>Gambaran ${ctx.totalAms} AM aktif LESA VI untuk ${bulanLabelEsc} (data s.d. ${tglDataLabelEsc}):</b>`,
+    `\u251C <b>Total kegiatan tim:</b> ${ctx.totalKegiatan.toLocaleString("id-ID")} kegiatan`
+  ];
+  if (ctx.reachedCount > 0) {
+    summaryLines.push(
+      `\u251C \u2705 <b>${ctx.reachedCount} AM sudah memenuhi KPI (\u226525 kegiatan):</b>
+   ${ctx.daftarMemenuhi}`
+    );
+  }
+  if (ctx.belumCount > 0) {
+    summaryLines.push(
+      `\u251C \u23F3 <b>${ctx.belumCount} AM belum memenuhi KPI:</b>
+   ${ctx.daftarBelum}`
+    );
+  }
+  summaryLines.push(
+    `\u2514 <b>Ketercapaian KPI tim:</b> ${pctAmDisplay}% AM (${ctx.reachedCount}/${ctx.totalAms})`
+  );
+  return [
+    `<b>[UPDATE SNAPSHOT SALES ACTIVITY]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, ${ctx.managerHonorific} <b>${amNameEsc}</b> \u{1F44B}`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${officerEsc}</b> baru saja mengunggah data <b>Sales Activity</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    ...summaryLines,
+    ``,
+    `<blockquote>${ctx.kalimatStatus}</blockquote>`,
+    ``,
+    `Detail per AM bisa dicek lewat tombol di bawah \u{1F447}`
+  ].join("\n");
+}
+var MONTH_NAMES_ID, ID_FMT_INT, ID_FMT_2, ID_FMT_PCT1;
+var init_announcementTemplates = __esm({
+  "src/features/telegram/announcementTemplates.ts"() {
+    "use strict";
+    MONTH_NAMES_ID = [
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember"
+    ];
+    ID_FMT_INT = new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    });
+    ID_FMT_2 = new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    ID_FMT_PCT1 = new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+  }
+});
+
+// src/features/telegram/service.ts
+function formatSnapshotDate(snapshotDate, period, fallback = "-") {
+  const raw = snapshotDate || period || "";
+  if (!raw) return fallback;
+  if (raw.length === 10) {
+    const [y, m, d] = raw.split("-").map(Number);
+    if (y && m && d) return `${d} ${MONTH_NAMES[m] || m} ${y}`;
+  }
+  if (raw.length === 7) {
+    const [y, m] = raw.split("-").map(Number);
+    if (y && m) return `${MONTH_NAMES[m] || m} ${y}`;
+  }
+  return raw;
+}
+async function getLatestSnapshotId() {
+  const [snap] = await db.select({ id: dataImportsTable.id }).from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.id)).limit(1);
+  return snap?.id ?? null;
+}
+async function getSnapshotAwarePerfs(snapshotId, year, month) {
+  const rows = await db.select().from(performanceDataTable).where(and(
+    eq(performanceDataTable.importId, snapshotId),
+    eq(performanceDataTable.tahun, year),
+    eq(performanceDataTable.bulan, month)
+  ));
+  return { rows, importId: snapshotId };
+}
+async function getAvailablePerfPeriods(nik) {
+  const rows = await db.selectDistinct({
+    tahun: performanceDataTable.tahun,
+    bulan: performanceDataTable.bulan
+  }).from(performanceDataTable).where(and(
+    eq(performanceDataTable.nik, nik),
+    sql`(${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0)`
+  ));
+  return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
+}
+async function getAvailablePerfPeriodsAll() {
+  const rows = await db.selectDistinct({
+    tahun: performanceDataTable.tahun,
+    bulan: performanceDataTable.bulan
+  }).from(performanceDataTable).where(sql`(${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0)`);
+  return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
+}
+function fmtPct(val) {
+  return val.toFixed(2).replace(".", ",") + "%";
+}
+function greetingByTime() {
+  const hourWib = ((/* @__PURE__ */ new Date()).getUTCHours() + 7) % 24;
+  if (hourWib >= 3 && hourWib < 11) return "Selamat pagi";
+  if (hourWib >= 11 && hourWib < 15) return "Selamat siang";
+  if (hourWib >= 15 && hourWib < 18) return "Selamat sore";
+  return "Selamat malam";
+}
+function fmtRev(val) {
+  if (val >= 1e9) return `Rp ${(val / 1e9).toFixed(2).replace(".", ",")} Miliar`;
+  if (val >= 1e6) return `Rp ${(val / 1e6).toFixed(2).replace(".", ",")} Juta`;
+  if (val >= 1e3) return `Rp ${(val / 1e3).toFixed(0)} Ribu`;
+  if (val === 0) return `Rp 0`;
+  return `Rp ${val.toLocaleString("id-ID")}`;
+}
+function achStatus(ach) {
+  if (ach >= 100) return "\u{1F7E2} <b>Melewati Target</b>";
+  if (ach >= 80) return "\u{1F7E1} <b>Mendekati Target</b>";
+  if (ach > 0) return "\u{1F7E0} <b>Perlu Peningkatan</b>";
+  return "\u{1F534} <b>Belum Ada Revenue</b>";
+}
+function buildFeedback(firstName, achCm, achYtd, monthName) {
+  const cmLow = achCm < 80;
+  const ytdLow = achYtd < 80;
+  if (cmLow && ytdLow) {
+    return `\u{1F4AA} Semangat kak <b>${firstName}</b>! Performa <b>${monthName}</b> masih butuh peningkatan \u2014 capaian bulan berjalan masih di bawah target. Fokuskan pada aktivitas customer, pipeline, dan peluang closing. Koordinasikan kebutuhan support dengan tim ya \u{1F64F}`;
+  }
+  if (cmLow && !ytdLow) {
+    return `\u{1F525} Tetap semangat kak <b>${firstName}</b>! Capaian <b>${monthName}</b> masih perlu ditingkatkan, namun secara akumulasi YTD performansi masih positif. Fokus jaga momentum dan kejar target bulan berjalan \u{1F4AA}`;
+  }
+  if (!cmLow && ytdLow) {
+    return `\u{1F680} Progress bagus kak <b>${firstName}</b>! Performa <b>${monthName}</b> sudah menunjukkan peningkatan. Pertahankan tren positif ini agar bisa mengejar gap pencapaian YTD \u{1F64F}`;
+  }
+  return `\u{1F389} Mantap kak <b>${firstName}</b>! Performa <b>${monthName}</b> berhasil mencapai target, dan capaian YTD juga menunjukkan performansi yang kuat. Pertahankan konsistensi dan optimalkan peluang revenue berikutnya \u{1F4AA}`;
+}
+function getEmbedUrl(importId) {
+  const base = getPublicBaseUrlSafe();
+  if (importId) return `${base}/presentation?type=performance&id=${importId}`;
+  return `${base}/presentation`;
+}
+function getFunnelDetailUrl() {
+  return `${getPublicBaseUrlSafe()}/visualisasi/funnel`;
+}
+function isFunnel5(status) {
+  return status === "F5" || status === "Won";
+}
+function countByStatus(lops) {
+  const counts = { F0: 0, F1: 0, F2: 0, F3: 0, F4: 0, F5: 0 };
+  for (const l of lops) {
+    const s = l.statusF || "";
+    if (s === "F0") counts.F0++;
+    else if (s === "F1") counts.F1++;
+    else if (s === "F2") counts.F2++;
+    else if (s === "F3") counts.F3++;
+    else if (s === "F4") counts.F4++;
+    else if (s === "F5" || s === "Won") counts.F5++;
+  }
+  return counts;
+}
+async function buildPerformanceMessage(nik, period, options = {}) {
+  const parsedYear = period.length === 6 ? Number(period.slice(0, 4)) : Number(period.split("-")[0]);
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
+  if (!am) return null;
+  const firstName = am.nama.split(" ")[0];
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik).map((m) => m.nik)
+  );
+  const snapshotId = await getLatestSnapshotId();
+  let [year, month] = parsedYear > 2e3 ? [parsedYear, Number(period.length === 6 ? period.slice(4, 6) : period.split("-")[1])] : [parsedYear, Number(period.slice(4, 6))];
+  if (options.autoFallback && snapshotId) {
+    for (let step = 0; step < 12; step++) {
+      const { rows: probePerfs } = await getSnapshotAwarePerfs(snapshotId, year, month);
+      const probeByNik = /* @__PURE__ */ new Map();
+      for (const x of probePerfs) {
+        if (!activeNikSet.has(x.nik)) continue;
+        const existing = probeByNik.get(x.nik);
+        if (!existing || parseFloat(String(x.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
+          probeByNik.set(x.nik, x);
+        }
+      }
+      const probeRow = probeByNik.get(nik);
+      const probeTotalReal = parseFloat(String(probeRow?.realReguler ?? 0)) + parseFloat(String(probeRow?.realSustain ?? 0)) + parseFloat(String(probeRow?.realScaling ?? 0)) + parseFloat(String(probeRow?.realNgtma ?? 0));
+      if (probeTotalReal > 0) break;
+      month--;
+      if (month === 0) {
+        month = 12;
+        year--;
+      }
+    }
+  }
+  const monthName = MONTH_NAMES[month] || String(month);
+  const { rows: allPerfs } = snapshotId ? await getSnapshotAwarePerfs(snapshotId, year, month) : { rows: [], importId: null };
+  const fmtNum2 = (v) => parseFloat(String(v ?? 0)) || 0;
+  const byNik = /* @__PURE__ */ new Map();
+  for (const p2 of allPerfs) {
+    if (!activeNikSet.has(p2.nik)) continue;
+    const cur = byNik.get(p2.nik) ?? {
+      nik: p2.nik,
+      realReguler: 0,
+      targetReguler: 0,
+      realSustain: 0,
+      targetSustain: 0,
+      realScaling: 0,
+      targetScaling: 0,
+      realNgtma: 0,
+      targetNgtma: 0
+    };
+    byNik.set(p2.nik, {
+      nik: p2.nik,
+      realReguler: cur.realReguler + fmtNum2(p2.realReguler),
+      targetReguler: cur.targetReguler + fmtNum2(p2.targetReguler),
+      realSustain: cur.realSustain + fmtNum2(p2.realSustain),
+      targetSustain: cur.targetSustain + fmtNum2(p2.targetSustain),
+      realScaling: cur.realScaling + fmtNum2(p2.realScaling),
+      targetScaling: cur.targetScaling + fmtNum2(p2.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum2(p2.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum2(p2.targetNgtma)
+    });
+  }
+  const amList = [...byNik.values()].filter(
+    (a) => a.realReguler + a.realSustain + a.realScaling + a.realNgtma > 0 || a.targetReguler + a.targetSustain + a.targetScaling + a.targetNgtma > 0
+  );
+  const totalAMs = amList.length;
+  const myAm = byNik.get(nik);
+  if (!myAm) return null;
+  const computeAch = (real2, target) => target > 0 ? real2 / target * 100 : 0;
+  const sortedByCm = [...amList].sort((a, b) => {
+    const achA = computeAch(a.realReguler, a.targetReguler);
+    const achB = computeAch(b.realReguler, b.targetReguler);
+    return achB - achA;
+  });
+  const rankCm = sortedByCm.findIndex((a) => a.nik === nik) + 1;
+  const ytdPerfs = snapshotId ? await db.select().from(performanceDataTable).where(and(
+    eq(performanceDataTable.nik, nik),
+    eq(performanceDataTable.tahun, year),
+    eq(performanceDataTable.importId, snapshotId)
+  )) : [];
+  const ytdUpTo = ytdPerfs.filter((x) => x.bulan <= month);
+  const ytdByNik = /* @__PURE__ */ new Map();
+  for (const row of snapshotId ? await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.importId, snapshotId), eq(performanceDataTable.tahun, year))) : []) {
+    if (!activeNikSet.has(row.nik)) continue;
+    if (row.bulan > month) continue;
+    const cur = ytdByNik.get(row.nik) ?? {
+      nik: row.nik,
+      realReguler: 0,
+      targetReguler: 0,
+      realSustain: 0,
+      targetSustain: 0,
+      realScaling: 0,
+      targetScaling: 0,
+      realNgtma: 0,
+      targetNgtma: 0
+    };
+    ytdByNik.set(row.nik, {
+      nik: row.nik,
+      realReguler: cur.realReguler + fmtNum2(row.realReguler),
+      targetReguler: cur.targetReguler + fmtNum2(row.targetReguler),
+      realSustain: cur.realSustain + fmtNum2(row.realSustain),
+      targetSustain: cur.targetSustain + fmtNum2(row.targetSustain),
+      realScaling: cur.realScaling + fmtNum2(row.realScaling),
+      targetScaling: cur.targetScaling + fmtNum2(row.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum2(row.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum2(row.targetNgtma)
+    });
+  }
+  const ytdList = [...ytdByNik.values()].filter(
+    (a) => a.realReguler > 0 || a.targetReguler > 0
+  );
+  const sortedByYtd = [...ytdList].sort((a, b) => {
+    const achA = computeAch(a.realReguler, a.targetReguler);
+    const achB = computeAch(b.realReguler, b.targetReguler);
+    return achB - achA;
+  });
+  const rankYtd = sortedByYtd.findIndex((a) => a.nik === nik) + 1;
+  const realRegulerCm = myAm.realReguler;
+  const targetRegulerCm = myAm.targetReguler;
+  const realSustainCm = myAm.realSustain;
+  const targetSustainCm = myAm.targetSustain;
+  const realScalingCm = myAm.realScaling;
+  const targetScalingCm = myAm.targetScaling;
+  const realNgtmaCm = myAm.realNgtma;
+  const targetNgtmaCm = myAm.targetNgtma;
+  const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.realReguler), 0);
+  const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.targetReguler), 0);
+  const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.realSustain), 0);
+  const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.targetSustain), 0);
+  const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.realScaling), 0);
+  const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.targetScaling), 0);
+  const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.realNgtma), 0);
+  const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum2(x.targetNgtma), 0);
+  const achRegulerCm = targetRegulerCm > 0 ? realRegulerCm / targetRegulerCm * 100 : 0;
+  const achRegulerYtd = targetRegulerYtd > 0 ? realRegulerYtd / targetRegulerYtd * 100 : 0;
+  const achSustainCm = targetSustainCm > 0 ? realSustainCm / targetSustainCm * 100 : 0;
+  const achSustainYtd = targetSustainYtd > 0 ? realSustainYtd / targetSustainYtd * 100 : 0;
+  const achScalingCm = targetScalingCm > 0 ? realScalingCm / targetScalingCm * 100 : 0;
+  const achScalingYtd = targetScalingYtd > 0 ? realScalingYtd / targetScalingYtd * 100 : 0;
+  const achNgtmaCm = targetNgtmaCm > 0 ? realNgtmaCm / targetNgtmaCm * 100 : 0;
+  const achNgtmaYtd = targetNgtmaYtd > 0 ? realNgtmaYtd / targetNgtmaYtd * 100 : 0;
+  const totalRealCm = realRegulerCm + realSustainCm + realScalingCm + realNgtmaCm;
+  const totalTargetCm = targetRegulerCm + targetSustainCm + targetScalingCm + targetNgtmaCm;
+  const achTotalCm = totalTargetCm > 0 ? totalRealCm / totalTargetCm * 100 : 0;
+  const totalRealYtd = realRegulerYtd + realSustainYtd + realScalingYtd + realNgtmaYtd;
+  const totalTargetYtd = targetRegulerYtd + targetSustainYtd + targetScalingYtd + targetNgtmaYtd;
+  const achTotalYtd = totalTargetYtd > 0 ? totalRealYtd / totalTargetYtd * 100 : 0;
+  const [snapshotInfo] = snapshotId ? await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, snapshotId)) : [];
+  const snapDate = formatSnapshotDate(snapshotInfo?.snapshotDate ?? null, snapshotInfo?.period ?? null, "-");
+  const noRealData = !myAm || totalRealCm === 0 && totalRealYtd === 0;
+  const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
+  let part1 = `<b>\u{1F4CA} LAPORAN PERFORMANSI ACCOUNT MANAGER</b>
+`;
+  part1 += `<b>LESA VI \u2014 Witel Suramadu</b>
+
+`;
+  part1 += `Halo kak <b>${firstName}</b>! \u{1F44B}
+
+`;
+  part1 += `Berikut rekap performansi kamu berdasarkan:
+
+`;
+  part1 += `\u{1F4F8} <b>Snapshot:</b> ${snapDate}
+`;
+  part1 += `\u{1F4C5} <b>Periode Current Month:</b> ${monthName} ${year}
+`;
+  part1 += `\u{1F4CA} <b>Periode YTD:</b> Januari - ${monthName} ${year}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} A. REGULER REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerCm)}</b>
+`;
+  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerCm)}</b>
+`;
+  part1 += `\u251C Ach CM         : <b>${fmtPct(achRegulerCm)}</b>
+`;
+  part1 += `\u2514 Status         : ${achStatus(achRegulerCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerYtd)}</b>
+`;
+  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD        : <b>${fmtPct(achRegulerYtd)}</b>
+`;
+  part1 += `\u2514 Status         : ${achStatus(achRegulerYtd)}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} B. SUSTAIN REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainCm)}</b>
+`;
+  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achSustainCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achSustainCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainYtd)}</b>
+`;
+  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achSustainYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achSustainYtd)}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} C. SCALING REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingCm)}</b>
+`;
+  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achScalingCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achScalingCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingYtd)}</b>
+`;
+  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achScalingYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achScalingYtd)}
+
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part1 += `<b>\u{1F4CC} D. NGTMA REVENUE</b>
+`;
+  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaCm)}</b>
+`;
+  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaCm)}</b>
+`;
+  part1 += `\u251C Ach CM          : <b>${fmtPct(achNgtmaCm)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achNgtmaCm)}
+
+`;
+  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
+`;
+  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaYtd)}</b>
+`;
+  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaYtd)}</b>
+`;
+  part1 += `\u251C Ach YTD         : <b>${fmtPct(achNgtmaYtd)}</b>
+`;
+  part1 += `\u2514 Status          : ${achStatus(achNgtmaYtd)}`;
+  let part2 = `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part2 += `<b>\u{1F4C8} RINGKASAN PERFORMANSI</b>
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  part2 += `<b>\u2460 Current Month \u2014 ${monthName} ${year}</b>
+`;
+  part2 += `Capaian: <b>${fmtPct(achRegulerCm)}</b> \xB7 Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>
+
+`;
+  part2 += `<b>\u2461 Year To Date \u2014 Januari s/d ${monthName} ${year}</b>
+`;
+  part2 += `Capaian: <b>${fmtPct(achRegulerYtd)}</b> \xB7 Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>
+
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`;
+  part2 += `<b>\u{1F4AC} FEEDBACK PERFORMANSI</b>
+`;
+  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+`;
+  if (noRealData) {
+    part2 += `Mohon maaf kak, data revenue untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya \u2014 kami akan segera menginformasikan jika data sudah tersedia. \u{1F64F}`;
+  } else {
+    part2 += feedback ?? "";
+  }
+  const embedUrl = getEmbedUrl(snapshotId ?? void 0);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:menu" }],
+      [{ text: "\u{1F3C6} Papan Peringkat", callback_data: "perf:peringkat" }],
+      [{ text: "\u{1F4CE} Lihat Dashboard", callback_data: "perf:dashboard" }],
+      [{ text: "\u{1F3E0} Kembali ke Menu", callback_data: "nav:main" }]
+    ]
+  };
+  return { parts: [part1, part2], keyboard };
+}
+async function buildFunnelMessage(nik) {
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
+  if (!am) return null;
+  const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt)).limit(10);
+  if (funnelImportsRaw.length === 0) return null;
+  const funnelImports = [...funnelImportsRaw].sort((a, b) => {
+    const aDate = a.snapshotDate;
+    const bDate = b.snapshotDate;
+    if (!aDate && !bDate) return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
+    if (!aDate) return -1;
+    if (!bDate) return 1;
+    if (bDate > aDate) return 1;
+    if (aDate > bDate) return -1;
+    return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
+  });
+  const latestImport = funnelImports[0];
+  const prevImport = funnelImports.length >= 2 ? funnelImports[1] : null;
+  const relevantImportIds = [latestImport.id, ...prevImport ? [prevImport.id] : []];
+  const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, nik));
+  const REPORT_YEAR = (/* @__PURE__ */ new Date()).getFullYear().toString();
+  const allLops = allLopsRaw.filter(
+    (l) => relevantImportIds.includes(l.importId) && l.reportDate?.startsWith(REPORT_YEAR)
+  );
+  const latestLops = allLops.filter((l) => l.importId === latestImport.id);
+  const counts = countByStatus(latestLops);
+  const total = latestLops.length;
+  const snapshotDateLatest = formatSnapshotDate(
+    latestImport.snapshotDate,
+    latestImport.period,
+    latestImport.createdAt?.toISOString()?.slice(0, 10) || "-"
+  );
+  if (!prevImport) {
+    let msg2 = `\u{1F4CB} *MONITORING SALES FUNNELING*
+`;
+    msg2 += `LESA VI \u2014 Witel Suramadu
+
+`;
+    msg2 += `Halo kak *${am.nama}*! \u{1F44B}
+
+`;
+    msg2 += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak \u{1F64F}
+
+`;
+    msg2 += `\u{1F4CA} *Ringkasan LOP Kakak Saat Ini:*
+`;
+    msg2 += `\u251C F0 (Lead)        : ${counts.F0} proyek
+`;
+    msg2 += `\u251C F1 (Prospect)    : ${counts.F1} proyek
+`;
+    msg2 += `\u251C F2 (Quote)       : ${counts.F2} proyek
+`;
+    msg2 += `\u251C F3 (Negosiasi)   : ${counts.F3} proyek
+`;
+    msg2 += `\u251C F4 (Closing)     : ${counts.F4} proyek
+`;
+    msg2 += `\u2514 F5 (Won) \u2705      : ${counts.F5} proyek
+`;
+    msg2 += `*Total             : ${total} proyek*
+
+`;
+    msg2 += `_\u2139\uFE0F Perbandingan belum tersedia \u2014 ini snapshot pertama yang tercatat._
+`;
+    msg2 += `_Perbandingan akan muncul pada laporan berikutnya._
+
+`;
+    msg2 += `\u{1F4CE} Detail lengkap:
+`;
+    msg2 += getFunnelDetailUrl();
+    return msg2;
+  }
+  const prevLops = allLops.filter((l) => l.importId === prevImport.id);
+  const snapshotDatePrev = formatSnapshotDate(
+    prevImport.snapshotDate,
+    prevImport.period,
+    prevImport.createdAt?.toISOString()?.slice(0, 10) || "-"
+  );
+  const prevMap = new Map(prevLops.map((l) => [l.lopid, l]));
+  const lopStagnan = [];
+  const lopBergerak = [];
+  const lopBaru = [];
+  for (const lop of latestLops) {
+    const prev = prevMap.get(lop.lopid);
+    if (!prev) {
+      lopBaru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: lop.statusF || "" });
+      continue;
+    }
+    const statusBaru = lop.statusF || "";
+    const statusLama = prev.statusF || "";
+    if (statusBaru === statusLama) {
+      if (!isFunnel5(statusBaru)) {
+        lopStagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: statusBaru });
+      }
+    } else {
+      lopBergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, statusLama, statusBaru });
+    }
+  }
+  const hasStagnan = lopStagnan.length > 0;
+  let msg = `\u{1F4CB} *MONITORING SALES FUNNELING*
+`;
+  msg += `LESA VI \u2014 Witel Suramadu
+
+`;
+  msg += `Halo kak *${am.nama}*! \u{1F44B}
+
+`;
+  msg += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak \u{1F64F}
+
+`;
+  msg += `\u{1F4CA} *Ringkasan LOP Kakak Saat Ini:*
+`;
+  msg += `\u251C F0 (Lead)        : ${counts.F0} proyek
+`;
+  msg += `\u251C F1 (Prospect)    : ${counts.F1} proyek
+`;
+  msg += `\u251C F2 (Quote)       : ${counts.F2} proyek
+`;
+  msg += `\u251C F3 (Negosiasi)   : ${counts.F3} proyek
+`;
+  msg += `\u251C F4 (Closing)     : ${counts.F4} proyek
+`;
+  msg += `\u2514 F5 (Won) \u2705      : ${counts.F5} proyek
+`;
+  msg += `*Total             : ${total} proyek*
+
+`;
+  msg += `\u{1F4C5} _Dibandingkan dengan snapshot *${snapshotDatePrev}*_
+`;
+  const MAX_LIST = 10;
+  if (lopBaru.length > 0) {
+    msg += `
+\u{1F195} *LOP Baru di Snapshot Ini (${lopBaru.length}):*
+`;
+    const baruShow = lopBaru.slice(0, MAX_LIST);
+    const baruRest = lopBaru.length - baruShow.length;
+    for (const lop of baruShow) {
+      msg += `
+\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
+`;
+      msg += `  Status: *${lop.status}*
+`;
+    }
+    if (baruRest > 0) {
+      msg += `
+_...dan ${baruRest} LOP baru lainnya (lihat detail)_
+`;
+    }
+  }
+  if (hasStagnan) {
+    msg += `
+\u26A0\uFE0F *LOP Belum Bergerak (${lopStagnan.length}):*
+`;
+    msg += `_(status sama dengan snapshot *${snapshotDatePrev}*)_
+`;
+    const stagnanShow = lopStagnan.slice(0, MAX_LIST);
+    const stagnanRest = lopStagnan.length - stagnanShow.length;
+    for (const lop of stagnanShow) {
+      msg += `
+\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
+`;
+      msg += `  Status masih *${lop.status}* sejak *${snapshotDatePrev}*
+`;
+    }
+    if (stagnanRest > 0) {
+      msg += `
+_...dan ${stagnanRest} LOP lainnya belum bergerak (lihat detail)_
+`;
+    }
+    msg += `
+\u2705 *LOP yang Sudah Bergerak (${lopBergerak.length}):*
+`;
+    msg += `_(ada perubahan status dibanding *${snapshotDatePrev}*)_
+`;
+    if (lopBergerak.length > 0) {
+      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
+      const bergerakRest = lopBergerak.length - bergerakShow.length;
+      for (const lop of bergerakShow) {
+        msg += `
+\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
+`;
+        msg += `  ${lop.statusLama} \u2192 *${lop.statusBaru}* \u{1F3AF}
+`;
+      }
+      if (bergerakRest > 0) {
+        msg += `
+_...dan ${bergerakRest} LOP lainnya (lihat detail)_
+`;
+      }
+    } else {
+      msg += `
+_Belum ada pergerakan status pada periode ini._
+`;
+    }
+  } else {
+    if (lopBergerak.length > 0) {
+      msg += `
+\u{1F389} *Semua LOP Bergerak \u2014 Keren!*
+
+`;
+      msg += `\u2705 *Perubahan Status LOP (${lopBergerak.length}):*
+`;
+      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
+      const bergerakRest = lopBergerak.length - bergerakShow.length;
+      for (const lop of bergerakShow) {
+        msg += `
+\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
+`;
+        msg += `  ${lop.statusLama} \u2192 *${lop.statusBaru}* \u{1F3AF}
+`;
+      }
+      if (bergerakRest > 0) {
+        msg += `
+_...dan ${bergerakRest} LOP lainnya (lihat detail)_
+`;
+      }
+    } else {
+      msg += `
+_Belum ada LOP tahun ${REPORT_YEAR} yang dapat dibandingkan pada snapshot ini._
+`;
+    }
+  }
+  msg += `
+\u{1F4CE} Detail lengkap:
+`;
+  msg += getFunnelDetailUrl();
+  if (msg.length > 4e3) {
+    const footer = `
+
+_[Pesan terpotong] Detail lengkap:
+${getFunnelDetailUrl()}_`;
+    msg = msg.slice(0, 4e3 - footer.length) + footer;
+  }
+  return msg;
+}
+async function buildActivityReport(nik, monthKey) {
+  function currentPeriod2() {
+    const now = /* @__PURE__ */ new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
+  if (!am) return null;
+  const [targetSnap] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+  let allNikActs = [];
+  let snapYear = (/* @__PURE__ */ new Date()).getFullYear();
+  let snapMonth = (/* @__PURE__ */ new Date()).getMonth() + 1;
+  if (targetSnap) {
+    if (targetSnap.snapshotDate) {
+      const d = new Date(targetSnap.snapshotDate);
+      snapYear = d.getFullYear();
+      snapMonth = d.getMonth() + 1;
+    } else if (targetSnap.period) {
+      const p2 = targetSnap.period;
+      if (/^\d{6}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(4, 6));
+      } else if (/^\d{4}-\d{2}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(5, 7));
+      } else if (/^\d{8}$/.test(p2)) {
+        snapYear = parseInt(p2.slice(0, 4));
+        snapMonth = parseInt(p2.slice(4, 6));
+      }
+    }
+  }
+  const MONTH_NAMES3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const targetMonthStr = monthKey ?? `${snapYear}${String(snapMonth).padStart(2, "0")}`;
+  const labelMonth = monthKey ? parseInt(monthKey.slice(4, 6)) : snapMonth;
+  const labelYear = monthKey ? parseInt(monthKey.slice(0, 4)) : snapYear;
+  const labelSnapshot = `${MONTH_NAMES3[labelMonth]} ${labelYear}`;
+  if (targetSnap) {
+    const allActs = await db.select().from(salesActivityTable).where(eq(salesActivityTable.importId, targetSnap.id));
+    allNikActs = allActs.filter((a) => a.nik === nik);
+    const seen = /* @__PURE__ */ new Set();
+    allNikActs = allNikActs.filter((a) => {
+      const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } else {
+    allNikActs = [];
+  }
+  allNikActs = allNikActs.filter((a) => {
+    const d = a.activityEndDate;
+    if (!d) return false;
+    return d.replace(/-/g, "").slice(0, 6) === targetMonthStr;
+  });
+  const validActs = allNikActs.filter((a) => a.label && !a.label.toLowerCase().includes("tanpa"));
+  const denganPelanggan = allNikActs.filter((a) => a.label?.toLowerCase().includes("pelanggan") && !a.label?.toLowerCase().includes("proyek")).length;
+  const denganProyek = allNikActs.filter((a) => a.label?.toLowerCase().includes("proyek")).length;
+  const kpiTarget = am.kpiActivity ?? 25;
+  const validCount = validActs.length;
+  const kpiPercent = kpiTarget > 0 ? Math.min(Math.round(validCount / kpiTarget * 100), 100) : 0;
+  const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const divider = `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`;
+  const fmtDate = (dateStr) => {
+    if (!dateStr) return "-- ---";
+    const parts = dateStr.split("-");
+    if (parts.length < 3) return dateStr.slice(0, 10);
+    const d = parseInt(parts[2], 10);
+    const m = parseInt(parts[1], 10);
+    return `${d} ${MONTH_SHORT[m] ?? "???"}`;
+  };
+  const kpiBar = (pct) => {
+    const filled = Math.round(pct / 10);
+    return `\u2593`.repeat(filled) + `\u2591`.repeat(10 - filled);
+  };
+  const amFirstName = am.nama.split(" ")[0];
+  const kpiStatus = kpiPercent >= 100 ? "\u2705 *Tercapai!*" : kpiPercent >= 70 ? "\u26A1 *Mendekati target*" : `\u{1F4CC} *${kpiTarget - validCount} aktivitas lagi*`;
+  const summary = `\u{1F4C5} *SALES ACTIVITY \u2014 LESA VI*
+${divider}
+\u{1F464} *${am.nama}*
+\u{1F4C6} Periode : *${labelSnapshot}*
+\u{1F4E6} Snapshot: *#${targetSnap?.id ?? "?"}*
+${divider}
+\u{1F4CA} *RINGKASAN AKTIVITAS*
+
+\u251C \u{1F4CB} Total      : *${allNikActs.length}* aktivitas
+\u251C \u{1F464} Pelanggan  : *${denganPelanggan}*
+\u251C \u{1F4C1} Proyek     : *${denganProyek}*
+\u2514 \u{1F3AF} KPI        : *${validCount}/${kpiTarget}* (*${kpiPercent}%*)
+
+${kpiBar(kpiPercent)} *${kpiPercent}%* \u2014 ${kpiStatus}
+${divider}`;
+  const sorted = [...allNikActs].sort((a, b) => {
+    const da = a.activityEndDate ?? "";
+    const db2 = b.activityEndDate ?? "";
+    return db2 < da ? -1 : db2 > da ? 1 : 0;
+  });
+  const CHUNK_SIZE = 8;
+  const chunks = [];
+  for (let i = 0; i < sorted.length; i += CHUNK_SIZE) {
+    chunks.push(sorted.slice(i, i + CHUNK_SIZE));
+  }
+  const details = [];
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    const baseIdx = c * CHUNK_SIZE;
+    let partMsg = `\u{1F4CB} *DETAIL AKTIVITAS*
+`;
+    for (let i = 0; i < chunk.length; i++) {
+      const a = chunk[i];
+      const num = baseIdx + i + 1;
+      const dateStr = fmtDate(a.activityEndDate);
+      const customer = a.caName?.toUpperCase() ?? a.picName?.toUpperCase() ?? "\u2014";
+      const notes = a.activityNotes?.split("\n")[0].trim() ?? "\u2014";
+      const kategori = a.activityType ?? a.label ?? "\u2014";
+      const shortNotes = notes.length > 65 ? notes.slice(0, 62) + "..." : notes;
+      const isProyek = a.label?.toLowerCase().includes("proyek");
+      const labelBadge = isProyek ? "\u{1F4C1} *Dg Proyek*" : "\u{1F464} *Dg Pelanggan*";
+      partMsg += `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+`;
+      partMsg += `*#${num} \xB7 ${dateStr}*
+`;
+      partMsg += `\u{1F3E2} *${customer}*
+`;
+      partMsg += `${shortNotes}
+`;
+      partMsg += `\u{1F4CC} *${kategori}*  ${labelBadge}
+`;
+      partMsg += `
+`;
+    }
+    partMsg += `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+`;
+    if (chunks.length > 1) {
+      partMsg += `_Halaman ${c + 1}/${chunks.length} \xB7 ${allNikActs.length} aktivitas_`;
+    }
+    details.push(partMsg);
+  }
+  return {
+    summary,
+    details,
+    amFirstName,
+    totalPages: chunks.length,
+    totalActivities: allNikActs.length,
+    validCount,
+    kpiTarget,
+    kpiPercent,
+    snapshotLabel: labelSnapshot,
+    nik
+  };
+}
+async function buildActivityMessage(nik, _period) {
+  const report = await buildActivityReport(nik);
+  if (!report) return [];
+  return [report.summary, ...report.details];
+}
+async function buildTelegramMessages(nik, period, options) {
+  const messages = [];
+  let perfKeyboard;
+  if (options.includePerformance) {
+    const result = await buildPerformanceMessage(nik, period, { autoFallback: options.autoFallback });
+    if (result) {
+      messages.push(...result.parts);
+      perfKeyboard = result.keyboard;
+    }
+  }
+  if (options.includeFunnel) {
+    const m = await buildFunnelMessage(nik);
+    if (m) messages.push(m);
+  }
+  if (options.includeActivity) {
+    const msgs = await buildActivityMessage(nik, period);
+    messages.push(...msgs);
+  }
+  return { messages, perfKeyboard };
+}
+async function fetchWith429Retry(url2, init, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url2, { signal: AbortSignal.timeout(15e3), ...init });
+    if (response.status !== 429) return response;
+    const data = await response.json();
+    const waitSec = data.parameters?.retry_after ?? Math.pow(2, attempt);
+    logger.warn({ attempt, waitSec, url: url2 }, "Telegram 429 rate limited \u2014 waiting before retry");
+    await new Promise((r) => setTimeout(r, (waitSec + 1) * 1e3));
+  }
+  return fetch(url2, { signal: AbortSignal.timeout(15e3), ...init });
+}
+async function sendToTelegram(botToken, chatId, message, replyMarkup) {
+  const url2 = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const body = { chat_id: chatId, text: message, parse_mode: "Markdown" };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetchWith429Retry(url2, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const data2 = await response.json();
+    logger.error({ status: response.status, chatId, error: data2.description }, "sendToTelegram failed");
+    throw new Error(data2.description || "Telegram API error");
+  }
+  const data = await response.json();
+  return data.result?.message_id ?? null;
+}
+async function sendPhotoToTelegram(botToken, chatId, photoUrl, caption, replyMarkup) {
+  const url2 = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+  const body = {
+    chat_id: chatId,
+    photo: photoUrl
+  };
+  if (caption) {
+    body.caption = caption;
+    body.parse_mode = "Markdown";
+  }
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetchWith429Retry(url2, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    logger.error({ status: response.status, chatId, error: data.description }, "sendPhotoToTelegram failed");
+  }
+}
+async function editMessageText(botToken, chatId, messageId, text2, replyMarkup) {
+  const url2 = `https://api.telegram.org/bot${botToken}/editMessageText`;
+  const body = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: text2,
+    parse_mode: "Markdown"
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetchWith429Retry(url2, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    logger.error({ status: response.status, chatId, messageId, error: data.description }, "editMessageText failed");
+  }
+}
+async function answerCallbackQueryAndEdit(botToken, callbackId, chatId, messageId, text2, replyMarkup) {
+  await Promise.all([
+    editMessageText(botToken, chatId, messageId, text2, replyMarkup),
+    answerCallbackQuery(botToken, callbackId)
+  ]);
+}
+async function sendToTelegramHtml(botToken, chatId, message, replyMarkup) {
+  const url2 = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const body = { chat_id: chatId, text: message, parse_mode: "HTML" };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetchWith429Retry(url2, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.description || "Telegram API error");
+  }
+}
+async function answerCallbackQuery(botToken, callbackQueryId, text2) {
+  await fetchWith429Retry(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: callbackQueryId, text: text2 })
+  }).catch(() => {
+  });
+}
+async function sendReminderToAllAMs(period, options, targetNiks) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  let ams = await db.select().from(accountManagersTable);
+  if (targetNiks && targetNiks.length > 0) {
+    ams = ams.filter((a) => targetNiks.includes(a.nik));
+  }
+  let sent = 0, failed = 0, skipped = 0;
+  const details = [];
+  for (const am of ams) {
+    if (!am.telegramChatId) {
+      skipped++;
+      details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
+      continue;
+    }
+    try {
+      const { messages, perfKeyboard } = await buildTelegramMessages(am.nik, period, options);
+      if (!messages.length) {
+        skipped++;
+        details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
+        continue;
+      }
+      for (let i = 0; i < messages.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 500));
+        await sendToTelegramHtml(settings.telegramBotToken, am.telegramChatId, messages[i]);
+      }
+      if (perfKeyboard) {
+        await new Promise((r) => setTimeout(r, 500));
+        const firstName = am.nama.split(" ")[0];
+        await sendToTelegramHtml(
+          settings.telegramBotToken,
+          am.telegramChatId,
+          `Mau apa lagi kak <b>${firstName}</b>? \u{1F60A}`,
+          perfKeyboard
+        );
+      }
+      sent++;
+      details.push({ nik: am.nik, namaAm: am.nama, status: "sent" });
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik,
+        namaAm: am.nama,
+        telegramChatId: am.telegramChatId,
+        status: "sent",
+        period,
+        messageType: "reminder"
+      });
+      await new Promise((r) => setTimeout(r, 120));
+    } catch (error40) {
+      failed++;
+      const errMsg = error40 instanceof Error ? error40.message : "Unknown error";
+      details.push({ nik: am.nik, namaAm: am.nama, status: "failed", error: errMsg });
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik,
+        namaAm: am.nama,
+        telegramChatId: am.telegramChatId || null,
+        status: "failed",
+        period,
+        messageType: "reminder",
+        error: errMsg
+      });
+      logger.error({ nik: am.nik, error: errMsg }, "Failed to send Telegram message");
+    }
+  }
+  return { sent, failed, skipped, details };
+}
+function fmtNum(v) {
+  return parseFloat(String(v ?? 0)) || 0;
+}
+function resolveDataPeriod(rows) {
+  let year = 0, month = 0;
+  for (const r of rows) {
+    if (r.tahun > year || r.tahun === year && r.bulan > month) {
+      year = r.tahun;
+      month = r.bulan;
+    }
+  }
+  if (year === 0) return { year, month };
+  for (let step = 0; step < 12; step++) {
+    const totalAtMonth = rows.reduce((s, r) => {
+      if (r.tahun !== year || r.bulan !== month) return s;
+      return s + fmtNum(r.realReguler) + fmtNum(r.realSustain) + fmtNum(r.realScaling) + fmtNum(r.realNgtma);
+    }, 0);
+    if (totalAtMonth > 0) return { year, month };
+    month--;
+    if (month === 0) {
+      month = 12;
+      year--;
+    }
+  }
+  return { year, month };
+}
+async function computeSnapshotRanks(snapshotId) {
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "")).map((m) => m.nik)
+  );
+  const chatIdMap = new Map(allAms.map((m) => [m.nik, m.telegramChatId]));
+  const nameMap = new Map(allAms.map((m) => [m.nik, m.nama]));
+  const rows = await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, snapshotId));
+  const activeRows = rows.filter((r) => r.nik && activeNikSet.has(r.nik));
+  if (activeRows.length === 0) return /* @__PURE__ */ new Map();
+  const { year: periodYear, month: periodMonth } = resolveDataPeriod(activeRows);
+  if (periodYear === 0) return /* @__PURE__ */ new Map();
+  const cmByNik = /* @__PURE__ */ new Map();
+  for (const r of activeRows) {
+    if (r.tahun !== periodYear || r.bulan !== periodMonth) continue;
+    const cur = cmByNik.get(r.nik) ?? {
+      nik: r.nik,
+      realReguler: 0,
+      targetReguler: 0,
+      realSustain: 0,
+      targetSustain: 0,
+      realScaling: 0,
+      targetScaling: 0,
+      realNgtma: 0,
+      targetNgtma: 0
+    };
+    cmByNik.set(r.nik, {
+      nik: r.nik,
+      realReguler: cur.realReguler + fmtNum(r.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(r.targetReguler),
+      realSustain: cur.realSustain + fmtNum(r.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(r.targetSustain),
+      realScaling: cur.realScaling + fmtNum(r.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(r.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(r.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(r.targetNgtma)
+    });
+  }
+  const ytdByNik = /* @__PURE__ */ new Map();
+  for (const r of activeRows) {
+    if (r.tahun !== periodYear) continue;
+    if (r.bulan > periodMonth) continue;
+    const cur = ytdByNik.get(r.nik) ?? {
+      nik: r.nik,
+      realReguler: 0,
+      targetReguler: 0,
+      realSustain: 0,
+      targetSustain: 0,
+      realScaling: 0,
+      targetScaling: 0,
+      realNgtma: 0,
+      targetNgtma: 0
+    };
+    ytdByNik.set(r.nik, {
+      nik: r.nik,
+      realReguler: cur.realReguler + fmtNum(r.realReguler),
+      targetReguler: cur.targetReguler + fmtNum(r.targetReguler),
+      realSustain: cur.realSustain + fmtNum(r.realSustain),
+      targetSustain: cur.targetSustain + fmtNum(r.targetSustain),
+      realScaling: cur.realScaling + fmtNum(r.realScaling),
+      targetScaling: cur.targetScaling + fmtNum(r.targetScaling),
+      realNgtma: cur.realNgtma + fmtNum(r.realNgtma),
+      targetNgtma: cur.targetNgtma + fmtNum(r.targetNgtma)
+    });
+  }
+  const computeAch = (real2, target) => target > 0 ? real2 / target * 100 : 0;
+  const sumTotals = (a) => ({
+    real: a.realReguler + a.realSustain + a.realScaling + a.realNgtma,
+    target: a.targetReguler + a.targetSustain + a.targetScaling + a.targetNgtma
+  });
+  const achReguler = (a) => computeAch(a.realReguler, a.targetReguler);
+  const candidates = /* @__PURE__ */ new Set([...cmByNik.keys(), ...ytdByNik.keys()]);
+  const candidateRows = [...candidates].map((nik) => {
+    const cm = cmByNik.get(nik) ?? null;
+    const ytd = ytdByNik.get(nik) ?? null;
+    return { nik, cm, ytd };
+  });
+  const cmRanked = candidateRows.filter((c) => c.cm !== null).map((c) => ({ nik: c.nik, ach: achReguler(c.cm), target: c.cm.targetReguler })).filter((c) => c.target > 0 || c.ach > 0).sort((a, b) => b.ach - a.ach);
+  const ytdRanked = candidateRows.filter((c) => c.ytd !== null).map((c) => ({ nik: c.nik, ach: achReguler(c.ytd), target: c.ytd.targetReguler })).filter((c) => c.target > 0 || c.ach > 0).sort((a, b) => b.ach - a.ach);
+  const result = /* @__PURE__ */ new Map();
+  cmRanked.forEach((c, i) => {
+    const cm = cmByNik.get(c.nik);
+    const ytd = ytdByNik.get(c.nik);
+    const cmSum = sumTotals(cm);
+    const ytdSum = ytd ? sumTotals(ytd) : { real: 0, target: 0 };
+    const ytdRegulerAchPct = ytd ? achReguler(ytd) : 0;
+    result.set(c.nik, {
+      nik: c.nik,
+      namaAm: cm ? nameMap.get(c.nik) ?? c.nik : nameMap.get(c.nik) ?? c.nik,
+      telegramChatId: chatIdMap.get(c.nik) ?? null,
+      periodYear,
+      periodMonth,
+      realReguler: cm.realReguler,
+      targetReguler: cm.targetReguler,
+      achReguler: cm.targetReguler > 0 ? cm.realReguler / cm.targetReguler * 100 : 0,
+      realRevenue: cmSum.real,
+      targetRevenue: cmSum.target,
+      achRate: cmSum.target > 0 ? cmSum.real / cmSum.target * 100 : 0,
+      realRevenueYtd: ytdSum.real,
+      targetRevenueYtd: ytdSum.target,
+      achRateYtd: ytdSum.target > 0 ? ytdSum.real / ytdSum.target * 100 : 0,
+      ytdRegulerActual: ytd?.realReguler ?? 0,
+      ytdRegulerTarget: ytd?.targetReguler ?? 0,
+      ytdRegulerAchPct,
+      rankCm: i + 1,
+      rankYtd: 0,
+      rankCmTotal: cmRanked.length,
+      rankYtdTotal: ytdRanked.length
+    });
+  });
+  ytdRanked.forEach((y, i) => {
+    const existing = result.get(y.nik);
+    if (existing) {
+      existing.rankYtd = i + 1;
+    } else {
+      const ytd = ytdByNik.get(y.nik);
+      const ytdSum = sumTotals(ytd);
+      result.set(y.nik, {
+        nik: y.nik,
+        namaAm: nameMap.get(y.nik) ?? y.nik,
+        telegramChatId: chatIdMap.get(y.nik) ?? null,
+        periodYear,
+        periodMonth,
+        realReguler: 0,
+        targetReguler: 0,
+        achReguler: 0,
+        realRevenue: 0,
+        targetRevenue: 0,
+        achRate: 0,
+        realRevenueYtd: ytdSum.real,
+        targetRevenueYtd: ytdSum.target,
+        achRateYtd: ytdSum.target > 0 ? ytdSum.real / ytdSum.target * 100 : 0,
+        ytdRegulerActual: ytd.realReguler,
+        ytdRegulerTarget: ytd.targetReguler,
+        ytdRegulerAchPct: ytd.targetReguler > 0 ? ytd.realReguler / ytd.targetReguler * 100 : 0,
+        rankCm: 0,
+        rankYtd: i + 1,
+        rankCmTotal: cmRanked.length,
+        rankYtdTotal: ytdRanked.length
+      });
+    }
+  });
+  return result;
+}
+function renderManagerSnapshot(ctx) {
+  const lines = [
+    `<b>[UPDATE SNAPSHOT REVENUE PERFORMANCE]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, kak <b>${ctx.managerName}</b> \u{1F44B}`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${ctx.uploaderName}</b> (<i>${ctx.uploaderRole}</i>) baru saja mengunggah data Revenue Performance terbaru untuk snapshot <b>${ctx.snapshotName}</b>.`,
+    ``,
+    `Berikut highlight untuk data <b>${ctx.bulanYtd}</b>:`,
+    ``,
+    `<b>1. Capaian CM (bulan berjalan) ${ctx.periodMonth}</b>: baru <b>${ctx.capaianCm}</b>, masih kurang <b>${ctx.gapCm}</b> lagi untuk mencapai target.`,
+    ``,
+    `<b>2. YTD Reguler ${ctx.bulanYtd}</b>: ${ctx.revRegulerYtd} dari target ${ctx.targetYtd} (sebesar <b>${ctx.capaianYtd}%</b>). Target YTD tercapai, pertahankan! \u{1F38A}`,
+    ``,
+    `<b>3. Peringkat Performansi</b>: <b>#${ctx.rankCm}</b> untuk CM dan <b>#${ctx.rankYtd}</b> untuk YTD (berdasarkan % capaian reguler) dari <b>${ctx.totalAms} AM aktif</b> di LESA VI.`,
+    ``,
+    `<b>Klik tombol di bawah untuk lihat laporan lengkap dan visualisasi datanya \u{1F447}</b>`,
+    ``,
+    `<b>Ayo genjot closing, yuk kejar target bareng! Gas lanjut, kak! \u{1F525}</b>`
+  ];
+  return lines.join("\n");
+}
+async function notifyManagerSnapshot(importId, uploader) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const base = getPublicBaseUrlSafe();
+  const [latestImp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!latestImp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+  const MONTH_NAMES_ID3 = [
+    "",
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember"
+  ];
+  const MONTH_SHORT_ID = [
+    "",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Agu",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Des"
+  ];
+  const allRows = await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, importId));
+  const fmtNum2 = (v) => parseFloat(String(v ?? 0)) || 0;
+  const allAms = await db.select().from(accountManagersTable);
+  const activeNikSet = new Set(
+    allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "")).map((m) => m.nik)
+  );
+  const nameMap = new Map(allAms.map((m) => [m.nik, m.nama]));
+  let periodYear = 0, periodMonth = 0;
+  for (const r of allRows) {
+    if (!activeNikSet.has(r.nik)) continue;
+    const total = fmtNum2(r.realReguler) + fmtNum2(r.realSustain) + fmtNum2(r.realScaling) + fmtNum2(r.realNgtma);
+    if (total <= 0) continue;
+    if (r.tahun > periodYear || r.tahun === periodYear && r.bulan > periodMonth) {
+      periodYear = r.tahun;
+      periodMonth = r.bulan;
+    }
+  }
+  for (let step = 0; step < 12; step++) {
+    const totalHere = allRows.reduce((s, r) => {
+      if (r.tahun !== periodYear || r.bulan !== periodMonth) return s;
+      if (!activeNikSet.has(r.nik)) return s;
+      return s + fmtNum2(r.realReguler) + fmtNum2(r.realSustain) + fmtNum2(r.realScaling) + fmtNum2(r.realNgtma);
+    }, 0);
+    if (totalHere > 0) break;
+    periodMonth--;
+    if (periodMonth === 0) {
+      periodMonth = 12;
+      periodYear--;
+    }
+  }
+  const periodMonthName = MONTH_NAMES_ID3[periodMonth] ?? String(periodMonth);
+  const periodMonthShort = MONTH_SHORT_ID[periodMonth] ?? String(periodMonth);
+  const cmReguler = allRows.filter((r) => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realReguler), 0);
+  const cmTargetReguler = allRows.filter((r) => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.targetReguler), 0);
+  const cmSustain = allRows.filter((r) => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realSustain), 0);
+  const cmScaling = allRows.filter((r) => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realScaling), 0);
+  const cmNgtma = allRows.filter((r) => r.tahun === periodYear && r.bulan === periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realNgtma), 0);
+  const ytdReguler = allRows.filter((r) => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realReguler), 0);
+  const ytdTargetReguler = allRows.filter((r) => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.targetReguler), 0);
+  const ytdSustain = allRows.filter((r) => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realSustain), 0);
+  const ytdScaling = allRows.filter((r) => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realScaling), 0);
+  const ytdNgtma = allRows.filter((r) => r.tahun === periodYear && r.bulan <= periodMonth && activeNikSet.has(r.nik)).reduce((s, r) => s + fmtNum2(r.realNgtma), 0);
+  const achCm = cmTargetReguler > 0 ? cmReguler / cmTargetReguler * 100 : 0;
+  const achYtd = ytdTargetReguler > 0 ? ytdReguler / ytdTargetReguler * 100 : 0;
+  const cmByNik = /* @__PURE__ */ new Map();
+  const cmTargetByNik = /* @__PURE__ */ new Map();
+  const ytdByNik = /* @__PURE__ */ new Map();
+  const ytdTargetByNik = /* @__PURE__ */ new Map();
+  const namaByNik = /* @__PURE__ */ new Map();
+  for (const r of allRows) {
+    if (!activeNikSet.has(r.nik)) continue;
+    const nik = r.nik;
+    namaByNik.set(nik, nameMap.get(nik) ?? r.namaAm ?? nik);
+    if (r.tahun === periodYear && r.bulan === periodMonth) {
+      cmByNik.set(nik, (cmByNik.get(nik) ?? 0) + fmtNum2(r.realReguler));
+      cmTargetByNik.set(nik, (cmTargetByNik.get(nik) ?? 0) + fmtNum2(r.targetReguler));
+    }
+    if (r.tahun === periodYear && r.bulan <= periodMonth) {
+      ytdByNik.set(nik, (ytdByNik.get(nik) ?? 0) + fmtNum2(r.realReguler));
+      ytdTargetByNik.set(nik, (ytdTargetByNik.get(nik) ?? 0) + fmtNum2(r.targetReguler));
+    }
+  }
+  const reached100Cm = [...cmByNik.entries()].filter(([, real2]) => real2 > 0).filter(([nik, real2]) => {
+    const target = cmTargetByNik.get(nik) ?? 0;
+    return target > 0 && real2 / target >= 1;
+  }).map(([nik]) => namaByNik.get(nik) ?? nik);
+  const notReachedCm = [...cmByNik.entries()].filter(([nik]) => !reached100Cm.includes(namaByNik.get(nik) ?? nik)).filter(([, real2]) => {
+    const target = cmTargetByNik.get(reached100Cm.find((n) => n === reached100Cm.find(() => false)) ?? "") ?? 0;
+    return true;
+  }).filter(([nik, real2]) => {
+    const target = cmTargetByNik.get(nik) ?? 0;
+    return target > 0 || real2 > 0;
+  }).map(([nik]) => namaByNik.get(nik) ?? nik);
+  const allNikWithData = [...cmByNik.keys()];
+  const notReachedCmClean = allNikWithData.filter((nik) => !reached100Cm.includes(namaByNik.get(nik) ?? nik)).filter((nik) => {
+    const real2 = cmByNik.get(nik) ?? 0;
+    const target = cmTargetByNik.get(nik) ?? 0;
+    return target > 0 || real2 > 0;
+  }).map((nik) => namaByNik.get(nik) ?? nik);
+  const reached100Ytd = [...ytdByNik.entries()].filter(([, real2]) => real2 > 0).filter(([nik, real2]) => {
+    const target = ytdTargetByNik.get(nik) ?? 0;
+    return target > 0 && real2 / target >= 1;
+  }).map(([nik]) => namaByNik.get(nik) ?? nik);
+  const notReachedYtdClean = [...ytdByNik.keys()].filter((nik) => !reached100Ytd.includes(namaByNik.get(nik) ?? nik)).filter((nik) => {
+    const real2 = ytdByNik.get(nik) ?? 0;
+    const target = ytdTargetByNik.get(nik) ?? 0;
+    return target > 0 || real2 > 0;
+  }).map((nik) => namaByNik.get(nik) ?? nik);
+  const activeAmCount = [...cmByNik.entries()].filter(([, real2]) => {
+    const target = cmTargetByNik.get(reached100Cm.find(() => false) ?? "") ?? 0;
+    return true;
+  }).length;
+  const activeAmCountClean = allNikWithData.filter((nik) => {
+    const real2 = cmByNik.get(nik) ?? 0;
+    const target = cmTargetByNik.get(nik) ?? 0;
+    return target > 0 || real2 > 0;
+  }).length;
+  function fmtCurrency(v) {
+    if (v >= 1e9) return `Rp ${(v / 1e9).toFixed(2).replace(".", ",")} M`;
+    if (v >= 1e6) return `Rp ${(v / 1e6).toFixed(2).replace(".", ",")} jt`;
+    if (v >= 1e3) return `Rp ${(v / 1e3).toFixed(0)} rb`;
+    if (v === 0) return `Rp 0`;
+    return `Rp ${v.toLocaleString("id-ID")}`;
+  }
+  function fmtPct2(v) {
+    return v.toFixed(1).replace(".", ",");
+  }
+  const fmtNames = (names, max2 = 3) => {
+    if (names.length === 0) return "\u2014";
+    if (names.length <= max2) return names.join(", ");
+    const first = names.slice(0, max2).join(", ");
+    const rest = names.slice(max2);
+    const shortRest = rest.map((n) => n.split(" ")[0]);
+    return `${first}, ${shortRest.join(", ")} (+${rest.length})`;
+  };
+  const publicHttps = toHttpsUrl(base);
+  const reportUrl = `${publicHttps}/presentation?type=performance&id=${importId}`;
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const localMode = isLocalUrl(publicHttps);
+  const bulanYtd = `Januari s.d. ${periodMonthName} ${periodYear}`;
+  const latestRanks = await computeSnapshotRanks(importId);
+  if (latestRanks.size === 0) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const totalAms = activeAmCountClean;
+  let rankCm = 0, rankYtd = 0;
+  if (uploader?.nik) {
+    const rankedAm = latestRanks.get(uploader.nik);
+    if (rankedAm) {
+      rankCm = rankedAm.rankCm > 0 ? rankedAm.rankCm : rankedAm.rankCmTotal;
+      rankYtd = rankedAm.rankYtd > 0 ? rankedAm.rankYtd : rankedAm.rankYtdTotal;
+    }
+  }
+  const gap = cmTargetReguler - cmReguler;
+  const baseCtx = {
+    greeting: getGreetingWIB(/* @__PURE__ */ new Date()),
+    snapshotName: formatSnapshotNameId(latestImp.snapshotDate),
+    periodMonth: `${periodMonthName} ${periodYear}`,
+    bulanYtd,
+    uploaderName: uploader?.nama || "Officer",
+    uploaderRole: uploader?.role === "OFFICER" ? "Officer" : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager" : uploader?.role === "MANAGER" ? "Manager" : uploader?.role || "Officer",
+    capaianCm: fmtPct2(achCm),
+    gapCm: fmtCurrency(gap),
+    revRegulerYtd: fmtCurrency(ytdReguler),
+    targetYtd: fmtCurrency(ytdTargetReguler),
+    capaianYtd: fmtPct2(achYtd),
+    rankCm,
+    rankYtd,
+    totalAms
+  };
+  const keyboard = localMode ? {
+    inline_keyboard: [
+      [{ text: "\u{1F4CA} Visualisasi Data", callback_data: "perf:vis" }],
+      [{ text: "\u{1F3C6} Leaderboard", callback_data: "perf:peringkat" }]
+    ]
+  } : {
+    inline_keyboard: [
+      [
+        { text: "\u{1F4CA} Visualisasi Data", url: visualizationUrl },
+        { text: "\u{1F3C6} Leaderboard", url: `${publicHttps}/presentation?type=performance&id=${importId}` }
+      ]
+    ]
+  };
+  const managers = await db.select().from(accountManagersTable).where(eq(accountManagersTable.role, "MANAGER"));
+  const linkedManagers = managers.filter((m) => m.telegramChatId);
+  if (linkedManagers.length === 0) {
+    return { sent: 0, failed: 0, skipped: linkedManagers.length, details: [] };
+  }
+  let sent = 0, failed = 0;
+  const details = [];
+  for (const mgr of linkedManagers) {
+    if (!mgr.telegramChatId) {
+      details.push({ nama: mgr.nama, status: "skipped" });
+      continue;
+    }
+    const ctx = { ...baseCtx, managerName: mgr.nama };
+    const body = renderManagerSnapshot(ctx);
+    try {
+      await sendToTelegramHtml(token, mgr.telegramChatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? null,
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "sent",
+        period: latestImp.period,
+        messageType: "manager_snapshot_notification"
+      });
+      sent++;
+      details.push({ nama: mgr.nama, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: mgr.nik, error: errMsg }, "notifyManagerSnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? null,
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "failed",
+        period: latestImp.period,
+        messageType: "manager_snapshot_notification",
+        error: errMsg
+      });
+      failed++;
+      details.push({ nama: mgr.nama, status: "failed", error: errMsg });
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { sent, failed, skipped: managers.length - linkedManagers.length, details };
+}
+async function notifyPerformanceSnapshot(importId, uploader) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const base = getPublicBaseUrlSafe();
+  const [latestImp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!latestImp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+  const allImports = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(10);
+  const prevImp = allImports.find((imp) => imp.id !== importId) ?? null;
+  const latestRanks = await computeSnapshotRanks(importId);
+  const prevRanks = prevImp ? await computeSnapshotRanks(prevImp.id) : /* @__PURE__ */ new Map();
+  const snapshotName = formatSnapshotNameId(latestImp.snapshotDate);
+  const greeting = getGreetingWIB(/* @__PURE__ */ new Date());
+  const publicHttps = toHttpsUrl(base);
+  const reportUrl = `${publicHttps}/presentation?type=performance&id=${importId}`;
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const localMode = isLocalUrl(publicHttps);
+  let sent = 0, failed = 0, skipped = 0;
+  const details = [];
+  for (const [nik, curr] of latestRanks) {
+    if (!curr.telegramChatId) {
+      skipped++;
+      details.push({ nik, status: "skipped" });
+      continue;
+    }
+    const prev = prevRanks.get(nik) ?? null;
+    const achRate = curr.targetReguler > 0 ? curr.realReguler / curr.targetReguler * 100 : 0;
+    const periodLabel = `${MONTH_NAMES_ID2[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+    const cmMonthName = `${MONTH_NAMES_ID2[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+    const ytdLabel = `Januari \u2013 ${MONTH_NAMES_ID2[curr.periodMonth] ?? curr.periodMonth} ${curr.periodYear}`;
+    const uploaderName = uploader?.nama?.split(" ")[0] || "Officer";
+    const uploaderRole = uploader?.role || "OFFICER";
+    const perfCtx = {
+      amName: curr.namaAm,
+      officerName: uploaderName,
+      officerRole: uploaderRole,
+      snapshotName,
+      revenueActual: curr.realReguler,
+      achievementPct: achRate,
+      targetRevenue: curr.targetReguler,
+      rankCurrent: curr.rankCm,
+      rankTotal: curr.rankCmTotal,
+      rankPrevious: prev?.rankCm ?? null,
+      greeting,
+      periodLabel,
+      cmMonthName,
+      ytdLabel,
+      ytdRegulerActual: curr.ytdRegulerActual,
+      ytdRegulerTarget: curr.ytdRegulerTarget,
+      ytdRegulerAchPct: curr.ytdRegulerAchPct,
+      rankCm: curr.rankCm,
+      rankYtd: curr.rankYtd,
+      rankYtdTotal: curr.rankYtdTotal
+    };
+    const textBody = renderPerfAnnouncement(perfCtx);
+    const keyboard = localMode ? {
+      inline_keyboard: [
+        [{ text: "\u{1F4C4} Laporan Terkini", callback_data: "perf:lap" }],
+        [{ text: "\u{1F4CA} Visualisasi Data", callback_data: "perf:vis" }]
+      ]
+    } : {
+      inline_keyboard: [
+        [
+          { text: "\u{1F4C4} Laporan Terkini", url: reportUrl },
+          { text: "\u{1F4CA} Visualisasi Data", url: visualizationUrl }
+        ]
+      ]
+    };
+    try {
+      await sendToTelegramHtml(token, curr.telegramChatId, textBody, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik,
+        namaAm: curr.namaAm,
+        telegramChatId: curr.telegramChatId,
+        status: "sent",
+        period: latestImp.period,
+        messageType: "snapshot_notification"
+      });
+      sent++;
+      details.push({ nik, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik, error: errMsg }, "notifyPerformanceSnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik,
+        namaAm: curr.namaAm,
+        telegramChatId: curr.telegramChatId,
+        status: "failed",
+        period: latestImp.period,
+        messageType: "snapshot_notification",
+        error: errMsg
+      });
+      failed++;
+      details.push({ nik, status: "failed", error: errMsg });
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { sent, failed, skipped, details };
+}
+function isKpiLabel(label) {
+  if (!label) return false;
+  return !label.toLowerCase().includes("tanpa");
+}
+function parseSnapshotMonth(snapshotDate, period) {
+  if (snapshotDate && /^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) {
+    const [y, m, d] = snapshotDate.split("-").map(Number);
+    if (y && m && d) return { year: y, month: m, day: d };
+  }
+  if (period) {
+    if (/^\d{6}$/.test(period)) {
+      return { year: parseInt(period.slice(0, 4)), month: parseInt(period.slice(4, 6)), day: 1 };
+    }
+    if (/^\d{4}-\d{2}$/.test(period)) {
+      const [y, m] = period.split("-").map(Number);
+      return { year: y, month: m, day: 1 };
+    }
+  }
+  const now = /* @__PURE__ */ new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
+async function notifyActivitySnapshot(importId, uploader) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!imp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+  const { year, month, day } = parseSnapshotMonth(imp.snapshotDate ?? null, imp.period ?? null);
+  const snapshotName = formatSnapshotNameId(imp.snapshotDate);
+  const greeting = getGreetingWIB(/* @__PURE__ */ new Date());
+  const isAwalBulan = day >= 1 && day <= 7;
+  const allImports = await db.select({
+    id: dataImportsTable.id,
+    snapshotDate: dataImportsTable.snapshotDate
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
+  const allActsRaw = await db.select().from(salesActivityTable);
+  const allowedImpIds = new Set(
+    allImports.filter(
+      (i) => i.snapshotDate == null || imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate
+    ).map((i) => i.id)
+  );
+  const allActs = allActsRaw.filter((a) => a.importId != null && allowedImpIds.has(a.importId));
+  const monthActs = allActs.filter((a) => {
+    const d = a.activityEndDate;
+    if (!d || d.length < 7) return false;
+    const dt = /* @__PURE__ */ new Date(d.replace(" ", "T") + "Z");
+    if (isNaN(dt.getTime())) return false;
+    return dt.getFullYear() === year && dt.getMonth() + 1 === month;
+  });
+  const allAms = await db.select().from(accountManagersTable);
+  const activeAms = allAms.filter(
+    (m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik
+  );
+  const activeNikSet = new Set(activeAms.map((m) => m.nik));
+  const chatIdMap = new Map(allAms.map((m) => [m.nik, m.telegramChatId]));
+  const kpiMap = new Map(activeAms.map((m) => [m.nik, m.kpiActivity ?? 25]));
+  const byNik = /* @__PURE__ */ new Map();
+  for (const a of monthActs) {
+    if (!a.nik || !activeNikSet.has(a.nik)) continue;
+    if (!isKpiLabel(a.label)) continue;
+    byNik.set(a.nik, (byNik.get(a.nik) ?? 0) + 1);
+  }
+  const base = getPublicBaseUrlSafe();
+  const publicHttps = toHttpsUrl(base);
+  const localMode = isLocalUrl(publicHttps);
+  const bulanLabel = MONTH_NAMES[month] ?? String(month);
+  const officerName = uploader?.nama?.split(" ")[0] || "Officer";
+  const officerRole = uploader?.role === "OFFICER" ? "Officer" : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager" : uploader?.role === "MANAGER" ? "Manager" : uploader?.role || "Officer";
+  let sent = 0, failed = 0, skipped = 0;
+  const details = [];
+  for (const am of activeAms) {
+    const chatId = chatIdMap.get(am.nik);
+    if (!chatId) {
+      skipped++;
+      details.push({ nik: am.nik, status: "skipped" });
+      continue;
+    }
+    const total = byNik.get(am.nik) ?? 0;
+    const kpiTarget = kpiMap.get(am.nik) ?? 25;
+    const pct = kpiTarget > 0 ? total / kpiTarget * 100 : 0;
+    const amName = am.nama;
+    const ctx = {
+      amName,
+      officerName,
+      officerRole,
+      snapshotName,
+      bulanLabel,
+      tglDataLabel: snapshotName,
+      totalKegiatan: total,
+      kpiTarget,
+      pct,
+      greeting,
+      isAwalBulan
+    };
+    const body = renderActivityAmAnnouncement(ctx);
+    const visualisasiUrl = `${publicHttps}/presentation?type=activity&snapshot=${importId}`;
+    const keyboard = localMode ? {
+      inline_keyboard: [
+        [{ text: "\u{1F4CA} Visualisasi Data", callback_data: "act:vis" }]
+      ]
+    } : {
+      inline_keyboard: [
+        [{ text: "\u{1F4CA} Visualisasi Data", url: visualisasiUrl }]
+      ]
+    };
+    try {
+      await sendToTelegramHtml(token, chatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik,
+        namaAm: amName,
+        telegramChatId: chatId,
+        status: "sent",
+        period: imp.period,
+        messageType: "activity_snapshot_notification"
+      });
+      sent++;
+      details.push({ nik: am.nik, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: am.nik, error: errMsg }, "notifyActivitySnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik,
+        namaAm: amName,
+        telegramChatId: chatId,
+        status: "failed",
+        period: imp.period,
+        messageType: "activity_snapshot_notification",
+        error: errMsg
+      });
+      failed++;
+      details.push({ nik: am.nik, status: "failed", error: errMsg });
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { sent, failed, skipped, details };
+}
+async function notifyManagerActivitySnapshot(importId, uploader) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!imp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+  const { year, month, day } = parseSnapshotMonth(imp.snapshotDate ?? null, imp.period ?? null);
+  const snapshotName = formatSnapshotNameId(imp.snapshotDate);
+  const greeting = getGreetingWIB(/* @__PURE__ */ new Date());
+  const isAwalBulan = day >= 1 && day <= 7;
+  const allImports = await db.select({
+    id: dataImportsTable.id,
+    snapshotDate: dataImportsTable.snapshotDate
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
+  const allowedImpIds = new Set(
+    allImports.filter(
+      (i) => i.snapshotDate == null || imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate
+    ).map((i) => i.id)
+  );
+  const allActsRaw = await db.select().from(salesActivityTable);
+  const allActs = allActsRaw.filter((a) => a.importId != null && allowedImpIds.has(a.importId));
+  const monthActs = allActs.filter((a) => {
+    const d = a.activityEndDate;
+    if (!d || d.length < 7) return false;
+    const dt = /* @__PURE__ */ new Date(d.replace(" ", "T") + "Z");
+    if (isNaN(dt.getTime())) return false;
+    return dt.getFullYear() === year && dt.getMonth() + 1 === month && isKpiLabel(a.label);
+  });
+  const allAms = await db.select().from(accountManagersTable);
+  const activeAms = allAms.filter(
+    (m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik
+  );
+  const activeNikSet = new Set(activeAms.map((m) => m.nik));
+  const kpiMap = new Map(activeAms.map((m) => [m.nik, m.kpiActivity ?? 25]));
+  const byNik = /* @__PURE__ */ new Map();
+  for (const a of monthActs) {
+    if (!a.nik || !activeNikSet.has(a.nik)) continue;
+    byNik.set(a.nik, (byNik.get(a.nik) ?? 0) + 1);
+  }
+  const amStats = activeAms.map((am) => {
+    const total = byNik.get(am.nik) ?? 0;
+    const kpi = kpiMap.get(am.nik) ?? 25;
+    const pct = kpi > 0 ? total / kpi * 100 : 0;
+    return { nik: am.nik, nama: am.nama, total, kpi, pct };
+  }).filter((s) => s.total > 0 || s.kpi > 0);
+  const totalKegiatan = amStats.reduce((s, a) => s + a.total, 0);
+  const totalPct = amStats.reduce((s, a) => s + a.pct, 0);
+  const countedAms = amStats.length;
+  const rataPct = countedAms > 0 ? totalPct / countedAms : 0;
+  amStats.sort((a, b) => b.total - a.total);
+  const memenuhi = amStats.filter((a) => a.pct >= 100);
+  const belum = amStats.filter((a) => a.pct < 100);
+  const reachedCount = memenuhi.length;
+  const belumCount = belum.length;
+  const pctAmMemenuhi = countedAms > 0 ? reachedCount / countedAms * 100 : 0;
+  const fmtNameList = (list) => {
+    if (list.length === 0) return "";
+    return list.map((a, i) => `${i + 1}. <b>${htmlEscape(a.nama)}</b> (${a.total}/${a.kpi})`).join("\n   ");
+  };
+  const showLists = !(isAwalBulan && totalKegiatan === 0);
+  const daftarMemenuhi = showLists ? fmtNameList(memenuhi) : "";
+  const daftarBelum = showLists ? fmtNameList(belum) : "";
+  const kalimatStatus = getManagerStatusSentence(reachedCount, countedAms, belumCount, isAwalBulan);
+  const base = getPublicBaseUrlSafe();
+  const publicHttps = toHttpsUrl(base);
+  const localMode = isLocalUrl(publicHttps);
+  const bulanLabel = MONTH_NAMES[month] ?? String(month);
+  const tglDataLabel = formatSnapshotNameId(imp.snapshotDate);
+  const officerName = uploader?.nama?.split(" ")[0] || "Officer";
+  const officerRole = uploader?.role === "OFFICER" ? "Officer" : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager" : uploader?.role === "MANAGER" ? "Manager" : uploader?.role || "Officer";
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const keyboard = localMode ? {
+    inline_keyboard: [
+      [{ text: "\u{1F4CA} Visualisasi Data", callback_data: "act:vis" }]
+    ]
+  } : {
+    inline_keyboard: [
+      [{ text: "\u{1F4CA} Visualisasi Data", url: visualizationUrl }]
+    ]
+  };
+  const managers = await db.select().from(accountManagersTable).where(eq(accountManagersTable.role, "MANAGER"));
+  const linkedManagers = managers.filter((m) => m.telegramChatId);
+  let sent = 0, failed = 0;
+  const details = [];
+  for (const mgr of linkedManagers) {
+    if (!mgr.telegramChatId) {
+      details.push({ nik: mgr.nik ?? "", status: "skipped" });
+      continue;
+    }
+    const ctx = {
+      managerName: mgr.nama,
+      managerHonorific: detectHonorific(mgr.nama),
+      officerName,
+      officerRole,
+      snapshotName,
+      bulanLabel,
+      tglDataLabel,
+      totalAms: countedAms,
+      totalKegiatan,
+      rataPct,
+      reachedCount,
+      belumCount,
+      greeting,
+      daftarMemenuhi,
+      daftarBelum,
+      pctAmMemenuhi,
+      isAwalBulan,
+      kalimatStatus
+    };
+    const body = renderActivityManagerAnnouncement(ctx);
+    try {
+      await sendToTelegramHtml(token, mgr.telegramChatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? "",
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "sent",
+        period: imp.period,
+        messageType: "manager_activity_snapshot_notification"
+      });
+      sent++;
+      details.push({ nik: mgr.nik ?? "", status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: mgr.nik, error: errMsg }, "notifyManagerActivitySnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? "",
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "failed",
+        period: imp.period,
+        messageType: "manager_activity_snapshot_notification",
+        error: errMsg
+      });
+      failed++;
+      details.push({ nik: mgr.nik ?? "", status: "failed", error: errMsg });
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { sent, failed, skipped: managers.length - linkedManagers.length, details };
+}
+var MONTH_NAMES, MONTH_NAMES_ID2;
+var init_service = __esm({
+  "src/features/telegram/service.ts"() {
+    "use strict";
+    init_src();
+    init_drizzle_orm();
+    init_logger2();
+    init_publicUrl();
+    init_announcementTemplates();
+    MONTH_NAMES = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    MONTH_NAMES_ID2 = [
+      "",
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember"
+    ];
   }
 });
 
@@ -102331,6 +104475,24 @@ var routes_exports = {};
 __export(routes_exports, {
   default: () => routes_default9
 });
+async function triggerGdriveReminders(type, importId, period) {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.autoSendOnImport || !settings?.telegramBotToken) {
+    logger.info({ autoSendOnImport: settings?.autoSendOnImport, hasToken: !!settings?.telegramBotToken }, "GDrive reminder skipped: setting disabled");
+    return;
+  }
+  logger.info({ type, importId, period }, "GDrive sync: triggering Telegram reminders");
+  if (type === "performance") {
+    const result = await notifyPerformanceSnapshot(importId);
+    logger.info({ ...result }, "GDrive performance reminder result");
+  } else {
+    await sendReminderToAllAMs(period, {
+      includePerformance: false,
+      includeFunnel: type === "funnel",
+      includeActivity: type === "activity"
+    });
+  }
+}
 function extractFolderId(url2) {
   if (!url2) return null;
   const match = url2.match(/\/folders\/([a-zA-Z0-9_-]+)/);
@@ -102364,6 +104526,8 @@ var init_routes = __esm({
     init_excel();
     init_importer();
     init_scheduler();
+    init_service();
+    init_logger2();
     router14 = (0, import_express16.Router)();
     DRIVE_FOLDER_KEYS = {
       performance: "gDriveFolderPerformance",
@@ -102457,6 +104621,12 @@ var init_routes = __esm({
           snapshotDate,
           sheetName || void 0
         );
+        if (result && result.importId) {
+          const reminderPeriod = result.period || "";
+          triggerGdriveReminders(String(type), result.importId, reminderPeriod).catch((err) => {
+            logger.error({ err, type: String(type) }, "GDrive sync reminder failed");
+          });
+        }
         res.json({ ...result, fileName: targetFile.name, fileModified: targetFile.modifiedTime, snapshotDate });
       } catch (e) {
         res.status(500).json({ error: e.message });
@@ -120596,911 +122766,8 @@ import crypto3 from "crypto";
 init_bcryptjs();
 init_src();
 init_drizzle_orm();
+init_service();
 import crypto2 from "crypto";
-
-// src/features/telegram/service.ts
-init_src();
-init_drizzle_orm();
-init_logger2();
-
-// src/shared/publicUrl.ts
-var _currentPublicBaseUrl = process.env["PUBLIC_BASE_URL"] || "http://localhost:8000";
-function getPublicBaseUrl() {
-  return _currentPublicBaseUrl;
-}
-function setPublicBaseUrl(url2) {
-  _currentPublicBaseUrl = url2;
-}
-
-// src/features/telegram/service.ts
-var MONTH_NAMES = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-function formatSnapshotDate(snapshotDate, period, fallback = "-") {
-  const raw = snapshotDate || period || "";
-  if (!raw) return fallback;
-  if (raw.length === 10) {
-    const [y, m, d] = raw.split("-").map(Number);
-    if (y && m && d) return `${d} ${MONTH_NAMES[m] || m} ${y}`;
-  }
-  if (raw.length === 7) {
-    const [y, m] = raw.split("-").map(Number);
-    if (y && m) return `${MONTH_NAMES[m] || m} ${y}`;
-  }
-  return raw;
-}
-async function getSnapshotAwarePerfs(year, month) {
-  const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
-  if (latestImport) {
-    const fromLatest = await db.select().from(performanceDataTable).where(and(
-      eq(performanceDataTable.importId, latestImport.id),
-      eq(performanceDataTable.tahun, year),
-      eq(performanceDataTable.bulan, month)
-    ));
-    if (fromLatest.length > 0) return fromLatest;
-  }
-  return db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
-}
-async function getAvailablePerfPeriods(nik) {
-  const rows = await db.selectDistinct({
-    tahun: performanceDataTable.tahun,
-    bulan: performanceDataTable.bulan
-  }).from(performanceDataTable).where(eq(performanceDataTable.nik, nik));
-  return rows.sort((a, b) => b.tahun !== a.tahun ? b.tahun - a.tahun : b.bulan - a.bulan);
-}
-function fmtPct(val) {
-  return val.toFixed(2).replace(".", ",") + "%";
-}
-function greetingByTime() {
-  const hourWib = ((/* @__PURE__ */ new Date()).getUTCHours() + 7) % 24;
-  if (hourWib >= 3 && hourWib < 11) return "Selamat pagi";
-  if (hourWib >= 11 && hourWib < 15) return "Selamat siang";
-  if (hourWib >= 15 && hourWib < 18) return "Selamat sore";
-  return "Selamat malam";
-}
-function fmtRev(val) {
-  if (val >= 1e9) return `Rp ${(val / 1e9).toFixed(2).replace(".", ",")} Miliar`;
-  if (val >= 1e6) return `Rp ${(val / 1e6).toFixed(2).replace(".", ",")} Juta`;
-  if (val >= 1e3) return `Rp ${(val / 1e3).toFixed(0)} Ribu`;
-  if (val === 0) return `Rp 0`;
-  return `Rp ${val.toLocaleString("id-ID")}`;
-}
-function achStatus(ach) {
-  if (ach >= 100) return "\u{1F7E2} <b>Melewati Target</b>";
-  if (ach >= 80) return "\u{1F7E1} <b>Mendekati Target</b>";
-  if (ach > 0) return "\u{1F7E0} <b>Perlu Peningkatan</b>";
-  return "\u{1F534} <b>Belum Ada Revenue</b>";
-}
-function buildFeedback(firstName, achCm, achYtd, monthName) {
-  const cmLow = achCm < 80;
-  const ytdLow = achYtd < 80;
-  if (cmLow && ytdLow) {
-    return `\u{1F4AA} Semangat kak <b>${firstName}</b>! Performa <b>${monthName}</b> masih butuh peningkatan \u2014 capaian bulan berjalan masih di bawah target. Fokuskan pada aktivitas customer, pipeline, dan peluang closing. Koordinasikan kebutuhan support dengan tim ya \u{1F64F}`;
-  }
-  if (cmLow && !ytdLow) {
-    return `\u{1F525} Tetap semangat kak <b>${firstName}</b>! Capaian <b>${monthName}</b> masih perlu ditingkatkan, namun secara akumulasi YTD performansi masih positif. Fokus jaga momentum dan kejar target bulan berjalan \u{1F4AA}`;
-  }
-  if (!cmLow && ytdLow) {
-    return `\u{1F680} Progress bagus kak <b>${firstName}</b>! Performa <b>${monthName}</b> sudah menunjukkan peningkatan. Pertahankan tren positif ini agar bisa mengejar gap pencapaian YTD \u{1F64F}`;
-  }
-  return `\u{1F389} Mantap kak <b>${firstName}</b>! Performa <b>${monthName}</b> berhasil mencapai target, dan capaian YTD juga menunjukkan performansi yang kuat. Pertahankan konsistensi dan optimalkan peluang revenue berikutnya \u{1F4AA}`;
-}
-function getEmbedUrl(importId) {
-  const base = `${getPublicBaseUrl()}/presentation`;
-  if (importId) return `${base}?type=performance&id=${importId}`;
-  return base;
-}
-function getFunnelDetailUrl() {
-  return `${getPublicBaseUrl()}/visualisasi/funnel`;
-}
-function isFunnel5(status) {
-  return status === "F5" || status === "Won";
-}
-function countByStatus(lops) {
-  const counts = { F0: 0, F1: 0, F2: 0, F3: 0, F4: 0, F5: 0 };
-  for (const l of lops) {
-    const s = l.statusF || "";
-    if (s === "F0") counts.F0++;
-    else if (s === "F1") counts.F1++;
-    else if (s === "F2") counts.F2++;
-    else if (s === "F3") counts.F3++;
-    else if (s === "F4") counts.F4++;
-    else if (s === "F5" || s === "Won") counts.F5++;
-  }
-  return counts;
-}
-async function buildPerformanceMessage(nik, period) {
-  const [year, month] = period.split("-").map(Number);
-  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
-  if (!am) return null;
-  const firstName = am.nama.split(" ")[0];
-  const monthName = MONTH_NAMES[month] || String(month);
-  const allAms = await db.select().from(accountManagersTable);
-  const activeNikSet = new Set(
-    allAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik).map((m) => m.nik)
-  );
-  const allPerfs = await getSnapshotAwarePerfs(year, month);
-  const activePerfs = allPerfs.filter((p3) => activeNikSet.has(p3.nik));
-  const byNik = /* @__PURE__ */ new Map();
-  for (const p3 of activePerfs) {
-    const existing = byNik.get(p3.nik);
-    if (!existing || parseFloat(String(p3.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-      byNik.set(p3.nik, p3);
-    }
-  }
-  const uniquePerfs = [...byNik.values()];
-  const p2 = uniquePerfs.find((x) => x.nik === nik);
-  const totalAMs = uniquePerfs.length;
-  const sortedByCm = [...uniquePerfs].sort((a, b) => parseFloat(String(b.achRate ?? 0)) - parseFloat(String(a.achRate ?? 0)));
-  const rankCm = sortedByCm.findIndex((x) => x.nik === nik) + 1;
-  const sortedByYtd = [...uniquePerfs].sort((a, b) => parseFloat(String(b.achRateYtd ?? 0)) - parseFloat(String(a.achRateYtd ?? 0)));
-  const rankYtd = sortedByYtd.findIndex((x) => x.nik === nik) + 1;
-  const ytdPerfs = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.nik, nik), eq(performanceDataTable.tahun, year)));
-  const ytdUpTo = ytdPerfs.filter((x) => x.bulan <= month);
-  const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
-  const realRegulerCm = fmtNum(p2?.realReguler);
-  const targetRegulerCm = fmtNum(p2?.targetReguler);
-  const realRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realReguler), 0);
-  const targetRegulerYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetReguler), 0);
-  const realSustainCm = fmtNum(p2?.realSustain);
-  const targetSustainCm = fmtNum(p2?.targetSustain);
-  const realSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realSustain), 0);
-  const targetSustainYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetSustain), 0);
-  const realScalingCm = fmtNum(p2?.realScaling);
-  const targetScalingCm = fmtNum(p2?.targetScaling);
-  const realScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realScaling), 0);
-  const targetScalingYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetScaling), 0);
-  const realNgtmaCm = fmtNum(p2?.realNgtma);
-  const targetNgtmaCm = fmtNum(p2?.targetNgtma);
-  const realNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.realNgtma), 0);
-  const targetNgtmaYtd = ytdUpTo.reduce((s, x) => s + fmtNum(x.targetNgtma), 0);
-  const achRegulerCm = targetRegulerCm > 0 ? realRegulerCm / targetRegulerCm * 100 : 0;
-  const achRegulerYtd = targetRegulerYtd > 0 ? realRegulerYtd / targetRegulerYtd * 100 : 0;
-  const achSustainCm = targetSustainCm > 0 ? realSustainCm / targetSustainCm * 100 : 0;
-  const achSustainYtd = targetSustainYtd > 0 ? realSustainYtd / targetSustainYtd * 100 : 0;
-  const achScalingCm = targetScalingCm > 0 ? realScalingCm / targetScalingCm * 100 : 0;
-  const achScalingYtd = targetScalingYtd > 0 ? realScalingYtd / targetScalingYtd * 100 : 0;
-  const achNgtmaCm = targetNgtmaCm > 0 ? realNgtmaCm / targetNgtmaCm * 100 : 0;
-  const achNgtmaYtd = targetNgtmaYtd > 0 ? realNgtmaYtd / targetNgtmaYtd * 100 : 0;
-  const totalRealCm = realRegulerCm + realSustainCm + realScalingCm + realNgtmaCm;
-  const totalTargetCm = targetRegulerCm + targetSustainCm + targetScalingCm + targetNgtmaCm;
-  const achTotalCm = totalTargetCm > 0 ? totalRealCm / totalTargetCm * 100 : 0;
-  const totalRealYtd = realRegulerYtd + realSustainYtd + realScalingYtd + realNgtmaYtd;
-  const totalTargetYtd = targetRegulerYtd + targetSustainYtd + targetScalingYtd + targetNgtmaYtd;
-  const achTotalYtd = totalTargetYtd > 0 ? totalRealYtd / totalTargetYtd * 100 : 0;
-  const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
-  const snapDate = formatSnapshotDate(latestImport?.snapshotDate ?? null, latestImport?.period ?? null, "-");
-  const noRealData = !p2 || totalRealCm === 0 && totalRealYtd === 0;
-  const feedback = noRealData ? null : buildFeedback(firstName, achTotalCm, achTotalYtd, monthName);
-  let part1 = `<b>\u{1F4CA} LAPORAN PERFORMANSI ACCOUNT MANAGER</b>
-`;
-  part1 += `<b>LESA VI \u2014 Witel Suramadu</b>
-
-`;
-  part1 += `Halo kak <b>${firstName}</b>! \u{1F44B}
-
-`;
-  part1 += `Berikut rekap performansi kamu berdasarkan:
-
-`;
-  part1 += `\u{1F4F8} <b>Snapshot:</b> ${snapDate}
-`;
-  part1 += `\u{1F4C5} <b>Periode Current Month:</b> ${monthName} ${year}
-`;
-  part1 += `\u{1F4CA} <b>Periode YTD:</b> Januari - ${monthName} ${year}
-
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part1 += `<b>\u{1F4CC} A. REGULER REVENUE</b>
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerCm)}</b>
-`;
-  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerCm)}</b>
-`;
-  part1 += `\u251C Ach CM         : <b>${fmtPct(achRegulerCm)}</b>
-`;
-  part1 += `\u2514 Status         : ${achStatus(achRegulerCm)}
-
-`;
-  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue   : <b>${fmtRev(realRegulerYtd)}</b>
-`;
-  part1 += `\u251C Target Revenue : <b>${fmtRev(targetRegulerYtd)}</b>
-`;
-  part1 += `\u251C Ach YTD        : <b>${fmtPct(achRegulerYtd)}</b>
-`;
-  part1 += `\u2514 Status         : ${achStatus(achRegulerYtd)}
-
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part1 += `<b>\u{1F4CC} B. SUSTAIN REVENUE</b>
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainCm)}</b>
-`;
-  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainCm)}</b>
-`;
-  part1 += `\u251C Ach CM          : <b>${fmtPct(achSustainCm)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achSustainCm)}
-
-`;
-  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realSustainYtd)}</b>
-`;
-  part1 += `\u251C Target Sustain  : <b>${fmtRev(targetSustainYtd)}</b>
-`;
-  part1 += `\u251C Ach YTD         : <b>${fmtPct(achSustainYtd)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achSustainYtd)}
-
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part1 += `<b>\u{1F4CC} C. SCALING REVENUE</b>
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingCm)}</b>
-`;
-  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingCm)}</b>
-`;
-  part1 += `\u251C Ach CM          : <b>${fmtPct(achScalingCm)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achScalingCm)}
-
-`;
-  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realScalingYtd)}</b>
-`;
-  part1 += `\u251C Target Scaling  : <b>${fmtRev(targetScalingYtd)}</b>
-`;
-  part1 += `\u251C Ach YTD         : <b>${fmtPct(achScalingYtd)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achScalingYtd)}
-
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part1 += `<b>\u{1F4CC} D. NGTMA REVENUE</b>
-`;
-  part1 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  part1 += `<b>\u{1F4C5} Current Month (${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaCm)}</b>
-`;
-  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaCm)}</b>
-`;
-  part1 += `\u251C Ach CM          : <b>${fmtPct(achNgtmaCm)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achNgtmaCm)}
-
-`;
-  part1 += `<b>\u{1F4CA} Year To Date (Jan - ${monthName})</b>
-`;
-  part1 += `\u251C Real Revenue    : <b>${fmtRev(realNgtmaYtd)}</b>
-`;
-  part1 += `\u251C Target NGTMA    : <b>${fmtRev(targetNgtmaYtd)}</b>
-`;
-  part1 += `\u251C Ach YTD         : <b>${fmtPct(achNgtmaYtd)}</b>
-`;
-  part1 += `\u2514 Status          : ${achStatus(achNgtmaYtd)}`;
-  let part2 = `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part2 += `<b>\u{1F4C8} RINGKASAN PERFORMANSI</b>
-`;
-  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  part2 += `<b>\u2460 Current Month \u2014 ${monthName} ${year}</b>
-`;
-  part2 += `Capaian: <b>${fmtPct(achTotalCm)}</b> \xB7 Ranking: <b>#${rankCm}</b> dari <b>${totalAMs} AM</b>
-
-`;
-  part2 += `<b>\u2461 Year To Date \u2014 Januari s/d ${monthName} ${year}</b>
-`;
-  part2 += `Capaian: <b>${fmtPct(achTotalYtd)}</b> \xB7 Ranking: <b>#${rankYtd}</b> dari <b>${totalAMs} AM</b>
-
-`;
-  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  part2 += `<b>\u{1F4AC} FEEDBACK PERFORMANSI</b>
-`;
-  part2 += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-
-`;
-  if (noRealData) {
-    part2 += `Mohon maaf kak, data revenue untuk periode ini belum tercatat di sistem. Mohon menunggu info update terkait performa bulan ini ya \u2014 kami akan segera menginformasikan jika data sudah tersedia. \u{1F64F}`;
-  } else {
-    part2 += feedback ?? "";
-  }
-  const embedUrl = getEmbedUrl(latestImport?.id);
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "\u{1F504} Pilih Bulan", callback_data: "perf:menu" }],
-      [{ text: "\u{1F3C6} Papan Peringkat", callback_data: "perf:peringkat" }],
-      [{ text: "\u{1F4CE} Lihat Dashboard", callback_data: "perf:dashboard" }],
-      [{ text: "\u{1F3E0} Kembali ke Menu", callback_data: "nav:main" }]
-    ]
-  };
-  return { parts: [part1, part2], keyboard };
-}
-async function buildFunnelMessage(nik) {
-  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
-  if (!am) return null;
-  const funnelImportsRaw = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "funnel")).orderBy(desc(dataImportsTable.createdAt)).limit(10);
-  if (funnelImportsRaw.length === 0) return null;
-  const funnelImports = [...funnelImportsRaw].sort((a, b) => {
-    const aDate = a.snapshotDate;
-    const bDate = b.snapshotDate;
-    if (!aDate && !bDate) return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-    if (!aDate) return -1;
-    if (!bDate) return 1;
-    if (bDate > aDate) return 1;
-    if (aDate > bDate) return -1;
-    return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-  });
-  const latestImport = funnelImports[0];
-  const prevImport = funnelImports.length >= 2 ? funnelImports[1] : null;
-  const relevantImportIds = [latestImport.id, ...prevImport ? [prevImport.id] : []];
-  const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, nik));
-  const REPORT_YEAR = (/* @__PURE__ */ new Date()).getFullYear().toString();
-  const allLops = allLopsRaw.filter(
-    (l) => relevantImportIds.includes(l.importId) && l.reportDate?.startsWith(REPORT_YEAR)
-  );
-  const latestLops = allLops.filter((l) => l.importId === latestImport.id);
-  const counts = countByStatus(latestLops);
-  const total = latestLops.length;
-  const snapshotDateLatest = formatSnapshotDate(
-    latestImport.snapshotDate,
-    latestImport.period,
-    latestImport.createdAt?.toISOString()?.slice(0, 10) || "-"
-  );
-  if (!prevImport) {
-    let msg2 = `\u{1F4CB} *MONITORING SALES FUNNELING*
-`;
-    msg2 += `LESA VI \u2014 Witel Suramadu
-
-`;
-    msg2 += `Halo kak *${am.nama}*! \u{1F44B}
-
-`;
-    msg2 += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak \u{1F64F}
-
-`;
-    msg2 += `\u{1F4CA} *Ringkasan LOP Kakak Saat Ini:*
-`;
-    msg2 += `\u251C F0 (Lead)        : ${counts.F0} proyek
-`;
-    msg2 += `\u251C F1 (Prospect)    : ${counts.F1} proyek
-`;
-    msg2 += `\u251C F2 (Quote)       : ${counts.F2} proyek
-`;
-    msg2 += `\u251C F3 (Negosiasi)   : ${counts.F3} proyek
-`;
-    msg2 += `\u251C F4 (Closing)     : ${counts.F4} proyek
-`;
-    msg2 += `\u2514 F5 (Won) \u2705      : ${counts.F5} proyek
-`;
-    msg2 += `*Total             : ${total} proyek*
-
-`;
-    msg2 += `_\u2139\uFE0F Perbandingan belum tersedia \u2014 ini snapshot pertama yang tercatat._
-`;
-    msg2 += `_Perbandingan akan muncul pada laporan berikutnya._
-
-`;
-    msg2 += `\u{1F4CE} Detail lengkap:
-`;
-    msg2 += getFunnelDetailUrl();
-    return msg2;
-  }
-  const prevLops = allLops.filter((l) => l.importId === prevImport.id);
-  const snapshotDatePrev = formatSnapshotDate(
-    prevImport.snapshotDate,
-    prevImport.period,
-    prevImport.createdAt?.toISOString()?.slice(0, 10) || "-"
-  );
-  const prevMap = new Map(prevLops.map((l) => [l.lopid, l]));
-  const lopStagnan = [];
-  const lopBergerak = [];
-  const lopBaru = [];
-  for (const lop of latestLops) {
-    const prev = prevMap.get(lop.lopid);
-    if (!prev) {
-      lopBaru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: lop.statusF || "" });
-      continue;
-    }
-    const statusBaru = lop.statusF || "";
-    const statusLama = prev.statusF || "";
-    if (statusBaru === statusLama) {
-      if (!isFunnel5(statusBaru)) {
-        lopStagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: statusBaru });
-      }
-    } else {
-      lopBergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, statusLama, statusBaru });
-    }
-  }
-  const hasStagnan = lopStagnan.length > 0;
-  let msg = `\u{1F4CB} *MONITORING SALES FUNNELING*
-`;
-  msg += `LESA VI \u2014 Witel Suramadu
-
-`;
-  msg += `Halo kak *${am.nama}*! \u{1F44B}
-
-`;
-  msg += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak \u{1F64F}
-
-`;
-  msg += `\u{1F4CA} *Ringkasan LOP Kakak Saat Ini:*
-`;
-  msg += `\u251C F0 (Lead)        : ${counts.F0} proyek
-`;
-  msg += `\u251C F1 (Prospect)    : ${counts.F1} proyek
-`;
-  msg += `\u251C F2 (Quote)       : ${counts.F2} proyek
-`;
-  msg += `\u251C F3 (Negosiasi)   : ${counts.F3} proyek
-`;
-  msg += `\u251C F4 (Closing)     : ${counts.F4} proyek
-`;
-  msg += `\u2514 F5 (Won) \u2705      : ${counts.F5} proyek
-`;
-  msg += `*Total             : ${total} proyek*
-
-`;
-  msg += `\u{1F4C5} _Dibandingkan dengan snapshot *${snapshotDatePrev}*_
-`;
-  const MAX_LIST = 10;
-  if (lopBaru.length > 0) {
-    msg += `
-\u{1F195} *LOP Baru di Snapshot Ini (${lopBaru.length}):*
-`;
-    const baruShow = lopBaru.slice(0, MAX_LIST);
-    const baruRest = lopBaru.length - baruShow.length;
-    for (const lop of baruShow) {
-      msg += `
-\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
-`;
-      msg += `  Status: *${lop.status}*
-`;
-    }
-    if (baruRest > 0) {
-      msg += `
-_...dan ${baruRest} LOP baru lainnya (lihat detail)_
-`;
-    }
-  }
-  if (hasStagnan) {
-    msg += `
-\u26A0\uFE0F *LOP Belum Bergerak (${lopStagnan.length}):*
-`;
-    msg += `_(status sama dengan snapshot *${snapshotDatePrev}*)_
-`;
-    const stagnanShow = lopStagnan.slice(0, MAX_LIST);
-    const stagnanRest = lopStagnan.length - stagnanShow.length;
-    for (const lop of stagnanShow) {
-      msg += `
-\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
-`;
-      msg += `  Status masih *${lop.status}* sejak *${snapshotDatePrev}*
-`;
-    }
-    if (stagnanRest > 0) {
-      msg += `
-_...dan ${stagnanRest} LOP lainnya belum bergerak (lihat detail)_
-`;
-    }
-    msg += `
-\u2705 *LOP yang Sudah Bergerak (${lopBergerak.length}):*
-`;
-    msg += `_(ada perubahan status dibanding *${snapshotDatePrev}*)_
-`;
-    if (lopBergerak.length > 0) {
-      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
-      const bergerakRest = lopBergerak.length - bergerakShow.length;
-      for (const lop of bergerakShow) {
-        msg += `
-\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
-`;
-        msg += `  ${lop.statusLama} \u2192 *${lop.statusBaru}* \u{1F3AF}
-`;
-      }
-      if (bergerakRest > 0) {
-        msg += `
-_...dan ${bergerakRest} LOP lainnya (lihat detail)_
-`;
-      }
-    } else {
-      msg += `
-_Belum ada pergerakan status pada periode ini._
-`;
-    }
-  } else {
-    if (lopBergerak.length > 0) {
-      msg += `
-\u{1F389} *Semua LOP Bergerak \u2014 Keren!*
-
-`;
-      msg += `\u2705 *Perubahan Status LOP (${lopBergerak.length}):*
-`;
-      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
-      const bergerakRest = lopBergerak.length - bergerakShow.length;
-      for (const lop of bergerakShow) {
-        msg += `
-\u2022 *${lop.lopid}* \u2014 ${lop.pelanggan}
-`;
-        msg += `  ${lop.statusLama} \u2192 *${lop.statusBaru}* \u{1F3AF}
-`;
-      }
-      if (bergerakRest > 0) {
-        msg += `
-_...dan ${bergerakRest} LOP lainnya (lihat detail)_
-`;
-      }
-    } else {
-      msg += `
-_Belum ada LOP tahun ${REPORT_YEAR} yang dapat dibandingkan pada snapshot ini._
-`;
-    }
-  }
-  msg += `
-\u{1F4CE} Detail lengkap:
-`;
-  msg += getFunnelDetailUrl();
-  if (msg.length > 4e3) {
-    const footer = `
-
-_[Pesan terpotong] Detail lengkap:
-${getFunnelDetailUrl()}_`;
-    msg = msg.slice(0, 4e3 - footer.length) + footer;
-  }
-  return msg;
-}
-async function buildActivityReport(nik, monthKey) {
-  function currentPeriod2() {
-    const now = /* @__PURE__ */ new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  }
-  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
-  if (!am) return null;
-  const [targetSnap] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "activity")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
-  let allNikActs = [];
-  let snapYear = (/* @__PURE__ */ new Date()).getFullYear();
-  let snapMonth = (/* @__PURE__ */ new Date()).getMonth() + 1;
-  if (targetSnap) {
-    if (targetSnap.snapshotDate) {
-      const d = new Date(targetSnap.snapshotDate);
-      snapYear = d.getFullYear();
-      snapMonth = d.getMonth() + 1;
-    } else if (targetSnap.period) {
-      const p2 = targetSnap.period;
-      if (/^\d{6}$/.test(p2)) {
-        snapYear = parseInt(p2.slice(0, 4));
-        snapMonth = parseInt(p2.slice(4, 6));
-      } else if (/^\d{4}-\d{2}$/.test(p2)) {
-        snapYear = parseInt(p2.slice(0, 4));
-        snapMonth = parseInt(p2.slice(5, 7));
-      } else if (/^\d{8}$/.test(p2)) {
-        snapYear = parseInt(p2.slice(0, 4));
-        snapMonth = parseInt(p2.slice(4, 6));
-      }
-    }
-  }
-  const MONTH_NAMES3 = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-  const targetMonthStr = monthKey ?? `${snapYear}${String(snapMonth).padStart(2, "0")}`;
-  const labelMonth = monthKey ? parseInt(monthKey.slice(4, 6)) : snapMonth;
-  const labelYear = monthKey ? parseInt(monthKey.slice(0, 4)) : snapYear;
-  const labelSnapshot = `${MONTH_NAMES3[labelMonth]} ${labelYear}`;
-  if (targetSnap) {
-    const allActs = await db.select().from(salesActivityTable).where(eq(salesActivityTable.importId, targetSnap.id));
-    allNikActs = allActs.filter((a) => a.nik === nik);
-    const seen = /* @__PURE__ */ new Set();
-    allNikActs = allNikActs.filter((a) => {
-      const key = `${a.lopid ?? ""}|${a.activityEndDate ?? ""}|${a.label ?? ""}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  } else {
-    allNikActs = [];
-  }
-  allNikActs = allNikActs.filter((a) => {
-    const d = a.activityEndDate;
-    if (!d) return false;
-    return d.replace(/-/g, "").slice(0, 6) === targetMonthStr;
-  });
-  const validActs = allNikActs.filter((a) => a.label && !a.label.toLowerCase().includes("tanpa"));
-  const denganPelanggan = allNikActs.filter((a) => a.label?.toLowerCase().includes("pelanggan") && !a.label?.toLowerCase().includes("proyek")).length;
-  const denganProyek = allNikActs.filter((a) => a.label?.toLowerCase().includes("proyek")).length;
-  const kpiTarget = am.kpiActivity ?? 25;
-  const validCount = validActs.length;
-  const kpiPercent = kpiTarget > 0 ? Math.min(Math.round(validCount / kpiTarget * 100), 100) : 0;
-  const MONTH_SHORT = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-  const divider = `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`;
-  const fmtDate = (dateStr) => {
-    if (!dateStr) return "-- ---";
-    const parts = dateStr.split("-");
-    if (parts.length < 3) return dateStr.slice(0, 10);
-    const d = parseInt(parts[2], 10);
-    const m = parseInt(parts[1], 10);
-    return `${d} ${MONTH_SHORT[m] ?? "???"}`;
-  };
-  const kpiBar = (pct) => {
-    const filled = Math.round(pct / 10);
-    return `\u2593`.repeat(filled) + `\u2591`.repeat(10 - filled);
-  };
-  const amFirstName = am.nama.split(" ")[0];
-  const kpiStatus = kpiPercent >= 100 ? "\u2705 *Tercapai!*" : kpiPercent >= 70 ? "\u26A1 *Mendekati target*" : `\u{1F4CC} *${kpiTarget - validCount} aktivitas lagi*`;
-  const summary = `\u{1F4C5} *SALES ACTIVITY \u2014 LESA VI*
-${divider}
-\u{1F464} *${am.nama}*
-\u{1F4C6} Periode : *${labelSnapshot}*
-\u{1F4E6} Snapshot: *#${targetSnap?.id ?? "?"}*
-${divider}
-\u{1F4CA} *RINGKASAN AKTIVITAS*
-
-\u251C \u{1F4CB} Total      : *${allNikActs.length}* aktivitas
-\u251C \u{1F464} Pelanggan  : *${denganPelanggan}*
-\u251C \u{1F4C1} Proyek     : *${denganProyek}*
-\u2514 \u{1F3AF} KPI        : *${validCount}/${kpiTarget}* (*${kpiPercent}%*)
-
-${kpiBar(kpiPercent)} *${kpiPercent}%* \u2014 ${kpiStatus}
-${divider}`;
-  const sorted = [...allNikActs].sort((a, b) => {
-    const da = a.activityEndDate ?? "";
-    const db2 = b.activityEndDate ?? "";
-    return db2 < da ? -1 : db2 > da ? 1 : 0;
-  });
-  const CHUNK_SIZE = 8;
-  const chunks = [];
-  for (let i = 0; i < sorted.length; i += CHUNK_SIZE) {
-    chunks.push(sorted.slice(i, i + CHUNK_SIZE));
-  }
-  const details = [];
-  for (let c = 0; c < chunks.length; c++) {
-    const chunk = chunks[c];
-    const baseIdx = c * CHUNK_SIZE;
-    let partMsg = `\u{1F4CB} *DETAIL AKTIVITAS*
-`;
-    for (let i = 0; i < chunk.length; i++) {
-      const a = chunk[i];
-      const num = baseIdx + i + 1;
-      const dateStr = fmtDate(a.activityEndDate);
-      const customer = a.caName?.toUpperCase() ?? a.picName?.toUpperCase() ?? "\u2014";
-      const notes = a.activityNotes?.split("\n")[0].trim() ?? "\u2014";
-      const kategori = a.activityType ?? a.label ?? "\u2014";
-      const shortNotes = notes.length > 65 ? notes.slice(0, 62) + "..." : notes;
-      const isProyek = a.label?.toLowerCase().includes("proyek");
-      const labelBadge = isProyek ? "\u{1F4C1} *Dg Proyek*" : "\u{1F464} *Dg Pelanggan*";
-      partMsg += `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-`;
-      partMsg += `*#${num} \xB7 ${dateStr}*
-`;
-      partMsg += `\u{1F3E2} *${customer}*
-`;
-      partMsg += `${shortNotes}
-`;
-      partMsg += `\u{1F4CC} *${kategori}*  ${labelBadge}
-`;
-      partMsg += `
-`;
-    }
-    partMsg += `\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-`;
-    if (chunks.length > 1) {
-      partMsg += `_Halaman ${c + 1}/${chunks.length} \xB7 ${allNikActs.length} aktivitas_`;
-    }
-    details.push(partMsg);
-  }
-  return {
-    summary,
-    details,
-    amFirstName,
-    totalPages: chunks.length,
-    totalActivities: allNikActs.length,
-    validCount,
-    kpiTarget,
-    kpiPercent,
-    snapshotLabel: labelSnapshot,
-    nik
-  };
-}
-async function buildActivityMessage(nik, _period) {
-  const report = await buildActivityReport(nik);
-  if (!report) return [];
-  return [report.summary, ...report.details];
-}
-async function buildTelegramMessages(nik, period, options) {
-  const messages = [];
-  let perfKeyboard;
-  if (options.includePerformance) {
-    const result = await buildPerformanceMessage(nik, period);
-    if (result) {
-      messages.push(...result.parts);
-      perfKeyboard = result.keyboard;
-    }
-  }
-  if (options.includeFunnel) {
-    const m = await buildFunnelMessage(nik);
-    if (m) messages.push(m);
-  }
-  if (options.includeActivity) {
-    const msgs = await buildActivityMessage(nik, period);
-    messages.push(...msgs);
-  }
-  return { messages, perfKeyboard };
-}
-async function sendToTelegram(botToken, chatId, message, replyMarkup) {
-  const url2 = `https://api.telegram.org/bot${botToken}/sendMessage`;
-  const body = { chat_id: chatId, text: message, parse_mode: "Markdown" };
-  if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url2, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(1e4)
-  });
-  if (!response.ok) {
-    const data = await response.json();
-    logger.error({ status: response.status, chatId, error: data.description }, "sendToTelegram failed");
-    throw new Error(data.description || "Telegram API error");
-  }
-}
-async function sendPhotoToTelegram(botToken, chatId, photoUrl, caption, replyMarkup) {
-  const url2 = `https://api.telegram.org/bot${botToken}/sendPhoto`;
-  const body = {
-    chat_id: chatId,
-    photo: photoUrl
-  };
-  if (caption) {
-    body.caption = caption;
-    body.parse_mode = "Markdown";
-  }
-  if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url2, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15e3)
-  });
-  if (!response.ok) {
-    const data = await response.json();
-    logger.error({ status: response.status, chatId, error: data.description }, "sendPhotoToTelegram failed");
-  }
-}
-async function editMessageText(botToken, chatId, messageId, text2, replyMarkup) {
-  const url2 = `https://api.telegram.org/bot${botToken}/editMessageText`;
-  const body = {
-    chat_id: chatId,
-    message_id: messageId,
-    text: text2,
-    parse_mode: "Markdown"
-  };
-  if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url2, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(1e4)
-  });
-  if (!response.ok) {
-    const data = await response.json();
-    logger.error({ status: response.status, chatId, messageId, error: data.description }, "editMessageText failed");
-  }
-}
-async function answerCallbackQueryAndEdit(botToken, callbackId, chatId, messageId, text2, replyMarkup) {
-  await Promise.all([
-    editMessageText(botToken, chatId, messageId, text2, replyMarkup),
-    answerCallbackQuery(botToken, callbackId)
-  ]);
-}
-async function sendToTelegramHtml(botToken, chatId, message, replyMarkup) {
-  const url2 = `https://api.telegram.org/bot${botToken}/sendMessage`;
-  const body = { chat_id: chatId, text: message, parse_mode: "HTML" };
-  if (replyMarkup) body.reply_markup = replyMarkup;
-  const response = await fetch(url2, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) {
-    const data = await response.json();
-    throw new Error(data.description || "Telegram API error");
-  }
-}
-async function answerCallbackQuery(botToken, callbackQueryId, text2) {
-  await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ callback_query_id: callbackQueryId, text: text2 })
-  }).catch(() => {
-  });
-}
-async function sendReminderToAllAMs(period, options, targetNiks) {
-  const [settings] = await db.select().from(appSettingsTable);
-  if (!settings?.telegramBotToken) {
-    return { sent: 0, failed: 0, skipped: 0, details: [] };
-  }
-  let ams = await db.select().from(accountManagersTable);
-  if (targetNiks && targetNiks.length > 0) {
-    ams = ams.filter((a) => targetNiks.includes(a.nik));
-  }
-  let sent = 0, failed = 0, skipped = 0;
-  const details = [];
-  for (const am of ams) {
-    if (!am.telegramChatId) {
-      skipped++;
-      details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
-      continue;
-    }
-    try {
-      const { messages, perfKeyboard } = await buildTelegramMessages(am.nik, period, options);
-      if (!messages.length) {
-        skipped++;
-        details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
-        continue;
-      }
-      for (let i = 0; i < messages.length; i++) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 500));
-        await sendToTelegramHtml(settings.telegramBotToken, am.telegramChatId, messages[i]);
-      }
-      if (perfKeyboard) {
-        await new Promise((r) => setTimeout(r, 500));
-        const firstName = am.nama.split(" ")[0];
-        await sendToTelegramHtml(
-          settings.telegramBotToken,
-          am.telegramChatId,
-          `Mau apa lagi kak <b>${firstName}</b>? \u{1F60A}`,
-          perfKeyboard
-        );
-      }
-      sent++;
-      details.push({ nik: am.nik, namaAm: am.nama, status: "sent" });
-      await db.insert(telegramLogsTable).values({
-        nik: am.nik,
-        namaAm: am.nama,
-        telegramChatId: am.telegramChatId,
-        status: "sent",
-        period,
-        messageType: "reminder"
-      });
-    } catch (error40) {
-      failed++;
-      const errMsg = error40 instanceof Error ? error40.message : "Unknown error";
-      details.push({ nik: am.nik, namaAm: am.nama, status: "failed", error: errMsg });
-      await db.insert(telegramLogsTable).values({
-        nik: am.nik,
-        namaAm: am.nama,
-        telegramChatId: am.telegramChatId || null,
-        status: "failed",
-        period,
-        messageType: "reminder",
-        error: errMsg
-      });
-      logger.error({ nik: am.nik, error: errMsg }, "Failed to send Telegram message");
-    }
-  }
-  return { sent, failed, skipped, details };
-}
 
 // src/features/auth/otpStore.ts
 var otpStore = /* @__PURE__ */ new Map();
@@ -122282,6 +123549,7 @@ router3.get("/performance", async (req, res) => {
   res.setHeader("X-Frame-Options", "ALLOWALL");
   res.setHeader("Access-Control-Allow-Origin", "*");
   const { importId, divisi } = req.query;
+  console.log(`[/api/public/performance] importId=${importId} divisi=${divisi} url=${req.url}`);
   let snapshotId = null;
   if (importId) {
     snapshotId = parseInt(String(importId));
@@ -122595,7 +123863,7 @@ var import_express6 = __toESM(require_express2(), 1);
 init_src();
 init_drizzle_orm();
 var router5 = (0, import_express6.Router)();
-function isKpiLabel(label) {
+function isKpiLabel2(label) {
   if (!label) return false;
   return !label.toLowerCase().includes("tanpa");
 }
@@ -122670,7 +123938,7 @@ router5.get("/activity", async (req, res) => {
     if (!nik || !registeredNikSet.has(nik)) continue;
     if (!byAmMap[nik]) continue;
     byAmMap[nik].totalCount++;
-    if (isKpiLabel(act.label)) byAmMap[nik].kpiCount++;
+    if (isKpiLabel2(act.label)) byAmMap[nik].kpiCount++;
     if (act.label) distinctLabels.add(act.label);
     if (act.divisi) byAmMap[nik]._divisiSet.add(act.divisi);
     byAmMap[nik].activities.push({
@@ -122682,7 +123950,7 @@ router5.get("/activity", async (req, res) => {
       caName: act.caName,
       picName: act.picName,
       activityNotes: act.activityNotes,
-      isKpi: isKpiLabel(act.label)
+      isKpi: isKpiLabel2(act.label)
     });
   }
   for (const entry of Object.values(byAmMap)) {
@@ -122770,13 +124038,13 @@ router7.post("/", requireAuth, async (req, res) => {
     res.status(400).json({ error: "Nama wajib diisi" });
     return;
   }
-  const resolvedRole = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN"].includes(role) ? role : "ACCOUNT_MANAGER";
+  const resolvedRole = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN", "INPUTER"].includes(role) ? role : "ACCOUNT_MANAGER";
   const resolvedTipe = ["LESA"].includes(tipe) ? tipe : "LESA";
   if (resolvedRole === "AM" && !divisi) {
     res.status(400).json({ error: "Divisi wajib diisi untuk role AM" });
     return;
   }
-  if (!nik && resolvedRole !== "OFFICER") {
+  if (!nik && !["OFFICER", "INPUTER"].includes(resolvedRole)) {
     res.status(400).json({ error: "NIK wajib diisi" });
     return;
   }
@@ -122805,8 +124073,8 @@ router7.patch("/:id/aktif", requireAuth, async (req, res) => {
     return;
   }
   const user = req.user;
-  if (!user || !["ADMIN", "OFFICER", "MANAGER"].includes(user.role)) {
-    res.status(403).json({ error: "Hanya Admin, Officer, atau Manager yang dapat mengubah status" });
+  if (!user || !["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Hanya Admin, Officer, Manager, atau Inputer yang dapat mengubah status" });
     return;
   }
   const { aktif } = req.body;
@@ -122840,7 +124108,7 @@ router7.patch("/:id", requireAuth, async (req, res) => {
     updates.nama = nama;
     updates.slug = slugify(nama) + "-" + Date.now().toString(36);
   }
-  if (role !== void 0) updates.role = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN"].includes(role) ? role : "ACCOUNT_MANAGER";
+  if (role !== void 0) updates.role = ["OFFICER", "MANAGER", "ACCOUNT_MANAGER", "ADMIN", "INPUTER"].includes(role) ? role : "ACCOUNT_MANAGER";
   if (tipe !== void 0) updates.tipe = ["LESA"].includes(tipe) ? tipe : "LESA";
   if (divisi !== void 0) updates.divisi = divisi;
   if (segmen !== void 0) updates.segmen = segmen;
@@ -122863,6 +124131,27 @@ router7.delete("/:id", requireAuth, async (req, res) => {
   await db.delete(accountManagersTable).where(eq(accountManagersTable.id, id));
   res.sendStatus(204);
 });
+router7.post("/bulk-delete", requireAuth, async (req, res) => {
+  const user = req.user;
+  if (!user || !["ADMIN", "OFFICER", "MANAGER", "INPUTER"].includes(user.role)) {
+    res.status(403).json({ error: "Akses ditolak" });
+    return;
+  }
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids array wajib diisi" });
+    return;
+  }
+  const numericIds = ids.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
+  if (numericIds.length === 0) {
+    res.status(400).json({ error: "Tidak ada ID yang valid" });
+    return;
+  }
+  await db.delete(accountManagersTable).where(
+    inArray(accountManagersTable.id, numericIds)
+  );
+  res.json({ deleted: numericIds.length });
+});
 var routes_default3 = router7;
 
 // src/features/import/routes.ts
@@ -122871,6 +124160,7 @@ init_src();
 init_drizzle_orm();
 init_auth();
 init_excel();
+init_service();
 async function autoRegisterNewAms(entries, source) {
   const existing = await db.select({ nik: accountManagersTable.nik, slug: accountManagersTable.slug }).from(accountManagersTable);
   const existingNiks = new Set(existing.map((a) => a.nik));
@@ -123118,10 +124408,21 @@ router8.post("/activity", requireAuth, async (req, res) => {
     "import_activity"
   );
   const amCount = new Set(cleaned.map((r) => r.nik)).size;
-  const [settings] = await db.select().from(appSettingsTable);
-  if (settings?.autoSendOnImport && settings.telegramBotToken) {
-    sendReminderToAllAMs(importPeriod, { includePerformance: false, includeFunnel: false, includeActivity: true }).catch(() => {
-    });
+  const currentUser = req.user;
+  const uploader = currentUser ? { nama: currentUser.nama ?? "Officer", role: currentUser.role ?? "OFFICER" } : void 0;
+  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyActivitySnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[ACT-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyManagerActivitySnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[ACT-MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
   }
   res.json({
     success: true,
@@ -123131,12 +124432,18 @@ router8.post("/activity", requireAuth, async (req, res) => {
     snapshotDate,
     rawCount: rows.length,
     newAmDiscovered: newActAmCount,
-    message: `${count2} dari ${rows.length} baris activity berhasil diimport${newActAmCount > 0 ? `. ${newActAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}`,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
+    message: `${count2} dari ${rows.length} baris activity berhasil diimport${newActAmCount > 0 ? `. ${newActAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}${notifResult.sent > 0 ? ` ${notifResult.sent} AM dinotifikasi via Telegram.` : ""}${managerNotifResult.sent > 0 ? ` ${managerNotifResult.sent} Manager dinotifikasi via Telegram.` : ""}`,
     importId: imp.id
   });
 });
 router8.post("/performance", requireAuth, async (req, res) => {
   const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite } = req.body;
+  const currentUser = req.user;
+  const uploader = currentUser ? { nama: currentUser.nama ?? "Officer", role: currentUser.role ?? "OFFICER" } : void 0;
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
     return;
@@ -123344,6 +124651,20 @@ router8.post("/performance", requireAuth, async (req, res) => {
     validRecords.map((r) => ({ nik: r.nik, nama: r.namaAm, divisi: r.divisi, witel: r.witelAm })),
     "import_performance"
   );
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
+  }
   const amCount = new Set(validRecords.map((r) => r.nik)).size;
   res.json({
     success: true,
@@ -123356,7 +124677,11 @@ router8.post("/performance", requireAuth, async (req, res) => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
-    message: `${validRecords.length} dari ${rows.length} baris performance berhasil diimport${newPerfAmCount > 0 ? `. ${newPerfAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}`,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
+    message: `${validRecords.length} dari ${rows.length} baris performance berhasil diimport${newPerfAmCount > 0 ? `. ${newPerfAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}${notifResult.sent > 0 ? ` ${notifResult.sent} AM dinotifikasi via Telegram.` : ""}${managerNotifResult.sent > 0 ? ` ${managerNotifResult.sent} Manager dinotifikasi via Telegram.` : ""}`,
     importId: imp.id
   });
 });
@@ -123576,7 +124901,7 @@ router8.post("/internal/performance", async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { fileData, snapshotDate, period: bodyPeriod } = req.body;
+  const { fileData, snapshotDate, period: bodyPeriod, uploader } = req.body;
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
     return;
@@ -123754,6 +125079,20 @@ router8.post("/internal/performance", async (req, res) => {
     "import_performance_telegram"
   );
   const amCount = new Set(records.map((r) => r.nik)).size;
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err) => {
+    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
+  }
   res.json({
     success: true,
     rowsImported: records.length,
@@ -123765,8 +125104,12 @@ router8.post("/internal/performance", async (req, res) => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
-    message: `${records.length} dari ${rows.length} baris performance berhasil diimport.`,
-    importId: imp.id
+    message: `${records.length} dari ${rows.length} baris performance berhasil diimport.${managerNotifResult.sent > 0 ? ` Manager telah dinotifikasi.` : ""}`,
+    importId: imp.id,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed
   });
 });
 var routes_default4 = router8;
@@ -123775,6 +125118,7 @@ var routes_default4 = router8;
 var import_express11 = __toESM(require_express2(), 1);
 init_src();
 init_drizzle_orm();
+init_service();
 init_logger2();
 init_bcryptjs();
 init_excel();
@@ -123788,7 +125132,7 @@ router9.post("/import-performance", async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body;
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
     return;
@@ -123981,6 +125325,25 @@ router9.post("/import-performance", async (req, res) => {
     records.map((r) => ({ nik: r.nik, nama: r.namaAm, divisi: r.divisi, witel: r.witelAm })),
     "import_performance_telegram"
   );
+  let uploader;
+  if (uploadedByNik) {
+    const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, uploadedByNik)).limit(1);
+    if (u) uploader = { nama: u.nama, role: u.role || "OFFICER", nik: u.nik || void 0 };
+  }
+  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err) => {
+    logger.error({ err }, "notifyPerformanceSnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Performance snapshot notifications sent");
+  }
+  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err) => {
+    logger.error({ err }, "notifyManagerSnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager snapshot notifications sent");
+  }
   const amCount = new Set(records.map((r) => r.nik)).size;
   res.json({
     success: true,
@@ -123993,6 +125356,10 @@ router9.post("/import-performance", async (req, res) => {
     rawCount: rows.length,
     filteredCount: filtered.length,
     newAmDiscovered: newPerfAmCount,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
     importId: imp.id
   });
 });
@@ -124003,7 +125370,7 @@ router9.post("/import-funnel", async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body;
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
     return;
@@ -124153,7 +125520,7 @@ router9.post("/import-activity", async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false } = req.body;
+  const { fileData, snapshotDate, period: bodyPeriod, forceOverwrite = false, uploadedByNik } = req.body;
   if (!fileData) {
     res.status(400).json({ error: "fileData (base64) diperlukan" });
     return;
@@ -124259,6 +125626,24 @@ router9.post("/import-activity", async (req, res) => {
     "import_activity_telegram"
   );
   const amCount = new Set(cleaned.map((r) => r.nik)).size;
+  const uploader = uploadedByNik ? await (async () => {
+    const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, uploadedByNik));
+    return u ? { nama: u.nama, role: u.role ?? "OFFICER", nik: u.nik ?? void 0 } : void 0;
+  })() : void 0;
+  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err) => {
+    logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Activity snapshot notifications sent");
+  }
+  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err) => {
+    logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager activity snapshot notifications sent");
+  }
   res.json({
     success: true,
     rowsImported: count2,
@@ -124270,6 +125655,10 @@ router9.post("/import-activity", async (req, res) => {
     rawCount: rows.length,
     cleanedCount: cleaned.length,
     newAmDiscovered: newActAmCount,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
     importId: imp.id
   });
 });
@@ -124802,7 +126191,7 @@ init_src();
 init_auth();
 init_drizzle_orm();
 var router12 = (0, import_express14.Router)();
-function isKpiLabel2(label) {
+function isKpiLabel3(label) {
   if (!label) return false;
   return !label.toLowerCase().includes("tanpa");
 }
@@ -124866,7 +126255,7 @@ router12.get("/", requireAuth, async (req, res) => {
     if (!nik || !registeredNikSet.has(nik)) continue;
     if (!byAmMap[nik]) continue;
     byAmMap[nik].totalCount++;
-    if (isKpiLabel2(act.label)) byAmMap[nik].kpiCount++;
+    if (isKpiLabel3(act.label)) byAmMap[nik].kpiCount++;
     if (act.label) distinctLabels.add(act.label);
     byAmMap[nik].activities.push({
       id: act.id,
@@ -124876,7 +126265,7 @@ router12.get("/", requireAuth, async (req, res) => {
       caName: act.caName,
       picName: act.picName,
       activityNotes: act.activityNotes,
-      isKpi: isKpiLabel2(act.label)
+      isKpi: isKpiLabel3(act.label)
     });
   }
   for (const entry of Object.values(byAmMap)) {
@@ -124919,10 +126308,10 @@ router12.get("/:nik", requireAuth, async (req, res) => {
     nik: raw,
     fullname,
     divisi,
-    kpiCount: acts.filter((a) => isKpiLabel2(a.label)).length,
+    kpiCount: acts.filter((a) => isKpiLabel3(a.label)).length,
     activityCount: acts.length,
     kpiTarget,
-    activities: acts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString(), isKpi: isKpiLabel2(a.label) }))
+    activities: acts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString(), isKpi: isKpiLabel3(a.label) }))
   });
 });
 var routes_default7 = router12;
@@ -124950,9 +126339,13 @@ async function checkPermission(userId, permissionCode) {
   return !!rp;
 }
 
+// src/features/telegram/routes.ts
+init_service();
+
 // src/features/telegram/poller.ts
 init_src();
 init_drizzle_orm();
+init_service();
 
 // src/features/telegram/ai.ts
 init_logger2();
@@ -125000,7 +126393,9 @@ async function chatWithGemini(userMessage, context) {
 }
 
 // src/features/telegram/poller.ts
+init_announcementTemplates();
 init_logger2();
+init_publicUrl();
 init_bcryptjs();
 var ROLE_LABELS = {
   ADMIN: "ADMIN",
@@ -125111,7 +126506,7 @@ function extractPeriodFromFilename(filename) {
   }
   return null;
 }
-async function downloadTelegramFile(token, fileId) {
+async function downloadTelegramFile(token, fileId, onProgress) {
   const getFileResp = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
   const getFileData = await getFileResp.json();
   if (!getFileData.ok || !getFileData.result?.file_path) {
@@ -125120,8 +126515,27 @@ async function downloadTelegramFile(token, fileId) {
   const filePath = getFileData.result.file_path;
   const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
   const fileResp = await fetch(downloadUrl);
-  const arrayBuffer = await fileResp.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  if (!fileResp.ok || !fileResp.body) {
+    throw new Error("Gagal download file dari Telegram");
+  }
+  const totalBytes = parseInt(fileResp.headers.get("content-length") || "0", 10);
+  const reader = fileResp.body.getReader();
+  const chunks = [];
+  let downloaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    downloaded += value.length;
+    if (onProgress) onProgress(downloaded, totalBytes);
+  }
+  return Buffer.concat(chunks);
+}
+function buildProgressBar(pct, width = 20) {
+  const safePct = Math.max(0, Math.min(100, Math.round(pct)));
+  const filled = Math.round(safePct / 100 * width);
+  const empty = width - filled;
+  return `[${"\u2588".repeat(filled)}${"\u2591".repeat(empty)}] ${safePct}%`;
 }
 async function doProcessImport(token, chatId, state, fileData, linkedAm, forceOverwrite = false) {
   logger.info({ chatId, importType: state.importType, forceOverwrite }, "doProcessImport: START");
@@ -125136,17 +126550,34 @@ async function doProcessImport(token, chatId, state, fileData, linkedAm, forceOv
       [{ text: "\u23F3 Memproses...", callback_data: "import:processing" }]
     ]
   };
-  const sendMsg = (msg, kb) => sendToTelegram(token, chatId, msg, kb).catch(
-    (e) => logger.error({ err: e }, `sendToTelegram failed for chatId ${chatId}`)
-  );
-  await sendMsg(
+  const SPINNER_FRAMES = ["\u23F3", "\u231B", "\u23F3", "\u231B"];
+  const sendMsg = async (msg, kb) => sendToTelegram(token, chatId, msg, kb).catch((e) => {
+    logger.error({ err: e }, `sendToTelegram failed for chatId ${chatId}`);
+    return null;
+  });
+  const progressMsgId = await sendMsg(
     `\u{1F4E5} *Import ${typeLabel} \u2014 Sedang Berlangsung*
 
-\u23F3 Memproses file...
+${SPINNER_FRAMES[0]} Memproses file...
 
 _Mohon tunggu sebentar ya kak \u{1F64F}_`,
     PROGRESS_KEYBOARD
   );
+  let spinnerIdx = 0;
+  const spinnerInterval = progressMsgId != null ? setInterval(() => {
+    spinnerIdx = (spinnerIdx + 1) % SPINNER_FRAMES.length;
+    editMessageText(
+      token,
+      chatId,
+      progressMsgId,
+      `\u{1F4E5} *Import ${typeLabel} \u2014 Sedang Berlangsung*
+
+${SPINNER_FRAMES[spinnerIdx]} Memproses file...
+
+_Mohon tunggu sebentar ya kak \u{1F64F}_`
+    ).catch(() => {
+    });
+  }, 700) : null;
   try {
     const apiResp = await fetch(`${internalBase}/api/internal${endpoint}`, {
       method: "POST",
@@ -125155,7 +126586,8 @@ _Mohon tunggu sebentar ya kak \u{1F64F}_`,
         fileData,
         snapshotDate: state.extractedDate || void 0,
         period: state.period || void 0,
-        forceOverwrite
+        forceOverwrite,
+        uploader: { nama: linkedAm.nama, role: linkedAm.role }
       })
     });
     const apiData = await apiResp.json();
@@ -125167,7 +126599,7 @@ _Mohon tunggu sebentar ya kak \u{1F64F}_`,
           [{ text: "\u274C Batalkan", callback_data: "import:cancel" }]
         ]
       };
-      sendMsg(
+      await sendMsg(
         `\u26A0\uFE0F *Snapshot Sudah Ada*
 
 ${existingMsg}
@@ -125193,37 +126625,54 @@ Silakan coba lagi atau hubungi admin.`,
     } else {
       const rows = apiData.rowsImported ?? apiData.rows ?? 0;
       const snapId = apiData.importId;
-      const snapUrl = snapId ? `${domain2}/import/detail/${dbType}/${snapId}` : `${domain2}/import`;
-      const presUrl = snapId ? `${domain2}/presentation?type=${dbType}&snapshot=${snapId}` : `${domain2}/presentation`;
+      const httpsDomain = toHttpsUrl(domain2);
+      const snapUrl = snapId ? `${httpsDomain}/import/detail/${dbType}/${snapId}` : `${httpsDomain}/import`;
+      const presUrl = snapId ? `${httpsDomain}/presentation?type=${dbType}&snapshot=${snapId}` : `${httpsDomain}/presentation`;
       const typeLabelLower = state.importType === "performance" ? "Performansi AM" : state.importType === "funnel" ? "Sales Funnel" : "Sales Activity";
       const snapName = state.period ? `${typeLabelLower} \u2014 ${state.period}` : `${typeLabelLower}`;
-      const SUCCESS_KEYBOARD = {
+      const isLocal = isLocalUrl(httpsDomain);
+      const SUCCESS_KEYBOARD = isLocal ? {
         inline_keyboard: [
-          [{ text: "\u{1F4CB} Lihat Snapshot", url: snapUrl }],
-          [{ text: "\u{1F4CA} Lihat Visualisasi", url: presUrl }],
+          [{ text: "\u{1F4CB} Lihat Snapshot", callback_data: `import:view:${dbType}:${snapId ?? 0}` }],
+          [{ text: "\u{1F4CA} Lihat Visualisasi", callback_data: `import:vis:${dbType}:${snapId ?? 0}` }],
+          [{ text: "\u25C0\uFE0F Kembali ke Menu", callback_data: "/import" }]
+        ]
+      } : {
+        inline_keyboard: [
+          [
+            { text: "\u{1F4CB} Lihat Snapshot", url: snapUrl },
+            { text: "\u{1F4CA} Lihat Visualisasi", url: presUrl }
+          ],
           [{ text: "\u25C0\uFE0F Kembali ke Menu", callback_data: "/import" }]
         ]
       };
-      sendMsg(
+      const urlHint = isLocal ? `
+\u{1F517} *Akses:*
+\u2022 [Buka Snapshot](${snapUrl})
+\u2022 [Buka Visualisasi](${presUrl})
+` : "";
+      await sendMsg(
         `\u2705 *Import ${typeLabel} Berhasil!*
 
 \u{1F4CB} *Nama Snapshot:* ${snapName}
 \u{1F4CA} *Tipe:* ${typeLabelLower}
 \u{1F4E6} *Total Baris:* *${rows.toLocaleString("id-ID")}* baris data
-
+` + (apiData.managerNotifSent ? `\u{1F454} *Manager telah dinotifikasi.*
+` : "") + urlHint + `
 Silakan pilih aksi di bawah ya kak \u{1F64F}`,
         SUCCESS_KEYBOARD
       );
     }
   } catch (err) {
     logger.error({ err }, "Failed to call internal import API from Telegram");
-    sendMsg(
+    await sendMsg(
       `\u274C *Gagal Import ${typeLabel}*
 
 Terjadi kesalahan koneksi ke server. Silakan coba lagi nanti.`,
       getMainKeyboard(linkedAm.role)
     );
   }
+  if (spinnerInterval) clearInterval(spinnerInterval);
   importState.delete(chatId);
   funnelFileData.delete(chatId);
   activityFileData.delete(chatId);
@@ -125453,7 +126902,7 @@ function buildSnapshotListKeyboard(snaps, dataType) {
   const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
   const rows = [];
   for (const snap of snaps) {
-    const date6 = snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : snap.period || "-";
+    const date6 = snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : snap.period || "-";
     rows.push({ text: `\u{1F4C5} ${date6} \u2014 ${typeLabel}`, callback_data: `snap:select:${dataType}:${snap.id}` });
   }
   const inline_keyboard = rows.map((r) => [r]);
@@ -125592,6 +127041,19 @@ Salam hangat dari *LESA VI Witel Suramadu* \u2014 semoga harimu lancar! \u{1F60A
 function currentPeriod() {
   const now = /* @__PURE__ */ new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+async function latestSnapshotPeriod(type) {
+  const [latest] = await db.select({ period: dataImportsTable.period, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq(dataImportsTable.type, type)).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+  if (latest?.period) {
+    return latest.period;
+  }
+  if (latest?.snapshotDate) {
+    const d = new Date(latest.snapshotDate);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+  }
+  return currentPeriod();
 }
 var processedUpdates = /* @__PURE__ */ new Set();
 var lastCleanupAt = 0;
@@ -125748,8 +127210,8 @@ Silakan pilih menu di bawah untuk melihat detailnya.`,
             continue;
           }
           if (cbData === "perf:laporan") {
-            const period = currentPeriod();
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            const period = await latestSnapshotPeriod("performance");
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
             if (!result.messages.length) {
               const now = /* @__PURE__ */ new Date();
               await sendToTelegram(
@@ -125857,47 +127319,7 @@ Silakan pilih divisi untuk papan peringkat:
             const monthLabel = `${SHORT_MONTHS[month]} ${year}`;
             const masterAms = await db.select().from(accountManagersTable);
             const activeAms = masterAms.filter((m) => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik);
-            const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
-            let allPerfsRaw = [];
-            if (latestImport) {
-              allPerfsRaw = await db.select().from(performanceDataTable).where(and(
-                eq(performanceDataTable.importId, latestImport.id),
-                eq(performanceDataTable.tahun, year),
-                eq(performanceDataTable.bulan, month)
-              ));
-              if (!allPerfsRaw.length) {
-                allPerfsRaw = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
-              }
-            } else {
-              allPerfsRaw = await db.select().from(performanceDataTable).where(and(eq(performanceDataTable.tahun, year), eq(performanceDataTable.bulan, month)));
-            }
-            const byNik = /* @__PURE__ */ new Map();
-            for (const p2 of allPerfsRaw) {
-              const existing = byNik.get(p2.nik);
-              if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-                byNik.set(p2.nik, p2);
-              }
-            }
-            const uniquePerfs = [...byNik.values()];
-            const matchesDivisi2 = (recordDivisiCc, recordDivisi) => {
-              if (divisi === "LESA") {
-                if (recordDivisiCc === "DPS" || recordDivisiCc === "DSS" || recordDivisiCc === "DGS") return true;
-                if (recordDivisi === "DPS" || recordDivisi === "DSS" || recordDivisi === "DES" || recordDivisi === "DGS") return true;
-                return false;
-              }
-              if (recordDivisiCc === divisi) return true;
-              return recordDivisi === divisi;
-            };
-            const allYtdRaw = latestImport ? await db.select().from(performanceDataTable).where(eq(performanceDataTable.importId, latestImport.id)) : await db.select().from(performanceDataTable).where(eq(performanceDataTable.tahun, year));
-            const ytdByNik = /* @__PURE__ */ new Map();
-            for (const p2 of allYtdRaw) {
-              if (p2.bulan > month) continue;
-              const existing = ytdByNik.get(p2.nik);
-              if (!existing || parseFloat(String(p2.achRate ?? 0)) > parseFloat(String(existing.achRate ?? 0))) {
-                ytdByNik.set(p2.nik, p2);
-              }
-            }
-            const fmtNum = (v) => parseFloat(String(v ?? 0)) || 0;
+            const fmtNum2 = (v) => parseFloat(String(v ?? 0)) || 0;
             const fmtPct2 = (v) => `${Math.round(v * 100) / 100}`.replace(".", ",") + "%";
             const fmtRev2 = (v) => {
               if (v >= 1e9) return `Rp${(v / 1e9).toFixed(2)}M`;
@@ -125906,24 +127328,127 @@ Silakan pilih divisi untuk papan peringkat:
               return `Rp${v.toFixed(0)}`;
             };
             const MEDALS = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+            const activeNikSet = new Set(activeAms.map((a) => a.nik));
+            const latestImportMap = /* @__PURE__ */ new Map();
+            const allRowsForKey = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              divisi: performanceDataTable.divisi,
+              divisiCc: performanceDataTable.divisiCc,
+              importId: performanceDataTable.importId
+            }).from(performanceDataTable).where(and(
+              eq(performanceDataTable.tahun, year),
+              eq(performanceDataTable.bulan, month),
+              sql`${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0`
+            ));
+            for (const r of allRowsForKey) {
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              if (!latestImportMap.has(k) || r.importId > latestImportMap.get(k)) {
+                latestImportMap.set(k, r.importId);
+              }
+            }
+            const allPerfRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              realReguler: performanceDataTable.realReguler,
+              targetReguler: performanceDataTable.targetReguler,
+              divisiCc: performanceDataTable.divisiCc,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId
+            }).from(performanceDataTable).where(and(
+              eq(performanceDataTable.tahun, year),
+              eq(performanceDataTable.bulan, month)
+            ));
+            const dedupedRows = allPerfRows.filter((r) => {
+              if (!activeNikSet.has(r.nik)) return false;
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              return latestImportMap.get(k) === r.importId;
+            });
+            const cmAgg = /* @__PURE__ */ new Map();
+            for (const am of activeAms) {
+              cmAgg.set(am.nik, { real: 0, target: 0 });
+            }
+            for (const r of dedupedRows) {
+              if (!cmAgg.has(r.nik)) continue;
+              const prev = cmAgg.get(r.nik);
+              cmAgg.set(r.nik, {
+                real: prev.real + fmtNum2(r.realReguler),
+                target: prev.target + fmtNum2(r.targetReguler)
+              });
+            }
+            const ytdLatestImportMap = /* @__PURE__ */ new Map();
+            const allYtdRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId
+            }).from(performanceDataTable).where(and(
+              eq(performanceDataTable.tahun, year),
+              sql`${performanceDataTable.bulan} <= ${month}`,
+              sql`${performanceDataTable.realReguler} > 0 OR ${performanceDataTable.realSustain} > 0 OR ${performanceDataTable.realScaling} > 0`
+            ));
+            for (const r of allYtdRows) {
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              if (!ytdLatestImportMap.has(k) || r.importId > ytdLatestImportMap.get(k)) {
+                ytdLatestImportMap.set(k, r.importId);
+              }
+            }
+            const allYtdPerfRows = await db.select({
+              nik: performanceDataTable.nik,
+              bulan: performanceDataTable.bulan,
+              realReguler: performanceDataTable.realReguler,
+              targetReguler: performanceDataTable.targetReguler,
+              divisi: performanceDataTable.divisi,
+              importId: performanceDataTable.importId
+            }).from(performanceDataTable).where(and(
+              eq(performanceDataTable.tahun, year),
+              sql`${performanceDataTable.bulan} <= ${month}`
+            ));
+            const dedupedYtdRows = allYtdPerfRows.filter((r) => {
+              if (!activeNikSet.has(r.nik)) return false;
+              const k = `${r.nik}__${r.bulan}__${r.divisi}`;
+              return ytdLatestImportMap.get(k) === r.importId;
+            });
+            const ytdAgg = /* @__PURE__ */ new Map();
+            for (const am of activeAms) {
+              ytdAgg.set(am.nik, { real: 0, target: 0 });
+            }
+            for (const r of dedupedYtdRows) {
+              if (!ytdAgg.has(r.nik)) continue;
+              const prev = ytdAgg.get(r.nik);
+              ytdAgg.set(r.nik, {
+                real: prev.real + fmtNum2(r.realReguler),
+                target: prev.target + fmtNum2(r.targetReguler)
+              });
+            }
             const amRanks = [];
             for (const am of activeAms) {
-              const cmPerf = uniquePerfs.find((p2) => p2.nik === am.nik);
-              if (!cmPerf) continue;
-              if (!matchesDivisi2(cmPerf.divisiCc, cmPerf.divisi)) continue;
-              const cmTarget = fmtNum(cmPerf.targetReguler) + fmtNum(cmPerf.targetSustain) + fmtNum(cmPerf.targetScaling) + fmtNum(cmPerf.targetNgtma);
-              const cmReal = fmtNum(cmPerf.realReguler) + fmtNum(cmPerf.realSustain) + fmtNum(cmPerf.realScaling) + fmtNum(cmPerf.realNgtma);
-              const cmAch = cmTarget > 0 ? cmReal / cmTarget * 100 : 0;
-              const ytdPerfs = allYtdRaw.filter((p2) => p2.nik === am.nik && p2.bulan <= month);
-              const ytdTarget = ytdPerfs.reduce((s, p2) => s + fmtNum(p2.targetReguler) + fmtNum(p2.targetSustain) + fmtNum(p2.targetScaling) + fmtNum(p2.targetNgtma), 0);
-              const ytdReal = ytdPerfs.reduce((s, p2) => s + fmtNum(p2.realReguler) + fmtNum(p2.realSustain) + fmtNum(p2.realScaling) + fmtNum(p2.realNgtma), 0);
-              const ytdAch = ytdTarget > 0 ? ytdReal / ytdTarget * 100 : 0;
-              amRanks.push({ nik: am.nik, nama: am.nama, cmAch, cmReal, cmTarget, ytdAch, ytdReal, ytdTarget });
+              const cm = cmAgg.get(am.nik);
+              const ytd = ytdAgg.get(am.nik);
+              if (!cm || !ytd) continue;
+              if (cm.real <= 0 && ytd.real <= 0) continue;
+              amRanks.push({
+                nik: am.nik,
+                nama: am.nama,
+                cmReal: cm.real,
+                cmTarget: cm.target,
+                ytdReal: ytd.real,
+                ytdTarget: ytd.target
+              });
             }
-            const sortedCm = [...amRanks].sort((a, b) => b.cmAch - a.cmAch);
-            const sortedYtd = [...amRanks].sort((a, b) => b.ytdAch - a.ytdAch);
+            const sortedCm = [...amRanks].sort((a, b) => {
+              const achA = a.cmTarget > 0 ? a.cmReal / a.cmTarget : 0;
+              const achB = b.cmTarget > 0 ? b.cmReal / b.cmTarget : 0;
+              return achB - achA;
+            });
+            const sortedYtd = [...amRanks].sort((a, b) => {
+              const achA = a.ytdTarget > 0 ? a.ytdReal / a.ytdTarget : 0;
+              const achB = b.ytdTarget > 0 ? b.ytdReal / b.ytdTarget : 0;
+              return achB - achA;
+            });
             const divisiLabel = divisi === "LESA" ? "LESA (DPS + DSS)" : divisi;
-            const showTop = (rows, sorted, label, key) => {
+            const fmtDivisiShort = divisi === "LESA" ? "Divisi LESA" : `Divisi ${divisi}`;
+            const showTop = (sorted, label, key) => {
               let msg2 = `\u{1F3C6} *PAPAN PERINGKAT \u2014 ${label}*
 
 `;
@@ -125931,9 +127456,12 @@ Silakan pilih divisi untuk papan peringkat:
 `;
               msg2 += `\u{1F4CB} Divisi  : *${divisiLabel}*
 `;
-              msg2 += `\u{1F4D1} KPI     : Achievement Rate (CM / YTD)
+              msg2 += `\u{1F4D1} KPI     : Reguler Revenue Achievement Rate
 
 `;
+              const getAch = (a) => a[key + "Target"] > 0 ? a[key + "Real"] / a[key + "Target"] * 100 : 0;
+              const getRev = (a) => a[key + "Real"];
+              const getTarget = (a) => a[key + "Target"];
               const top10 = sorted.slice(0, 10);
               for (let i = 0; i < top10.length; i++) {
                 const a = top10[i];
@@ -125941,7 +127469,7 @@ Silakan pilih divisi untuk papan peringkat:
                 const badge = a.nik === resolvedAm.nik ? " \u{1F448}" : "";
                 msg2 += `${medal} *${a.nama}*${badge}
 `;
-                msg2 += `Ach: *${fmtPct2(a[key + "Ach"])}* \xB7 Revenue: *${fmtRev2(a[key + "Real"])}*
+                msg2 += `Ach: *${fmtPct2(getAch(a))}* \xB7 Real: *${fmtRev2(getRev(a))}* \xB7 Target: *${fmtRev2(getTarget(a))}*
 
 `;
               }
@@ -125950,19 +127478,41 @@ Silakan pilih divisi untuk papan peringkat:
                 const myA = sorted[myIdx];
                 const isShown = top10.some((a) => a.nik === resolvedAm.nik);
                 if (!isShown) {
-                  msg2 += `\u{1F4CC} *${amFirstName}* \xB7 Ach: *${fmtPct2(myA[key + "Ach"])}* \xB7 Revenue: *${fmtRev2(myA[key + "Real"])}* (#${myIdx + 1}/${sorted.length})
+                  msg2 += `\u{1F4CC} *${amFirstName}* \xB7 Ach: *${fmtPct2(getAch(myA))}* \xB7 Real: *${fmtRev2(getRev(myA))}* \xB7 Target: *${fmtRev2(getTarget(myA))}* (#${myIdx + 1}/${sorted.length})
 `;
                 } else {
                   msg2 += `\u{1F4CC} Posisi kak: *#${myIdx + 1}* dari *${sorted.length} AM*
 `;
                 }
               }
+              let totalReal = 0, totalTarget = 0;
+              let aboveTarget = 0, belowTarget = 0;
+              for (const a of sorted) {
+                totalReal += getRev(a);
+                totalTarget += getTarget(a);
+                if (getAch(a) >= 100) aboveTarget++;
+                else belowTarget++;
+              }
+              const overallAch = totalTarget > 0 ? totalReal / totalTarget * 100 : 0;
+              const ytdLabel = key === "ytd" ? " YTD" : "";
+              msg2 += `
+> \u{1F4CA} *Ringkasan ${fmtDivisiShort}${ytdLabel}*
+`;
+              msg2 += `> \u2705 AM Di Atas Target : *${aboveTarget}* dari *${sorted.length}* AM
+`;
+              msg2 += `> \u274C AM Di Bawah Target: *${belowTarget}* AM
+`;
+              msg2 += `> \u{1F4B0} Total Real${ytdLabel}  : *${fmtRev2(totalReal)}*
+`;
+              msg2 += `> \u{1F3AF} Total Target${ytdLabel}: *${fmtRev2(totalTarget)}*
+`;
+              msg2 += `> \u{1F4C8} Capaian${ytdLabel}      : *${fmtPct2(overallAch)}*`;
               return msg2;
             };
             await sendToTelegram(
               token,
               cbChatId,
-              showTop(amRanks, sortedCm, "PERINGKAT CM (Current Month)", "cm"),
+              showTop(sortedCm, "PERINGKAT CM (Current Month)", "cm"),
               {
                 inline_keyboard: [
                   [{ text: "\u25C0\uFE0F Ganti Divisi", callback_data: "perf:rankbulan:" + period }],
@@ -125976,7 +127526,7 @@ Silakan pilih divisi untuk papan peringkat:
             await sendToTelegram(
               token,
               cbChatId,
-              showTop(amRanks, sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
+              showTop(sortedYtd, "PERINGKAT YTD (Year-to-Date)", "ytd"),
               {
                 inline_keyboard: [
                   [{ text: "\u{1F4CB} Laporan Terkini", callback_data: "perf:laporan" }],
@@ -125989,8 +127539,8 @@ Silakan pilih divisi untuk papan peringkat:
             continue;
           }
           if (cbData === "perf:current") {
-            const period = currentPeriod();
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false });
+            const period = await latestSnapshotPeriod("performance");
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
             if (!result.messages.length) {
               const now = /* @__PURE__ */ new Date();
               await sendToTelegram(
@@ -126073,7 +127623,8 @@ Silakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
           if (cbData === "perf:dashboard") {
             const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
             const base = getPublicBaseUrl();
-            const dashUrl = latestImport?.id ? `${base}/presentation?type=performance&id=${latestImport.id}` : `${base}/presentation`;
+            const dashUrl = latestImport?.id ? toHttpsUrl(`${base}/presentation?type=performance&id=${latestImport.id}`) : toHttpsUrl(`${base}/presentation`);
+            const localDash = isLocalUrl(dashUrl);
             await sendToTelegram(
               token,
               cbChatId,
@@ -126082,7 +127633,59 @@ Silakan pilih bulan yang ingin kamu lihat kak *${amFirstName}*:`,
 Kak bisa lihat visualisasi data performansi dan laporan lengkap di dashboard LESAVI:
 
 ${dashUrl}`,
-              { inline_keyboard: [[{ text: "\u{1F4CA} Buka Dashboard", url: dashUrl }], [{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+              localDash ? { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] } : { inline_keyboard: [[{ text: "\u{1F4CA} Buka Dashboard", url: dashUrl }], [{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData === "perf:lap") {
+            const [latestImport] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.type, "performance")).orderBy(desc(dataImportsTable.createdAt)).limit(1);
+            const base = getPublicBaseUrl();
+            const reportUrl = latestImport?.id ? toHttpsUrl(`${base}/presentation?type=performance&id=${latestImport.id}`) : toHttpsUrl(`${base}/presentation`);
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F4CA} *Laporan Terkini*
+
+Berikut laporan performance terbaru. Klik link di bawah untuk membuka di browser:
+
+\u{1F517} ${reportUrl}`,
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData === "perf:profil") {
+            const base = getPublicBaseUrl();
+            const profileUrl = toHttpsUrl(`${base}/presentation/am/${encodeURIComponent(resolvedAm.nik)}`);
+            const amPublicUrl = resolvedAm.slug ? toHttpsUrl(`${base}/am-public/${encodeURIComponent(resolvedAm.slug)}`) : null;
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F464} *Profil AM \u2014 ${resolvedAm.nama}*
+
+Halaman profil untuk AM ini. Pilih link di bawah:
+
+\u{1F517} Dashboard AM: ${profileUrl}
+` + (amPublicUrl ? `\u{1F517} Halaman Publik: ${amPublicUrl}
+` : ``),
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData === "perf:vis") {
+            const base = getPublicBaseUrl();
+            const visUrl = toHttpsUrl(`${base}/visualisasi/performa`);
+            await sendToTelegram(
+              token,
+              cbChatId,
+              `\u{1F4C8} *Visualisasi Data Performance*
+
+Halaman visualisasi interaktif untuk data performance AM Witel Suramadu.
+
+\u{1F517} ${visUrl}`,
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
             ).catch(() => {
             });
             continue;
@@ -126172,7 +127775,7 @@ Ditunggu ya kak! \u{1F680}`,
             const totalProj = f2 + f3 + f4 + f5;
             const totalNilai = v2 + v3 + v4 + v5;
             const currentSnap = latestImport.snapshotDate || latestImport.createdAt?.toISOString().slice(0, 10) || "-";
-            const currentSnapLabel = latestImport.snapshotDate ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+            const currentSnapLabel = latestImport.snapshotDate ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
             let msg1 = `\u{1F4CB} *LAPORAN TERKINI SALES FUNNELING*
 
 `;
@@ -126214,7 +127817,7 @@ Ditunggu ya kak! \u{1F680}`,
               const currRate = f345 > 0 ? v5 / f345 * 100 : 0;
               const diff = currRate - prevRate;
               const fmtRate = (r) => `${Math.trunc(r * 10) / 10}%`;
-              const prevSnapLabel = prevImport.snapshotDate ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+              const prevSnapLabel = prevImport.snapshotDate ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
               msg1 += `\u{1F4C8} *Perubahan dibanding snapshot sebelumnya:*
 `;
               msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "\u25B2" : "\u25BC"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})
@@ -126242,7 +127845,7 @@ Ditunggu ya kak! \u{1F680}`,
                   bergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", lama: sl, baru: sb });
                 }
               }
-              const prevSnapLabel = prevImport.snapshotDate ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) || "-";
+              const prevSnapLabel = prevImport.snapshotDate ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
               let msg2 = `\u{1F4C8} *ANALISIS PERKEMBANGAN LOP*
 
 `;
@@ -126364,7 +127967,7 @@ Ditunggu ya kak! \u{1F680}`,
 
 `;
               msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
-              const stagnanKeyboard = stagnanNon.length > 10 ? { inline_keyboard: [[{ text: `\u{1F50D} Lihat Semua ${stagnanNon.length} LOP`, url: `${getPublicBaseUrl()}/visualisasi/funnel` }]] } : void 0;
+              const stagnanKeyboard = stagnanNon.length > 10 ? isLocalUrl(toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`)) ? void 0 : { inline_keyboard: [[{ text: `\u{1F50D} Lihat Semua ${stagnanNon.length} LOP`, url: toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`) }]] } : void 0;
               await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {
               });
             }
@@ -126800,6 +128403,27 @@ ${base}/visualisasi/activity`,
             });
             continue;
           }
+          if (cbData === "act:vis") {
+            await answerCallbackQuery(token, cb.id, "Membuka visualisasi...").catch(() => {
+            });
+            const firstName2 = resolvedAm.nama.split(" ")[0];
+            const base = getPublicBaseUrl();
+            const url3 = `${toHttpsUrl(base)}/presentation?type=activity`;
+            await sendToTelegramHtml(
+              token,
+              cbChatId,
+              `\u{1F4CA} <b>Visualisasi Data Sales Activity</b>
+
+Halo kak <b>${firstName2}</b>! \u{1F44B}
+
+Kakak bisa melihat visualisasi data Sales Activity melalui dashboard LESAVI.
+
+\u{1F517} <a href="${url3}">Klik Disini Untuk Akses</a>`,
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
           if (cbData === "/logout") {
             logger.info({ cbChatId, cbFromId, resolvedAmId: resolvedAm?.id, nama: resolvedAm?.nama }, "/logout handler reached");
             if (!resolvedAm) {
@@ -126868,7 +128492,8 @@ Hai kak *${amFirstName2}*! Pilih tipe data untuk melihat peringkat:`,
             }
             const amFirstName2 = resolvedAm.nama.split(" ")[0];
             perfRankState.delete(cbChatId);
-            const periods = await getAvailablePerfPeriods(resolvedAm.nik);
+            const isAm = ["ACCOUNT_MANAGER", "AM"].includes(resolvedAm.role || "");
+            const periods = isAm ? await getAvailablePerfPeriods(resolvedAm.nik) : await getAvailablePerfPeriodsAll();
             if (!periods.length) {
               await sendToTelegram(token, cbChatId, `\u274C Belum ada data performansi tersimpan kak *${amFirstName2}*.`, getMainKeyboard(resolvedAm.role)).catch(() => {
               });
@@ -126956,22 +128581,30 @@ Pilih tipe data yang ingin dilihat kak *${amFirstName2}*:`,
             }
             const snap = snaps[0];
             const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
-            const date6 = snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+            const date6 = snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
             const rows = snap.rowsImported != null ? `${snap.rowsImported.toLocaleString("id-ID")} baris data` : "belum diketahui";
             const domain2 = getPublicBaseUrl();
+            const httpsDomain = toHttpsUrl(domain2);
+            const snapUrl = `${httpsDomain}/import/detail/${dataType}/${snapId}`;
+            const presUrl = `${httpsDomain}/presentation?type=${dataType}&snapshot=${snapId}`;
+            const isLocal = isLocalUrl(httpsDomain);
+            const urlButtons = isLocal ? [
+              { text: "\u{1F4CB} Akses Data", callback_data: `import:view:${dataType}:${snapId}` },
+              { text: "\u{1F4CA} Lihat Visualisasi", callback_data: `import:vis:${dataType}:${snapId}` }
+            ] : [
+              { text: "\u{1F4CB} Akses Data", url: snapUrl },
+              { text: "\u{1F4CA} Lihat Visualisasi", url: presUrl }
+            ];
+            const urlHint = "";
             const msg2 = `\u2705 *Snapshot Dipilih*
 
 \u{1F4CA} Tipe Data: *${typeLabel}*
 \u{1F4C5} Tanggal: *${date6}*
-\u{1F4E6} Jumlah: *${rows}*
-
-\u{1F517} *Link Akses:*
-\u2022 Akses Data: ${domain2}/import/detail/${dataType}/${snapId}
-\u2022 Lihat Visualisasi: ${domain2}/presentation?type=${dataType}&snapshot=${snapId}
-
+\u{1F4E6} Jumlah: *${rows}*` + urlHint + `
 Silakan pilih aksi di bawah ya kak \u{1F447}`;
             const keyboard = {
               inline_keyboard: [
+                urlButtons,
                 [
                   { text: "\u{1F5D1} Hapus Data", callback_data: `snap:delete:${dataType}:${snapId}` },
                   { text: "\u25C0\uFE0F Pilih Snapshot Lain", callback_data: "snap:back_to_list" }
@@ -126995,7 +128628,7 @@ Silakan pilih aksi di bawah ya kak \u{1F447}`;
               });
               continue;
             }
-            const date6 = snap[0].snapshotDate ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+            const date6 = snap[0].snapshotDate ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
             const CONFIRM_DELETE_KEYBOARD = {
               inline_keyboard: [
                 [
@@ -127033,8 +128666,29 @@ Data yang dihapus tidak dapat dikembalikan.`,
               });
               continue;
             }
+            const typeLabel = dataType === "performance" ? "Performansi AM" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const date6 = snap[0].snapshotDate ? new Date(snap[0].snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
+            const importEmoji = dataType === "performance" ? "\u{1F4CA}" : dataType === "funnel" ? "\u{1F53B}" : "\u{1F4C5}";
+            const importShort = dataType === "performance" ? "Performance" : dataType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapShort = dataType === "performance" ? "perf" : dataType === "funnel" ? "funnel" : "activity";
             await db.delete(dataImportsTable).where(eq(dataImportsTable.id, snapId));
-            await sendToTelegram(token, cbChatId, `\u2705 Snapshot berhasil dihapus.`).catch(() => {
+            const msg2 = `\u2705 *Snapshot berhasil dihapus.*
+
+\u{1F4C5} Tanggal: *${date6}*
+\u{1F4CA} Tipe: *${typeLabel}*
+
+\u26A0\uFE0F *Data snapshot yang sudah dihapus tidak dapat dipulihkan kembali.*
+Satu-satunya cara untuk mengembalikannya adalah dengan melakukan *import data ulang* menggunakan snapshot (tanggal & tipe) yang sama.
+
+Silakan pilih langkah selanjutnya ya kak \u{1F447}`;
+            const keyboard = {
+              inline_keyboard: [
+                [{ text: `${importEmoji} Import ${importShort}`, callback_data: `import:type:${dataType}` }],
+                [{ text: `\u{1F4CB} List Snapshot ${typeLabel}`, callback_data: `snap:${snapShort}` }],
+                [{ text: "\u{1F3E0} Kembali ke Menu", callback_data: "nav:main" }]
+              ]
+            };
+            await sendToTelegram(token, cbChatId, msg2, keyboard).catch(() => {
             });
             continue;
           }
@@ -127088,7 +128742,7 @@ Fitur ini memungkinkan kamu mengelola akun dashboard LESAVI:
 \u{1F511} *Kode Verifikasi* \u2014 Generate kode akses Telegram untuk AM baru
 
 \u{1F4CE} Dashboard penuh:
-${domain2}/manajemen-akun`,
+[Dashboard Penuh](${domain2}/manajemen-akun)`,
               AKUN_MAIN_KEYBOARD
             ).catch(() => {
             });
@@ -127274,7 +128928,7 @@ Silakan coba lagi atau hubungi developer.`,
 ` : "") + `\u2514 ID     : #${apiData.id}
 
 \u{1F4CE} Kelola di Dashboard:
-${domain2}/manajemen-akun`,
+[Kelola di Dashboard](${domain2}/manajemen-akun)`,
                 AKUN_MAIN_KEYBOARD
               ).catch(() => {
               });
@@ -127839,6 +129493,56 @@ Silakan mulai ulang kapan saja melalui menu *Impor Data*.`,
             });
             continue;
           }
+          if (cbData.startsWith("import:view:")) {
+            const parts = cbData.split(":");
+            const viewType = parts[2];
+            const viewId = parseInt(parts[3], 10);
+            const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, viewId));
+            const typeLabel = viewType === "performance" ? "Performance" : viewType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapDateStr = imp?.snapshotDate ? formatSnapshotNameId(imp.snapshotDate) : "\u2014";
+            const snapName = imp ? `${typeLabel} \u2014 ${snapDateStr}` : `${typeLabel} (id ${viewId})`;
+            const rowsInfo = imp?.rowsImported != null ? `\u{1F4E6} <b>Total baris:</b> ${imp.rowsImported.toLocaleString("id-ID")}
+` : "";
+            const url3 = toHttpsUrl(`${getPublicBaseUrl()}/import/detail/${viewType}/${viewId}`);
+            await sendToTelegramHtml(
+              token,
+              cbChatId,
+              `\u{1F4CB} <b>Snapshot \u2014 ${viewType}</b>
+
+\u{1F4DB} <b>Nama:</b> ${htmlEscape(snapName)}
+\u{1F4CA} <b>Tipe:</b> ${typeLabel}
+\u{1F4C5} <b>Tanggal snapshot:</b> ${htmlEscape(snapDateStr)}
+` + rowsInfo + `
+\u{1F517} <a href="${url3}">Klik Disini Untuk Akses</a>`,
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "/import" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
+          if (cbData.startsWith("import:vis:")) {
+            const parts = cbData.split(":");
+            const visType = parts[2];
+            const visId = parseInt(parts[3], 10);
+            const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, visId));
+            const typeLabel = visType === "performance" ? "Performance" : visType === "funnel" ? "Sales Funnel" : "Sales Activity";
+            const snapDateStr = imp?.snapshotDate ? formatSnapshotNameId(imp.snapshotDate) : "\u2014";
+            const snapName = imp ? `${typeLabel} \u2014 ${snapDateStr}` : `${typeLabel} (id ${visId})`;
+            const url3 = toHttpsUrl(`${getPublicBaseUrl()}/presentation?type=${visType}&snapshot=${visId}`);
+            await sendToTelegramHtml(
+              token,
+              cbChatId,
+              `\u{1F4CA} <b>Visualisasi \u2014 ${visType}</b>
+
+\u{1F4DB} <b>Nama:</b> ${htmlEscape(snapName)}
+\u{1F4CA} <b>Tipe:</b> ${typeLabel}
+\u{1F4C5} <b>Tanggal snapshot:</b> ${htmlEscape(snapDateStr)}
+
+\u{1F517} <a href="${url3}">Klik Disini Untuk Akses</a>`,
+              { inline_keyboard: [[{ text: "\u25C0\uFE0F Kembali", callback_data: "/import" }]] }
+            ).catch(() => {
+            });
+            continue;
+          }
         } catch (cbErr) {
           logger.error({ err: cbErr, cbData, chatId: cbChatId }, "Callback handler error");
         }
@@ -127864,20 +129568,59 @@ Silakan mulai ulang kapan saja melalui menu *Impor Data*.`,
         const state = importState.get(chatId);
         if (state?.step === "waiting_file") {
           try {
-            await sendToTelegram(
+            const progressMsgId = await sendToTelegram(
               token,
               chatId,
               `\u{1F4E5} *File Diterima!*
 
 \u23F3 Mendownload file dari Telegram...
 
+${buildProgressBar(0)}
+
 _Sabarin sebentar ya kak_`
-            ).catch(() => {
-            });
+            ).catch(() => null);
             const [linkedAm] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId));
             const filename = doc.file_name || "file";
-            const buffer = await downloadTelegramFile(token, doc.file_id);
+            let lastEditTime = 0;
+            let lastPctShown = -1;
+            const onProgress = (downloaded, total) => {
+              if (progressMsgId == null) return;
+              const now = Date.now();
+              if (now - lastEditTime < 1500) return;
+              const pct = total > 0 ? Math.floor(downloaded / total * 100) : 0;
+              if (pct === lastPctShown) return;
+              lastEditTime = now;
+              lastPctShown = pct;
+              const bar = buildProgressBar(pct);
+              editMessageText(
+                token,
+                chatId,
+                progressMsgId,
+                `\u{1F4E5} *File Diterima!*
+
+\u23F3 Mendownload file dari Telegram...
+
+${bar}
+
+_Sabarin sebentar ya kak_`
+              ).catch(() => {
+              });
+            };
+            const buffer = await downloadTelegramFile(token, doc.file_id, onProgress);
             const base643 = buffer.toString("base64");
+            if (progressMsgId != null) {
+              await editMessageText(
+                token,
+                chatId,
+                progressMsgId,
+                `\u{1F4E5} *File Diterima!*
+
+\u2705 *Download selesai!*
+
+${buildProgressBar(100)}`
+              ).catch(() => {
+              });
+            }
             const extractedPeriod = extractPeriodFromFilename(filename);
             const amFirstName = linkedAm?.nama.split(" ")[0] || "Kak";
             if (!extractedPeriod) {
@@ -127935,6 +129678,21 @@ Lanjutkan import kak *${amFirstName}*? \u{1F447}`,
             });
           }
           continue;
+        } else {
+          const [uploader] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.telegramChatId, chatId)).limit(1);
+          const canImport = uploader && ["ADMIN", "OFFICER", "MANAGER"].includes(uploader.role || "");
+          if (canImport) {
+            const name2 = uploader.nama.split(" ")[0] || "Kak";
+            await sendToTelegram(
+              token,
+              chatId,
+              `\u{1F4CE} *File Diterima \u2014 Sesi Import Belum Aktif*
+
+Maaf ${name2}, sepertinya sesi import sebelumnya terputus (bot baru saja restart). Silakan mulai ulang dari menu *Impor Data* ya kak \u{1F447}`,
+              { inline_keyboard: [[{ text: "\u{1F4E5} Buka Menu Impor Data", callback_data: "/import" }]] }
+            ).catch(() => {
+            });
+          }
         }
       }
       const isVerifCode = (s) => /^LV-[A-Z0-9]{6}$/i.test(s);
@@ -128208,8 +129966,9 @@ Untuk melihat data snapshot, silakan ketik */list* ya kak.`,
           lastWelcomeSent.set(chatId, now);
         }
         if (text2 === "/performansi") {
-          const now2 = /* @__PURE__ */ new Date();
-          const displayMonth = `${MONTH_NAMES2[now2.getMonth() + 1]} ${now2.getFullYear()}`;
+          const period2 = await latestSnapshotPeriod("performance");
+          const [pickerYear, pickerMonth] = period2.split("-").map(Number);
+          const displayMonth = `${MONTH_NAMES2[pickerMonth] || pickerMonth} ${pickerYear}`;
           const pickerKeyboard = {
             inline_keyboard: [
               [{ text: `\u{1F4C5} Bulan Terkini (${displayMonth})`, callback_data: "perf:current" }],
@@ -129028,6 +130787,48 @@ router13.post("/clear-all-links", requireAuth, async (req, res) => {
   await db.update(telegramAccessCodesTable).set({ status: "CANCELLED" }).where(inArray(telegramAccessCodesTable.status, ["ACTIVE"]));
   res.json({ success: true, clearedCount });
 });
+router13.post("/test-notify/:importId", async (req, res) => {
+  try {
+    const importId = parseInt(req.params.importId, 10);
+    if (isNaN(importId)) {
+      res.status(400).json({ error: "importId harus angka" });
+      return;
+    }
+    const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+    if (!imp) {
+      res.status(404).json({ error: "Import tidak ditemukan" });
+      return;
+    }
+    const target = String(req.query.target || "all");
+    if (imp.type === "performance") {
+      if (target === "am") return res.status(400).json({ error: "Performance test only has am target" });
+      const result = await notifyPerformanceSnapshot(importId);
+      return res.json({ success: true, importId, period: imp.period, type: imp.type, target, ...result });
+    }
+    if (imp.type === "activity") {
+      const uploader = imp.uploadedByNik ? await (async () => {
+        const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, imp.uploadedByNik));
+        return u ? { nama: u.nama, role: u.role ?? "OFFICER", nik: u.nik ?? void 0 } : void 0;
+      })() : void 0;
+      if (target === "am" || target === "all") {
+        const r1 = await notifyActivitySnapshot(importId, uploader).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+        if (target === "am") return res.json({ success: true, importId, period: imp.period, type: imp.type, target, ...r1 });
+        const r2 = await notifyManagerActivitySnapshot(importId, uploader).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+        return res.json({ success: true, importId, period: imp.period, type: imp.type, target, am: r1, manager: r2 });
+      }
+      if (target === "manager") {
+        const r2 = await notifyManagerActivitySnapshot(importId, uploader).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+        return res.json({ success: true, importId, period: imp.period, type: imp.type, target, manager: r2 });
+      }
+      return res.status(400).json({ error: `Unknown target: ${target}` });
+    }
+    res.status(400).json({ error: `Import type ${imp.type} belum disupport test-notify` });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/test-notify]", msg);
+    res.status(500).json({ error: msg });
+  }
+});
 var routes_default8 = router13;
 
 // src/features/settings/routes.ts
@@ -129044,6 +130845,7 @@ init_src();
 init_drizzle_orm();
 init_excel();
 init_logger2();
+init_service();
 function extractSpreadsheetId(input) {
   if (!input) return input;
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -129327,6 +131129,13 @@ async function importActivitySheet(spreadsheetId, sheet, apiKey, dateInfo) {
         imp_arr
       ]);
     }
+    await db.update(dataImportsTable).set({ rowsImported: cleaned.length }).where(eq(dataImportsTable.id, imp.id));
+    notifyActivitySnapshot(imp.id).catch((err) => {
+      logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in gsheets sync");
+    });
+    notifyManagerActivitySnapshot(imp.id).catch((err) => {
+      logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in gsheets sync");
+    });
     return { sheetName: sheet.title, date: date6, period, type: "activity", status: "imported", rowsImported: cleaned.length, message: `${cleaned.length} baris berhasil diimport dari ${rows.length} baris mentah` };
   } catch (err) {
     return { sheetName: sheet.title, date: date6, period, type: "activity", status: "error", message: err?.message || String(err) };
@@ -129546,6 +131355,7 @@ async function runGSheetsSync() {
 
 // src/features/gsheets/scheduler.ts
 init_logger2();
+init_service();
 var schedulerTimer = null;
 function nextRunTime(hourWib, intervalDays) {
   const now = /* @__PURE__ */ new Date();
@@ -129566,6 +131376,19 @@ async function tick() {
     const skipped = result.results.filter((r) => r.status === "skipped").length;
     const errors = result.results.filter((r) => r.status === "error").length;
     logger.info({ imported, skipped, errors, sheetsFound: result.sheetsFound }, "GSheets scheduled sync complete");
+    if (imported > 0) {
+      const [settings] = await db.select().from(appSettingsTable);
+      if (settings?.autoSendOnImport && settings?.telegramBotToken) {
+        const importedResults = result.results.filter((r) => r.status === "imported");
+        const period = importedResults.find((r) => r.type === "performance")?.period ?? importedResults.find((r) => r.type === "funnel")?.period ?? importedResults.find((r) => r.type === "activity")?.period ?? "";
+        logger.info({ importedTypes: importedResults.map((r) => r.type), period }, "GSheets scheduler: triggering Telegram reminders");
+        await sendReminderToAllAMs(period, {
+          includePerformance: importedResults.some((r) => r.type === "performance"),
+          includeFunnel: importedResults.some((r) => r.type === "funnel"),
+          includeActivity: importedResults.some((r) => r.type === "activity")
+        });
+      }
+    }
   } catch (err) {
     logger.error({ err }, "GSheets scheduled sync failed");
   }
@@ -129730,9 +131553,26 @@ var routes_default10 = router15;
 var import_express18 = __toESM(require_express2(), 1);
 init_src();
 init_auth();
+init_service();
+init_logger2();
 var router16 = (0, import_express18.Router)();
+async function triggerSyncReminders(result) {
+  if (!result.results || result.results.length === 0) return;
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.autoSendOnImport || !settings?.telegramBotToken) return;
+  const imported = result.results.filter((r) => r.status === "imported");
+  if (imported.length === 0) return;
+  const period = imported.find((r) => r.type === "performance")?.period ?? imported.find((r) => r.type === "funnel")?.period ?? imported.find((r) => r.type === "activity")?.period ?? "";
+  logger.info({ importedTypes: imported.map((r) => r.type), period }, "GDrive sync: triggering Telegram reminders");
+  await sendReminderToAllAMs(period, {
+    includePerformance: imported.some((r) => r.type === "performance"),
+    includeFunnel: imported.some((r) => r.type === "funnel"),
+    includeActivity: imported.some((r) => r.type === "activity")
+  });
+}
 router16.post("/sync", requireAuth, async (req, res) => {
   const result = await runGSheetsSync();
+  triggerSyncReminders(result).catch((err) => logger.error({ err }, "GDrive sync reminders failed"));
   res.json(result);
 });
 router16.post("/sync-selected", requireAuth, async (req, res) => {
@@ -129742,6 +131582,7 @@ router16.post("/sync-selected", requireAuth, async (req, res) => {
     return;
   }
   const result = await syncSelectedSheets(selections);
+  triggerSyncReminders(result).catch((err) => logger.error({ err }, "GDrive sync-selected reminders failed"));
   res.json(result);
 });
 router16.get("/sheets", requireAuth, async (req, res) => {
@@ -130061,7 +131902,7 @@ router18.get("/am-profile/:nik", requirePresentationAuth, async (req, res) => {
       label: (() => {
         const d = s.snapshotDate ? new Date(s.snapshotDate) : s.createdAt ? new Date(s.createdAt) : null;
         if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       })()
     })),
     selectedSnapshotId: targetSnapshotId,
@@ -130361,7 +132202,7 @@ router18.get("/am-funnel/:nik", requirePresentationAuth, async (req, res) => {
     label: (() => {
       const d = s.snapshotDate ? new Date(s.snapshotDate) : s.createdAt ? new Date(s.createdAt) : null;
       if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+      return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     })()
   }));
   const lopRows = lops.map((l) => ({
@@ -130527,14 +132368,12 @@ router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
   const kpiDefault = settings?.kpiActivityDefault ?? 30;
   let acts = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, rawNik));
   if (targetSnapshotId) {
-    const snap = snapshots.find((s) => s.id === targetSnapshotId);
-    if (snap?.snapshotDate) {
-      acts = acts.filter((a) => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate);
-    }
+    acts = acts.filter((a) => a.importId === targetSnapshotId);
   }
   if (bulan) {
     const bulanVals = Array.isArray(bulan) ? bulan.map(String) : [String(bulan)];
-    const tahunStr = String(tahun ?? (/* @__PURE__ */ new Date()).getFullYear());
+    const tahunFirst = Array.isArray(tahun) ? tahun[0] : tahun;
+    const tahunStr = String(tahunFirst ?? (/* @__PURE__ */ new Date()).getFullYear());
     const prefixes = bulanVals.filter((b) => b !== "all").map((b) => {
       if (b.includes("-")) return b;
       return `${tahunStr}-${b.padStart(2, "0")}`;
@@ -130546,7 +132385,13 @@ router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
   if (divisiCc && String(divisiCc) !== "LESA" && String(divisiCc) !== "all") {
     acts = acts.filter((a) => a.divisiCc === String(divisiCc));
   }
-  const allActsForLabels = await db.select().from(salesActivityTable).where(eq(salesActivityTable.nik, rawNik));
+  let allActsForLabels = await db.select().from(salesActivityTable);
+  if (targetSnapshotId) {
+    const snap = snapshots.find((s) => s.id === targetSnapshotId);
+    if (snap?.snapshotDate) {
+      allActsForLabels = allActsForLabels.filter((a) => a.snapshotDate != null && a.snapshotDate <= snap.snapshotDate);
+    }
+  }
   const availableLabels = [...new Set(
     allActsForLabels.map((a) => a.label).filter(Boolean)
   )].sort();
@@ -130561,16 +132406,22 @@ router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
   if (kategori) {
     const selected = Array.isArray(kategori) ? kategori.map(String) : [String(kategori)];
     if (selected.length > 0 && !selected.includes("all")) {
-      acts = acts.filter((a) => selected.includes(a.label ?? ""));
+      const labelMap = {
+        "dengan_pelanggan": "Dengan Pelanggan",
+        "proyek": "Pelanggan Dengan Proyek",
+        "tanpa": "Tanpa Pelanggan"
+      };
+      const mappedSelected = selected.map((s) => labelMap[s] ?? s);
+      acts = acts.filter((a) => mappedSelected.includes(a.label ?? ""));
     }
   }
-  const isKpiLabel3 = (label) => !label ? false : !label.toLowerCase().includes("tanpa");
+  const isKpiLabel4 = (label) => !label ? false : !label.toLowerCase().includes("tanpa");
   acts.sort((a, b) => {
     const da = a.activityEndDate ?? "";
     const db2 = b.activityEndDate ?? "";
     return db2 < da ? -1 : db2 > da ? 1 : 0;
   });
-  const kpiCount = acts.filter((a) => isKpiLabel3(a.label)).length;
+  const kpiCount = acts.filter((a) => isKpiLabel4(a.label)).length;
   const kpiTarget = am.kpiActivity ?? kpiDefault;
   const activityCount = acts.length;
   const detailLabels = [...new Set(acts.map((a) => a.label).filter(Boolean))];
@@ -130587,7 +132438,7 @@ router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
       label: (() => {
         const d = s.snapshotDate ? new Date(s.snapshotDate) : s.createdAt ? new Date(s.createdAt) : null;
         if (!d || isNaN(d.getTime())) return s.period || `Snapshot #${s.id}`;
-        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       })()
     })),
     selectedSnapshotId: targetSnapshotId,
@@ -130602,7 +132453,7 @@ router18.get("/am-activity/:nik", requirePresentationAuth, async (req, res) => {
       caName: a.caName,
       picName: a.picName,
       activityNotes: a.activityNotes,
-      isKpi: isKpiLabel3(a.label)
+      isKpi: isKpiLabel4(a.label)
     })),
     detailLabels
   });
@@ -130612,6 +132463,7 @@ var routes_default13 = router18;
 // src/app.ts
 init_auth();
 init_logger2();
+init_publicUrl();
 init_src();
 import path3 from "path";
 import fs2 from "fs";
@@ -130656,9 +132508,21 @@ var uploadsPath = path3.resolve(__dirname, "..", "..", "uploads");
 if (fs2.existsSync(uploadsPath)) {
   app.use("/uploads", import_express21.default.static(uploadsPath));
 }
-var dashboardDistPath = path3.resolve(__dirname, "..", "..", "dashboard", "dist", "public");
+var dashboardDistPath = path3.resolve(__dirname, "..", "..", "..", "apps", "dashboard", "dist", "public");
 if (fs2.existsSync(dashboardDistPath)) {
-  app.use(import_express21.default.static(dashboardDistPath));
+  app.use(
+    import_express21.default.static(dashboardDistPath, {
+      // Force the browser to revalidate dashboard assets on every request.
+      // Without this, the browser can hold a stale JS bundle across deploys
+      // and the cache-bust query string only helps on the *first* load after
+      // the asset hash changed.
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    })
+  );
   app.use((_req, res, next) => {
     if (!_req.url.startsWith("/api")) {
       const indexPath = path3.join(dashboardDistPath, "index.html");
@@ -130668,6 +132532,9 @@ if (fs2.existsSync(dashboardDistPath)) {
         if (hashMatch) {
           html = html.replace(/\.js"/g, `.js?v=${hashMatch[1]}"`);
         }
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
         res.type("html").send(html);
       } else {
         next();
@@ -130774,7 +132641,7 @@ async function seedAmFunnelTargets(opts = {}) {
 }
 
 // src/shared/seed.ts
-var ROLE_ID = { ADMIN: 1, MANAGER: 2, OFFICER: 3, ACCOUNT_MANAGER: 4 };
+var ROLE_ID = { ADMIN: 1, MANAGER: 2, OFFICER: 3, ACCOUNT_MANAGER: 4, INPUTER: 5 };
 var DEFAULT_GDRIVE_FOLDERS = {
   gDriveFolderPerformance: "1qt32nVLMT6Xd3HRXHIZvW4PPN3osuOjX",
   gDriveFolderFunnel: "1BX1uNVRo7EtqmFdvVQxgtACh21M0-4BT",
@@ -130850,11 +132717,40 @@ var DEFAULT_OFFICERS = [
     crossWitel: false
   }
 ];
+var DEFAULT_INPUTERS = [
+  {
+    nik: null,
+    nama: "DATA INPUTER",
+    slug: "data-inputer",
+    role: "INPUTER",
+    roleId: ROLE_ID.INPUTER,
+    tipe: "LESA",
+    divisi: "DPS",
+    witel: "SURAMADU",
+    kpiActivity: 0,
+    aktif: true,
+    crossWitel: false
+  }
+];
 var DEFAULT_FUNNEL_TARGETS = [
   { divisi: "DPS", tahun: 2026, targetFullHo: 97076e6, targetHo: 95973e6 },
   { divisi: "DSS", tahun: 2026, targetFullHo: 7378e7, targetHo: 57036e6 }
 ];
 async function ensureDefaultSeed() {
+  const existingRoles = await db.select({ id: rolesTable.id, code: rolesTable.code }).from(rolesTable);
+  const existingCodes = new Set(existingRoles.map((r) => r.code));
+  const rolesToSeed = [
+    { id: 1, code: "ADMIN", name: "Admin", level: 10 },
+    { id: 2, code: "MANAGER", name: "Manager", level: 20 },
+    { id: 3, code: "OFFICER", name: "Officer", level: 30 },
+    { id: 4, code: "ACCOUNT_MANAGER", name: "Account Manager", level: 40 },
+    { id: 5, code: "INPUTER", name: "Inputer", level: 35 }
+  ];
+  for (const role of rolesToSeed) {
+    if (!existingCodes.has(role.code)) {
+      await db.insert(rolesTable).values(role);
+    }
+  }
   const settingsForCleanup = await db.select({ id: appSettingsTable.id, nonAktifAmsCleaned: appSettingsTable.nonAktifAmsCleaned }).from(appSettingsTable).limit(1);
   const shouldClean = settingsForCleanup.length === 0 || !settingsForCleanup[0].nonAktifAmsCleaned;
   if (shouldClean) {
@@ -130871,6 +132767,9 @@ async function ensureDefaultSeed() {
   await db.insert(accountManagersTable).values(DEFAULT_MANAGER).onConflictDoNothing();
   for (const o of DEFAULT_OFFICERS) {
     await db.insert(accountManagersTable).values(o).onConflictDoNothing();
+  }
+  for (const inp of DEFAULT_INPUTERS) {
+    await db.insert(accountManagersTable).values(inp).onConflictDoNothing();
   }
   const googleApiKey = process.env.GOOGLE_API_KEY || null;
   const existingSettings = await db.select({ id: appSettingsTable.id, gSheetsApiKey: appSettingsTable.gSheetsApiKey }).from(appSettingsTable).limit(1);

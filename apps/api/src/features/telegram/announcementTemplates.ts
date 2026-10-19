@@ -239,3 +239,164 @@ export function renderPerfAnnouncement(ctx: PerfAnnouncementCtx): string {
 
   return lines.join("\n");
 }
+
+// ── Activity Snapshot Announcement (per-AM) ─────────────────────────────────
+
+export interface ActivityAmCtx {
+  amName: string;
+  officerName: string;
+  officerRole: string;
+  snapshotName: string;
+  bulanLabel: string;       // "Agustus"
+  tglDataLabel: string;     // "12 Agustus 2026"
+  totalKegiatan: number;
+  kpiTarget: number;        // default 25
+  pct: number;              // 0..100+ (raw, not capped)
+  greeting: string;
+  isAwalBulan: boolean;     // snapshot day 1-7
+}
+
+export interface ActivityManagerCtx {
+  managerName: string;
+  managerHonorific: string;   // "Bu" / "Pak" / "kak"
+  officerName: string;
+  officerRole: string;
+  snapshotName: string;
+  bulanLabel: string;       // "Oktober"
+  tglDataLabel: string;     // "16 Oktober 2026"
+  totalAms: number;
+  totalKegiatan: number;
+  rataPct: number;          // 0..100+
+  reachedCount: number;
+  belumCount: number;
+  greeting: string;
+  // Daftar AM yang sudah/belum memenuhi KPI (sudah di-format sebagai numbered list, sorted desc by count)
+  daftarMemenuhi: string;   // mis. "1. HANDIKA (5/25)\n2. ..."
+  daftarBelum: string;
+  pctAmMemenuhi: number;    // (reached / total) * 100
+  isAwalBulan: boolean;
+  kalimatStatus: string;    // pre-computed variant
+}
+
+/** Detect gender honorific from a person's full name (Indonesian heuristic). */
+export function detectHonorific(fullName: string): "Bu" | "Pak" | "kak" {
+  const firstName = fullName.replace(/^(Drs?|Dr|Ir|Hj|H|Prof)\.?\s+/i, "").trim().split(/\s+/)[0] || "";
+  const lower = firstName.toLowerCase();
+  // Common female endings/patterns
+  if (/(i|a|ie|ah|ih|at|ik|un|asi|eti|ani|eni|ini|ita|ati|nti|uli|yati|yani)$/.test(lower)) return "Bu";
+  // Common female prefixes
+  if (/^(sri|siti|nur|ny|nyai|ni|miss)/i.test(firstName)) return "Bu";
+  return "Pak";
+}
+
+function getManagerStatusSentence(reachedCount: number, totalAms: number, belumCount: number, isAwalBulan: boolean): string {
+  if (isAwalBulan) {
+    return "Bulan baru baru berjalan, belum ada AM yang memenuhi KPI. Yuk dorong tim untuk mulai mencatat kegiatan 🔥";
+  }
+  if (totalAms > 0 && reachedCount === totalAms) {
+    return "Seluruh AM aktif sudah memenuhi KPI bulan ini 🎉 Kerja bagus, tim!";
+  }
+  if (totalAms > 0 && reachedCount / totalAms >= 0.7) {
+    return `Mayoritas tim sudah on track. Tinggal dorong <b>${belumCount}</b> AM lagi supaya semuanya memenuhi KPI 💪`;
+  }
+  return `Masih ada <b>${belumCount}</b> AM yang perlu didorong untuk memenuhi KPI bulan ini.`;
+}
+
+export { getManagerStatusSentence };
+
+function activityStatusSentence(total: number, kpiTarget: number, isAwalBulan: boolean): string {
+  if (isAwalBulan) {
+    return "Bulan baru baru dimulai, saatnya gas catat kegiatan kakak! 🔥";
+  }
+  const sisa = Math.max(0, kpiTarget - total);
+  if (total === 0) {
+    return `Belum ada kegiatan yang tercatat bulan ini. Yuk mulai catat, supaya progres KPI-nya terlihat! Tinggal <b>${sisa}</b> kegiatan lagi untuk mencapai target 🚀`;
+  }
+  const pct = kpiTarget > 0 ? (total / kpiTarget) * 100 : 0;
+  if (pct >= 100) {
+    return "KPI bulan ini sudah terpenuhi 🎉 Terus jaga ritmenya, kak!";
+  }
+  if (pct >= 80) {
+    return `Sedikit lagi! Tinggal <b>${sisa}</b> kegiatan untuk memenuhi KPI bulan ini 💪`;
+  }
+  return `Masih ada <b>${sisa}</b> kegiatan lagi untuk mencapai KPI bulan ini. Yuk dicatat terus kegiatannya, kak!`;
+}
+
+export function renderActivityAmAnnouncement(ctx: ActivityAmCtx): string {
+  const pct = ctx.pct;
+  const pctDisplay = pct.toFixed(1).replace(".", ",");
+  const statusSentence = activityStatusSentence(ctx.totalKegiatan, ctx.kpiTarget, ctx.isAwalBulan);
+
+  const amNameEsc = htmlEscape(ctx.amName);
+  const officerNameEsc = htmlEscape(ctx.officerName);
+  const officerRoleEsc = htmlEscape(ctx.officerRole);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const bulanLabelEsc = htmlEscape(ctx.bulanLabel);
+  const tglDataLabelEsc = htmlEscape(ctx.tglDataLabel);
+
+  return [
+    `<b>[UPDATE SNAPSHOT SALES ACTIVITY]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, kak <b>${amNameEsc}</b> 👋`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${officerRoleEsc}</b> baru saja mengunggah data <b>Sales Activity</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    `<b>Highlight ${bulanLabelEsc} (data s.d. ${tglDataLabelEsc}):</b>`,
+    `├ <b>Total kegiatan:</b> ${ctx.totalKegiatan} kegiatan`,
+    `├ <b>KPI bulanan:</b> ${ctx.kpiTarget} kegiatan`,
+    `└ <b>Ketercapaian KPI:</b> ${pctDisplay}%`,
+    ``,
+    `<blockquote>${statusSentence}</blockquote>`,
+    ``,
+    `Lihat visualisasi datanya lewat tombol di bawah 👇`,
+  ].join("\n");
+}
+
+export function renderActivityManagerAnnouncement(ctx: ActivityManagerCtx): string {
+  const rataPctDisplay = ctx.rataPct.toFixed(1).replace(".", ",");
+  const pctAmDisplay = ctx.pctAmMemenuhi.toFixed(0);
+
+  const amNameEsc = htmlEscape(ctx.managerName);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const bulanLabelEsc = htmlEscape(ctx.bulanLabel);
+  const tglDataLabelEsc = htmlEscape(ctx.tglDataLabel);
+
+  // Smart officer: kalau nama == role label, tampilkan sekali
+  const officer = ctx.officerName.toLowerCase() === ctx.officerRole.toLowerCase()
+    ? ctx.officerRole
+    : `${ctx.officerName} (${ctx.officerRole})`;
+  const officerEsc = htmlEscape(officer);
+
+  // Stats lines (conditional baris ⏳ jika belumCount = 0)
+  const summaryLines: string[] = [
+    `<b>Gambaran ${ctx.totalAms} AM aktif LESA VI untuk ${bulanLabelEsc} (data s.d. ${tglDataLabelEsc}):</b>`,
+    `├ <b>Total kegiatan tim:</b> ${ctx.totalKegiatan.toLocaleString("id-ID")} kegiatan`,
+  ];
+  if (ctx.reachedCount > 0) {
+    summaryLines.push(
+      `├ ✅ <b>${ctx.reachedCount} AM sudah memenuhi KPI (≥25 kegiatan):</b>\n   ${ctx.daftarMemenuhi}`,
+    );
+  }
+  if (ctx.belumCount > 0) {
+    summaryLines.push(
+      `├ ⏳ <b>${ctx.belumCount} AM belum memenuhi KPI:</b>\n   ${ctx.daftarBelum}`,
+    );
+  }
+  summaryLines.push(
+    `└ <b>Ketercapaian KPI tim:</b> ${pctAmDisplay}% AM (${ctx.reachedCount}/${ctx.totalAms})`,
+  );
+
+  return [
+    `<b>[UPDATE SNAPSHOT SALES ACTIVITY]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, ${ctx.managerHonorific} <b>${amNameEsc}</b> 👋`,
+    ``,
+    `Mohon izin menginformasikan bahwa <b>${officerEsc}</b> baru saja mengunggah data <b>Sales Activity</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    ...summaryLines,
+    ``,
+    `<blockquote>${ctx.kalimatStatus}</blockquote>`,
+    ``,
+    `Detail per AM bisa dicek lewat tombol di bawah 👇`,
+  ].join("\n");
+}

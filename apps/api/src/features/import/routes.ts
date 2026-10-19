@@ -8,7 +8,7 @@ import {
   cleanFunnelRows, cleanActivityRows,
   detectExcelFormat, parsePivotCache, parseNipnas2AmSheet, pivotCacheRowsToParsedRows, pivotCacheRowsToParsedRowsFromCache2, ParsedRow,
 } from "./excel";
-import { sendReminderToAllAMs, notifyPerformanceSnapshot, notifyManagerSnapshot } from "../telegram/service";
+import { sendReminderToAllAMs, notifyPerformanceSnapshot, notifyManagerSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 
 // ── Helper: auto-register new AM to accounts table with aktif=false ───────────
 export async function autoRegisterNewAms(entries: { nik: string; nama: string; divisi: string; witel?: string }[], source: string): Promise<number> {
@@ -300,9 +300,23 @@ router.post("/activity", requireAuth, async (req, res): Promise<void> => {
 
   const amCount = new Set(cleaned.map((r: any) => r.nik)).size;
 
-  const [settings] = await db.select().from(appSettingsTable);
-  if (settings?.autoSendOnImport && settings.telegramBotToken) {
-    sendReminderToAllAMs(importPeriod, { includePerformance: false, includeFunnel: false, includeActivity: true }).catch(() => {});
+  const currentUser = (req as any).user;
+  const uploader = currentUser ? { nama: currentUser.nama ?? "Officer", role: currentUser.role ?? "OFFICER" } : undefined;
+
+  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyActivitySnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    console.log(`[ACT-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
+  }
+
+  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
+    console.error("[notifyManagerActivitySnapshot] Error:", err instanceof Error ? err.message : err);
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    console.log(`[ACT-MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
   }
 
   res.json({
@@ -310,7 +324,11 @@ router.post("/activity", requireAuth, async (req, res): Promise<void> => {
     period: importPeriod, snapshotDate,
     rawCount: rows.length,
     newAmDiscovered: newActAmCount,
-    message: `${count} dari ${rows.length} baris activity berhasil diimport${newActAmCount > 0 ? `. ${newActAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}`,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
+    message: `${count} dari ${rows.length} baris activity berhasil diimport${newActAmCount > 0 ? `. ${newActAmCount} AM baru ditambahkan ke Manajemen Akun (nonaktif).` : ""}${notifResult.sent > 0 ? ` ${notifResult.sent} AM dinotifikasi via Telegram.` : ""}${managerNotifResult.sent > 0 ? ` ${managerNotifResult.sent} Manager dinotifikasi via Telegram.` : ""}`,
     importId: imp.id,
   });
 });

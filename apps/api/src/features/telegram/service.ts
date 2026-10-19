@@ -7,6 +7,13 @@ import {
   renderPerfAnnouncement,
   formatSnapshotNameId,
   getGreetingWIB,
+  type ActivityAmCtx,
+  type ActivityManagerCtx,
+  renderActivityAmAnnouncement,
+  renderActivityManagerAnnouncement,
+  getManagerStatusSentence,
+  htmlEscape,
+  detectHonorific,
 } from "./announcementTemplates";
 
 const MONTH_NAMES = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -1832,4 +1839,377 @@ export async function notifyPerformanceSnapshot(
   }
 
   return { sent, failed, skipped, details };
+}
+
+// ── Activity Snapshot Notification (per-AM KPI highlight) ────────────────────
+
+function isKpiLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  return !label.toLowerCase().includes("tanpa");
+}
+
+function parseSnapshotMonth(snapshotDate: string | null | undefined, period: string | null | undefined): { year: number; month: number; day: number } {
+  if (snapshotDate && /^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) {
+    const [y, m, d] = snapshotDate.split("-").map(Number);
+    if (y && m && d) return { year: y, month: m, day: d };
+  }
+  if (period) {
+    if (/^\d{6}$/.test(period)) {
+      return { year: parseInt(period.slice(0, 4)), month: parseInt(period.slice(4, 6)), day: 1 };
+    }
+    if (/^\d{4}-\d{2}$/.test(period)) {
+      const [y, m] = period.split("-").map(Number);
+      return { year: y, month: m, day: 1 };
+    }
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
+
+export interface ActivitySnapshotResult {
+  sent: number;
+  failed: number;
+  skipped: number;
+  details: { nik: string; status: string; error?: string }[];
+}
+
+export async function notifyActivitySnapshot(
+  importId: number,
+  uploader?: { nama: string; role: string; nik?: string },
+): Promise<ActivitySnapshotResult> {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!imp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+
+  const { year, month, day } = parseSnapshotMonth(imp.snapshotDate ?? null, imp.period ?? null);
+  const snapshotName = formatSnapshotNameId(imp.snapshotDate);
+  const greeting = getGreetingWIB(new Date());
+  const isAwalBulan = day >= 1 && day <= 7;
+
+  // Cumulative view (matches dashboard): include all activity imports with
+  // snapshotDate <= selected import's snapshotDate. Activities from imports
+  // with snapshotDate = null are also included if their importId <= importId
+  // (catches legacy/null snapshotDate data).
+  const allImports = await db.select({
+    id: dataImportsTable.id,
+    snapshotDate: dataImportsTable.snapshotDate,
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
+
+  const allActsRaw = await db.select().from(salesActivityTable);
+  const allowedImpIds = new Set(
+    allImports.filter(i => i.snapshotDate == null
+      || (imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate)
+    ).map(i => i.id)
+  );
+  const allActs = allActsRaw.filter(a => a.importId != null && allowedImpIds.has(a.importId));
+
+  // Filter activities to the target month (by activityEndDate YYYY-MM).
+  // Match dashboard: parse timestamp as UTC ("...Z" suffix) so late-evening
+  // UTC entries near month boundaries shift to the correct local month
+  // (e.g. "2026-09-30 23:59:48" → Oct 1 in WIB). Without "Z" the dashboard
+  // would show October but the notifier would show September.
+  const monthActs = allActs.filter(a => {
+    const d = a.activityEndDate;
+    if (!d || d.length < 7) return false;
+    const dt = new Date(d.replace(" ", "T") + "Z");
+    if (isNaN(dt.getTime())) return false;
+    return dt.getFullYear() === year && dt.getMonth() + 1 === month;
+  });
+
+  // Active AMs (matching notifyPerformanceSnapshot rules)
+  const allAms = await db.select().from(accountManagersTable);
+  const activeAms = allAms.filter(m =>
+    m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik
+  );
+  const activeNikSet = new Set(activeAms.map(m => m.nik!));
+  const chatIdMap = new Map(allAms.map(m => [m.nik, m.telegramChatId]));
+  const kpiMap = new Map<string, number>(activeAms.map(m => [m.nik!, m.kpiActivity ?? 25]));
+
+  // Group activities by NIK (only active AMs)
+  const byNik = new Map<string, number>();
+  for (const a of monthActs) {
+    if (!a.nik || !activeNikSet.has(a.nik)) continue;
+    if (!isKpiLabel(a.label)) continue;
+    byNik.set(a.nik, (byNik.get(a.nik) ?? 0) + 1);
+  }
+
+  const base = getPublicBaseUrlSafe();
+  const publicHttps = toHttpsUrl(base);
+  const localMode = isLocalUrl(publicHttps);
+
+  const bulanLabel = MONTH_NAMES[month] ?? String(month);
+  const officerName = uploader?.nama?.split(" ")[0] || "Officer";
+  const officerRole = uploader?.role === "OFFICER" ? "Officer"
+    : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager"
+    : uploader?.role === "MANAGER" ? "Manager"
+    : uploader?.role || "Officer";
+
+  let sent = 0, failed = 0, skipped = 0;
+  const details: { nik: string; status: string; error?: string }[] = [];
+
+  for (const am of activeAms) {
+    const chatId = chatIdMap.get(am.nik!);
+    if (!chatId) {
+      skipped++;
+      details.push({ nik: am.nik!, status: "skipped" });
+      continue;
+    }
+
+    const total = byNik.get(am.nik!) ?? 0;
+    const kpiTarget = kpiMap.get(am.nik!) ?? 25;
+    const pct = kpiTarget > 0 ? (total / kpiTarget) * 100 : 0;
+    const amName = am.nama;
+
+    const ctx: ActivityAmCtx = {
+      amName,
+      officerName,
+      officerRole,
+      snapshotName,
+      bulanLabel,
+      tglDataLabel: snapshotName,
+      totalKegiatan: total,
+      kpiTarget,
+      pct,
+      greeting,
+      isAwalBulan,
+    };
+
+    const body = renderActivityAmAnnouncement(ctx);
+    const visualisasiUrl = `${publicHttps}/presentation?type=activity&snapshot=${importId}`;
+    const keyboard = localMode
+      ? {
+          inline_keyboard: [
+            [{ text: "📊 Visualisasi Data", callback_data: "act:vis" }],
+          ],
+        }
+      : {
+          inline_keyboard: [
+            [{ text: "📊 Visualisasi Data", url: visualisasiUrl }],
+          ],
+        };
+
+    try {
+      await sendToTelegramHtml(token, chatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik!,
+        namaAm: amName,
+        telegramChatId: chatId,
+        status: "sent",
+        period: imp.period,
+        messageType: "activity_snapshot_notification",
+      });
+      sent++;
+      details.push({ nik: am.nik!, status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: am.nik, error: errMsg }, "notifyActivitySnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: am.nik!,
+        namaAm: amName,
+        telegramChatId: chatId,
+        status: "failed",
+        period: imp.period,
+        messageType: "activity_snapshot_notification",
+        error: errMsg,
+      });
+      failed++;
+      details.push({ nik: am.nik!, status: "failed", error: errMsg });
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return { sent, failed, skipped, details };
+}
+
+export async function notifyManagerActivitySnapshot(
+  importId: number,
+  uploader?: { nama: string; role: string; nik?: string },
+): Promise<ActivitySnapshotResult> {
+  const [settings] = await db.select().from(appSettingsTable);
+  if (!settings?.telegramBotToken) {
+    return { sent: 0, failed: 0, skipped: 0, details: [] };
+  }
+  const token = settings.telegramBotToken;
+
+  const [imp] = await db.select().from(dataImportsTable).where(eq(dataImportsTable.id, importId));
+  if (!imp) return { sent: 0, failed: 0, skipped: 0, details: [] };
+
+  const { year, month, day } = parseSnapshotMonth(imp.snapshotDate ?? null, imp.period ?? null);
+  const snapshotName = formatSnapshotNameId(imp.snapshotDate);
+  const greeting = getGreetingWIB(new Date());
+  const isAwalBulan = day >= 1 && day <= 7;
+
+  // Cumulative view (matches dashboard + AM notif): include all activity
+  // imports with snapshotDate <= selected import's snapshotDate, plus any
+  // import with null snapshotDate.
+  const allImports = await db.select({
+    id: dataImportsTable.id,
+    snapshotDate: dataImportsTable.snapshotDate,
+  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
+
+  const allowedImpIds = new Set(
+    allImports.filter(i => i.snapshotDate == null
+      || (imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate)
+    ).map(i => i.id)
+  );
+  const allActsRaw = await db.select().from(salesActivityTable);
+  const allActs = allActsRaw.filter(a => a.importId != null && allowedImpIds.has(a.importId));
+
+  // Filter by month (Z-suffix to match dashboard's UTC parse)
+  const monthActs = allActs.filter(a => {
+    const d = a.activityEndDate;
+    if (!d || d.length < 7) return false;
+    const dt = new Date(d.replace(" ", "T") + "Z");
+    if (isNaN(dt.getTime())) return false;
+    return dt.getFullYear() === year && dt.getMonth() + 1 === month && isKpiLabel(a.label);
+  });
+
+  const allAms = await db.select().from(accountManagersTable);
+  const activeAms = allAms.filter(m =>
+    m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik
+  );
+  const activeNikSet = new Set(activeAms.map(m => m.nik!));
+  const kpiMap = new Map<string, number>(activeAms.map(m => [m.nik!, m.kpiActivity ?? 25]));
+
+  const byNik = new Map<string, number>();
+  for (const a of monthActs) {
+    if (!a.nik || !activeNikSet.has(a.nik)) continue;
+    byNik.set(a.nik, (byNik.get(a.nik) ?? 0) + 1);
+  }
+
+  // Build per-AM stats for name list rendering
+  type AmStat = { nik: string; nama: string; total: number; kpi: number; pct: number };
+  const amStats: AmStat[] = activeAms
+    .map(am => {
+      const total = byNik.get(am.nik!) ?? 0;
+      const kpi = kpiMap.get(am.nik!) ?? 25;
+      const pct = kpi > 0 ? (total / kpi) * 100 : 0;
+      return { nik: am.nik!, nama: am.nama, total, kpi, pct };
+    })
+    .filter(s => s.total > 0 || s.kpi > 0);
+
+  const totalKegiatan = amStats.reduce((s, a) => s + a.total, 0);
+  const totalPct = amStats.reduce((s, a) => s + a.pct, 0);
+  const countedAms = amStats.length;
+  const rataPct = countedAms > 0 ? totalPct / countedAms : 0;
+
+  // Sort by total desc
+  amStats.sort((a, b) => b.total - a.total);
+
+  const memenuhi = amStats.filter(a => a.pct >= 100);
+  const belum = amStats.filter(a => a.pct < 100);
+  const reachedCount = memenuhi.length;
+  const belumCount = belum.length;
+  const pctAmMemenuhi = countedAms > 0 ? (reachedCount / countedAms) * 100 : 0;
+
+  // Format nama lists: numbered (1., 2., ...) sorted desc by count
+  const fmtNameList = (list: AmStat[]): string => {
+    if (list.length === 0) return "";
+    return list
+      .map((a, i) => `${i + 1}. <b>${htmlEscape(a.nama)}</b> (${a.total}/${a.kpi})`)
+      .join("\n   ");
+  };
+
+  // Hide list block if awal bulan AND no AM has any activities yet
+  const showLists = !(isAwalBulan && totalKegiatan === 0);
+  const daftarMemenuhi = showLists ? fmtNameList(memenuhi) : "";
+  const daftarBelum = showLists ? fmtNameList(belum) : "";
+
+  const kalimatStatus = getManagerStatusSentence(reachedCount, countedAms, belumCount, isAwalBulan);
+
+  const base = getPublicBaseUrlSafe();
+  const publicHttps = toHttpsUrl(base);
+  const localMode = isLocalUrl(publicHttps);
+  const bulanLabel = MONTH_NAMES[month] ?? String(month);
+  const tglDataLabel = formatSnapshotNameId(imp.snapshotDate);
+  const officerName = uploader?.nama?.split(" ")[0] || "Officer";
+  const officerRole = uploader?.role === "OFFICER" ? "Officer"
+    : uploader?.role === "ACCOUNT_MANAGER" ? "Account Manager"
+    : uploader?.role === "MANAGER" ? "Manager"
+    : uploader?.role || "Officer";
+
+  const visualizationUrl = `${publicHttps}/visualisasi/performa`;
+  const keyboard = localMode
+    ? {
+        inline_keyboard: [
+          [{ text: "📊 Visualisasi Data", callback_data: "act:vis" }],
+        ],
+      }
+    : {
+        inline_keyboard: [
+          [{ text: "📊 Visualisasi Data", url: visualizationUrl }],
+        ],
+      };
+
+  const managers = await db.select().from(accountManagersTable)
+    .where(eq(accountManagersTable.role, "MANAGER"));
+  const linkedManagers = managers.filter(m => m.telegramChatId);
+
+  let sent = 0, failed = 0;
+  const details: { nik: string; status: string; error?: string }[] = [];
+
+  for (const mgr of linkedManagers) {
+    if (!mgr.telegramChatId) {
+      details.push({ nik: mgr.nik ?? "", status: "skipped" });
+      continue;
+    }
+    const ctx: ActivityManagerCtx = {
+      managerName: mgr.nama,
+      managerHonorific: detectHonorific(mgr.nama),
+      officerName,
+      officerRole,
+      snapshotName,
+      bulanLabel,
+      tglDataLabel,
+      totalAms: countedAms,
+      totalKegiatan,
+      rataPct,
+      reachedCount,
+      belumCount,
+      greeting,
+      daftarMemenuhi,
+      daftarBelum,
+      pctAmMemenuhi,
+      isAwalBulan,
+      kalimatStatus,
+    };
+    const body = renderActivityManagerAnnouncement(ctx);
+
+    try {
+      await sendToTelegramHtml(token, mgr.telegramChatId, body, keyboard);
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? "",
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "sent",
+        period: imp.period,
+        messageType: "manager_activity_snapshot_notification",
+      });
+      sent++;
+      details.push({ nik: mgr.nik ?? "", status: "sent" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown";
+      logger.error({ nik: mgr.nik, error: errMsg }, "notifyManagerActivitySnapshot failed");
+      await db.insert(telegramLogsTable).values({
+        nik: mgr.nik ?? "",
+        namaAm: mgr.nama,
+        telegramChatId: mgr.telegramChatId,
+        status: "failed",
+        period: imp.period,
+        messageType: "manager_activity_snapshot_notification",
+        error: errMsg,
+      });
+      failed++;
+      details.push({ nik: mgr.nik ?? "", status: "failed", error: errMsg });
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return { sent, failed, skipped: managers.length - linkedManagers.length, details };
 }

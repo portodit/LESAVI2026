@@ -381,12 +381,12 @@ export declare const accountManagersTable: import("drizzle-orm/pg-core").PgTable
     dialect: "pg";
 }>;
 export declare const insertAccountManagerSchema: z.ZodObject<{
-    nik: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    nama: z.ZodString;
-    slug: z.ZodString;
     email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     passwordHash: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     role: z.ZodOptional<z.ZodString>;
+    nik: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    nama: z.ZodString;
+    slug: z.ZodString;
     tipe: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     divisi: z.ZodOptional<z.ZodString>;
     segmen: z.ZodOptional<z.ZodNullable<z.ZodString>>;

@@ -3,7 +3,7 @@ import { db, telegramLogsTable, accountManagersTable, appSettingsTable, telegram
 import { eq, desc, inArray, and, isNull, isNotNull, gt } from "drizzle-orm";
 import { requireAuth } from "../../shared/auth";
 import { checkPermission } from "../../shared/permissions";
-import { sendReminderToAllAMs, sendToTelegram, notifyPerformanceSnapshot } from "../telegram/service";
+import { sendReminderToAllAMs, sendToTelegram, notifyPerformanceSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 import { getBotUsers, pollOnce } from "./poller";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -514,7 +514,7 @@ router.post("/clear-all-links", requireAuth, async (req, res): Promise<void> => 
   res.json({ success: true, clearedCount });
 });
 
-// ── Test: trigger performance snapshot notification for any import ID ────────────
+// ── Test: trigger performance/activity snapshot notification for any import ID ───────
 router.post("/test-notify/:importId", async (req, res): Promise<void> => {
   try {
     const importId = parseInt(req.params.importId, 10);
@@ -528,19 +528,36 @@ router.post("/test-notify/:importId", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Import tidak ditemukan" });
       return;
     }
-    if (imp.type !== "performance") {
-      res.status(400).json({ error: "Hanya support tipe performance" });
-      return;
+
+    const target = String(req.query.target || "all");
+
+    if (imp.type === "performance") {
+      if (target === "am") return res.status(400).json({ error: "Performance test only has am target" });
+      const result = await notifyPerformanceSnapshot(importId);
+      return res.json({ success: true, importId, period: imp.period, type: imp.type, target, ...result });
     }
 
-    const result = await notifyPerformanceSnapshot(importId);
-    res.json({
-      success: true,
-      importId,
-      period: imp.period,
-      type: imp.type,
-      ...result,
-    });
+    if (imp.type === "activity") {
+      const uploader = imp.uploadedByNik
+        ? await (async () => {
+            const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, imp.uploadedByNik!));
+            return u ? { nama: u.nama, role: u.role ?? "OFFICER", nik: u.nik ?? undefined } : undefined;
+          })()
+        : undefined;
+      if (target === "am" || target === "all") {
+        const r1 = await notifyActivitySnapshot(importId, uploader).catch(e => ({ error: e instanceof Error ? e.message : String(e) }));
+        if (target === "am") return res.json({ success: true, importId, period: imp.period, type: imp.type, target, ...r1 });
+        const r2 = await notifyManagerActivitySnapshot(importId, uploader).catch(e => ({ error: e instanceof Error ? e.message : String(e) }));
+        return res.json({ success: true, importId, period: imp.period, type: imp.type, target, am: r1, manager: r2 });
+      }
+      if (target === "manager") {
+        const r2 = await notifyManagerActivitySnapshot(importId, uploader).catch(e => ({ error: e instanceof Error ? e.message : String(e) }));
+        return res.json({ success: true, importId, period: imp.period, type: imp.type, target, manager: r2 });
+      }
+      return res.status(400).json({ error: `Unknown target: ${target}` });
+    }
+
+    res.status(400).json({ error: `Import type ${imp.type} belum disupport test-notify` });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[/test-notify]", msg);

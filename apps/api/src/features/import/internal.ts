@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dataImportsTable, performanceDataTable, accountManagersTable, salesFunnelTable, salesActivityTable, masterCustomerTable, telegramBulkLinksTable, appSettingsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { autoRegisterNewAms } from "./routes";
-import { notifyPerformanceSnapshot, notifyManagerSnapshot } from "../telegram/service";
+import { notifyPerformanceSnapshot, notifyManagerSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 import { logger } from "../../shared/logger";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -589,6 +589,30 @@ router.post("/import-activity", async (req, res): Promise<void> => {
 
   const amCount = new Set(cleaned.map(r => r.nik)).size;
 
+  // ── Send personalized snapshot notifications to all linked AMs
+  const uploader = uploadedByNik
+    ? await (async () => {
+        const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, uploadedByNik));
+        return u ? { nama: u.nama, role: u.role ?? "OFFICER", nik: u.nik ?? undefined } : undefined;
+      })()
+    : undefined;
+
+  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
+    logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
+  });
+  if (notifResult.sent > 0 || notifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Activity snapshot notifications sent");
+  }
+
+  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
+    logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in internal import");
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
+  });
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager activity snapshot notifications sent");
+  }
+
   res.json({
     success: true,
     rowsImported: count,
@@ -599,6 +623,10 @@ router.post("/import-activity", async (req, res): Promise<void> => {
     rawCount: rows.length,
     cleanedCount: cleaned.length,
     newAmDiscovered: newActAmCount,
+    notifSent: notifResult.sent,
+    notifFailed: notifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
     importId: imp.id,
   });
 });

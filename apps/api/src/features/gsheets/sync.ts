@@ -7,6 +7,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { cleanFunnelRows, cleanActivityRows, parseIndonesianNumber, slugify } from "../import/excel";
 import type { ParsedRow } from "../import/excel";
 import { logger } from "../../shared/logger";
+import { notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 
 export interface SheetInfo {
   title: string;
@@ -372,6 +373,16 @@ async function importActivitySheet(
           endDate_arr, picName_arr, picJobtitle_arr, picRole_arr, picPhone_arr, notes_arr,
           snap_arr, imp_arr]);
     }
+
+    await db.update(dataImportsTable).set({ rowsImported: cleaned.length }).where(eq(dataImportsTable.id, imp.id));
+
+    // ── Send snapshot notifications (best-effort, fire-and-forget)
+    notifyActivitySnapshot(imp.id).catch((err: unknown) => {
+      logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in gsheets sync");
+    });
+    notifyManagerActivitySnapshot(imp.id).catch((err: unknown) => {
+      logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in gsheets sync");
+    });
 
     return { sheetName: sheet.title, date, period, type: "activity", status: "imported", rowsImported: cleaned.length, message: `${cleaned.length} baris berhasil diimport dari ${rows.length} baris mentah` };
   } catch (err: any) {
