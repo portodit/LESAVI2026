@@ -128,6 +128,25 @@ vps_poller.ts
 # Local node modules override / build artifacts
 apps/api/.env
 
+# Catatan: JANGAN pakai pola `*.ts` di sini — semua source TypeScript app
+# akan ikut ter-ignore dan file baru tidak bisa di-commit.
+#
+# `*.cjs` dipakai untuk menyembunyikan file debug/scratch (file .cjs sudah
+# tracked tetap terbawa oleh git).
+#
+# Isi folder `scripts/` mostly berisi file scratch/hasil debug, tapi
+# `deploy.sh` & `post-merge.sh` HARUS ikut ter-deploy ke server, jadi pakai
+# pola `scripts/*` (bukan `scripts/`) supaya foldernya sendiri tidak
+# di-exclude dan file tracked tetap bisa di-`git add` tanpa `-f`.
+*.cjs
+!packages/db/drizzle.config.cjs
+scripts/*
+!scripts/deploy.sh
+!scripts/post-merge.sh
+!scripts/package.json
+!scripts/tsconfig.json
+!scripts/src/
+
 # Task files
 TASK/
 TROUBLESHOOT/
