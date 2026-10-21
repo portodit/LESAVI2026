@@ -28,6 +28,8 @@ export const salesFunnelTable = pgTable("sales_funnel", {
   createdDate: text("created_date"),
   snapshotDate: text("snapshot_date"),
   tahunAnggaran: integer("tahun_anggaran"),
+  nikHandling: text("nik_handling"),
+  namaPembuatLop: text("nama_pembuat_lop"),
   importId: integer("import_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

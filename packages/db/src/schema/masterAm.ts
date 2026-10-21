@@ -7,6 +7,8 @@ export const masterCustomerTable = pgTable("master_customer", {
   nama: text("nama").notNull().unique(),
   segmen: text("segmen"),
   witel: text("witel").default("SURAMADU"),
+  divisiCc: text("divisi_cc"),
+  divisiAm: text("divisi_am"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
