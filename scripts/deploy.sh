@@ -40,25 +40,29 @@ if [ ! -f "$APP_DIR/.env" ]; then
 elif [ ! -f "$APP_DIR/packages/db/node_modules/drizzle-kit/bin.cjs" ]; then
   echo "    WARNING: drizzle-kit belum terinstall, push schema dilewati"
 else
-  # `drizzle-kit push` hanya meminta persetujuan interaktif bila ada statement
-  # destruktif terhadap tabel yang berisi data (drop kolom/tabel, truncate,
-  # ubah tipe). Pertanyaan muncul SEBELUM statement dieksekusi, dan stdin
-  # ditutup (</dev/null) sehingga prompt tidak pernah dijawab -> proses
-  # menggantung -> `timeout` membunuhnya -> tidak ada statement yang jalan.
+  # `drizzle-kit push` bisa memunculkan prompt persetujuan (hanji). Default
+  # yang ter-highlight di SEMUA prompt drizzle-kit push adalah opsi aman:
+  #   - constraint unik  -> "No, add the constraint without truncating the table"
+  #   - data-loss umum  -> "No, abort"
+  # Jadi cukup kirim "\r" (Enter) berkala: constraint tetap ditambahkan tanpa
+  # truncate, dan statement destruktif lain di-abort (tidak ada yang berubah).
   #
-  # CATATAN: drizzle-kit internally melakukan `try { ... } catch { console.error }`
+  # stdin TIDAK boleh ditutup (</dev/null) karena kalau ditutup prompt akan
+  # menggantung selamanya tanpa pernah terjawab.
+  #
+  # CATATAN: drizzle-kit internal melakukan `try { ... } catch { console.error }`
   # sehingga SQL yang GAGAL tetap menghasilkan exit code 0. Karena itu exit code
   # saja tidak cukup; output juga harus memuat penanda sukses.
   #
   # .env dibaca lewat `node --env-file` (bukan `source`) supaya nilai rahasia
   # tidak ikut ter-parse sebagai shell.
   set +e
-  DB_OUT=$(cd "$APP_DIR/packages/db" && timeout 120 node --env-file="$APP_DIR/.env" ./node_modules/drizzle-kit/bin.cjs push --config ./drizzle.config.cjs --verbose 2>&1 </dev/null)
+  DB_OUT=$(cd "$APP_DIR/packages/db" && { ( for ((i=0; i<50; i++)); do sleep 4; printf '\r'; done ) | timeout 200 node --env-file="$APP_DIR/.env" ./node_modules/drizzle-kit/bin.cjs push --config ./drizzle.config.cjs --verbose; } 2>&1)
   DB_RC=$?
   set -e
   echo "$DB_OUT" | tail -30
   if [ "$DB_RC" = "124" ]; then
-    echo "    ERROR: drizzle push menunggu persetujuan (ada perubahan destruktif)."
+    echo "    ERROR: drizzle push timeout (menunggu persetujuan / hang)."
     echo "    Tidak ada perubahan yang diterapkan. Tinjau manual:"
     echo "    cd $APP_DIR/packages/db && node --env-file=$APP_DIR/.env ./node_modules/drizzle-kit/bin.cjs push --config ./drizzle.config.cjs"
     exit 1
@@ -68,7 +72,8 @@ else
     exit 1
   fi
   if ! printf '%s' "$DB_OUT" | grep -qE "Changes applied|No changes detected"; then
-    echo "    ERROR: drizzle push tidak menghasilkan penanda sukses (kemungkinan SQL error)."
+    echo "    ERROR: drizzle push tidak menghasilkan penanda sukses."
+    echo "    Kemungkinan SQL error atau statement destruktif di-abort."
     echo "    Deploy dibatalkan agar tidak lanjut dengan schema yang tidak sinkron."
     exit 1
   fi
