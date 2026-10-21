@@ -142,6 +142,7 @@ apps/api/.env
 !packages/db/drizzle.config.cjs
 scripts/*
 !scripts/deploy.sh
+!scripts/db-push.sh
 !scripts/post-merge.sh
 !scripts/package.json
 !scripts/tsconfig.json

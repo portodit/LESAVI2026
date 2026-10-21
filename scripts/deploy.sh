@@ -34,50 +34,23 @@ if [ ! -f "$APP_DIR/apps/dashboard/dist/public/index.html" ]; then
 fi
 echo "==> [5/7] Dashboard build diambil dari git (tidak di-build di server)"
 
-echo "==> [6/7] Push schema DB"
-if [ ! -f "$APP_DIR/.env" ]; then
-  echo "    WARNING: $APP_DIR/.env tidak ada, push schema dilewati"
-elif [ ! -f "$APP_DIR/packages/db/node_modules/drizzle-kit/bin.cjs" ]; then
-  echo "    WARNING: drizzle-kit belum terinstall, push schema dilewati"
-else
-  # `drizzle-kit push` bisa memunculkan prompt persetujuan (hanji). Default
-  # yang ter-highlight di SEMUA prompt drizzle-kit push adalah opsi aman:
-  #   - constraint unik  -> "No, add the constraint without truncating the table"
-  #   - data-loss umum  -> "No, abort"
-  # Jadi cukup kirim "\r" (Enter) berkala: constraint tetap ditambahkan tanpa
-  # truncate, dan statement destruktif lain di-abort (tidak ada yang berubah).
-  #
-  # stdin TIDAK boleh ditutup (</dev/null) karena kalau ditutup prompt akan
-  # menggantung selamanya tanpa pernah terjawab.
-  #
-  # CATATAN: drizzle-kit internal melakukan `try { ... } catch { console.error }`
-  # sehingga SQL yang GAGAL tetap menghasilkan exit code 0. Karena itu exit code
-  # saja tidak cukup; output juga harus memuat penanda sukses.
-  #
-  # .env dibaca lewat `node --env-file` (bukan `source`) supaya nilai rahasia
-  # tidak ikut ter-parse sebagai shell.
-  set +e
-  DB_OUT=$(cd "$APP_DIR/packages/db" && { ( for ((i=0; i<50; i++)); do sleep 4; printf '\r'; done ) | timeout 200 node --env-file="$APP_DIR/.env" ./node_modules/drizzle-kit/bin.cjs push --config ./drizzle.config.cjs --verbose; } 2>&1)
-  DB_RC=$?
-  set -e
-  echo "$DB_OUT" | tail -30
-  if [ "$DB_RC" = "124" ]; then
-    echo "    ERROR: drizzle push timeout (menunggu persetujuan / hang)."
-    echo "    Tidak ada perubahan yang diterapkan. Tinjau manual:"
-    echo "    cd $APP_DIR/packages/db && node --env-file=$APP_DIR/.env ./node_modules/drizzle-kit/bin.cjs push --config ./drizzle.config.cjs"
-    exit 1
-  fi
-  if [ "$DB_RC" != "0" ]; then
-    echo "    ERROR: drizzle push gagal (rc=$DB_RC), deploy dibatalkan"
-    exit 1
-  fi
-  if ! printf '%s' "$DB_OUT" | grep -qE "Changes applied|No changes detected"; then
-    echo "    ERROR: drizzle push tidak menghasilkan penanda sukses."
-    echo "    Kemungkinan SQL error atau statement destruktif di-abort."
-    echo "    Deploy dibatalkan agar tidak lanjut dengan schema yang tidak sinkron."
-    exit 1
-  fi
-fi
+echo "==> [6/7] Schema DB: tidak di-push otomatis (lihat catatan di bawah)"
+cat <<'NOTES'
+    DB produksi TIDAK dikelola oleh drizzle-kit push. History-nya dibuat dari
+    SQL migration + DDL yang dijalankan aplikasi, sehingga constraint, index,
+    dan precision kolomnya berbeda dari file schema di repo.
+
+    Push otomatis berbahaya: di DB produksi drizzle akan DROP TABLE
+    "user_sessions" (dipakai connect-pg-simple untuk session login),
+    DROP VIEW "accounts", drop 13 FK/unique constraint, drop 17 index, dan
+    mengubah precision kolom numerik performance_data (numeric(24,10) ->
+    numeric(20,4)) — itu berisiko merusak data.
+
+    Kalau memang perlu menyinkronkan schema, jalankan manual:
+      bash /var/www/lesavi/scripts/db-push.sh
+    Script itu non-interaktif, menolak opsi truncate, dan menolak perubahan
+    destruktif (data-loss) dengan cara membatalkan seluruh push.
+NOTES
 
 echo "==> [7/7] Swap aset dashboard ke nginx + restart API"
 STAGE="$APP_DIR/public.new"
