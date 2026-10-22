@@ -22,24 +22,47 @@ Auto-deploy hook   : /var/www/lesavi/.git/hooks/post-merge
 > Dokumen ini pernah memakai layout lama (`/home/ivalora/LESAVI-SURAMADU`, port
 > 8080, pm2 `lesavi-suramadu`). Semua itu sudah tidak berlaku.
 
-## Alur Deploy (otomatis)
+## Alur Deploy (MANUAL — tidak ada CI/pull di server)
 ```
+laptop: pnpm --filter @workspace/dashboard run build   # WAJIB build di laptop
+laptop: git add apps/dashboard/dist/public && git commit
 laptop: git push origin fresh-upload
-   ↓
-server: git pull origin fresh-upload
-   ↓ post-merge hook
-server: scripts/deploy.sh
+   ↓ (tidak ada apa-apa yang terjadi di VPS otomatis)
+server: ssh ivalora@103.183.74.104
+server: bash /var/www/lesavi/scripts/deploy.sh
    1. git fetch origin fresh-upload
    2. git reset --hard origin/fresh-upload
    3. pnpm install --no-frozen-lockfile
    4. build API          (pnpm --filter @workspace/api-server run build)
    5. dashboard dari git (TIDAK di-build di server)
-   6. push schema DB     (drizzle-kit push)
-   7. swap aset dashboard + pm2 restart lesavi-api + verifikasi
+   6. swap aset dashboard + pm2 restart lesavi-api + verifikasi
 ```
+
+> **Tidak ada CI, cron, systemd timer, atau webhook** yang menjalankan `git pull`
+> di server. `git push` dari laptop tidak mengubah apa pun di VPS sampai
+> `deploy.sh` dijalankan manual. Hook `post-merge` hanya bisa memicu
+> `deploy.sh`, tapi hook itu hanya fire kalau ada yang melakukan `git pull` —
+> dan `git pull` manual tidak disarankan karena working tree server sering
+> dirty (`apps/api/dist/*` ikut ter-commit) sehingga pull bisa abort.
+> Jalankan `deploy.sh` langsung: di dalamnya ada `git fetch` + `git reset --hard`
+> yang aman terhadap dirty tree.
+
+> **Schema DB tidak ikut deploy.** Dulu langkah 6 memanggil `drizzle-kit push`;
+> itu dihapus. Perubahan schema sekarang lewat alur terpisah di bawah —
+> manual dan idempotent.
 
 Verifikasi otomatis: `GET /api/healthz` harus 200 dan `https://lesavi-suramadu.biz.id/`
 harus 200. Kalau gagal, aset dashboard dikembalikan ke versi sebelumnya (rollback).
+
+### Opsional: GitHub Actions (`.github/workflows/deploy.yml`)
+File ini berisi workflow yang SSH ke VPS lalu `git pull --ff-only` saat ada push
+ke `fresh-upload`. **Belum aktif** (belum di-commit). Kalau nanti di-commit:
+- `DEPLOY_SSH_KEY` harus diisi di secret repo,
+- `git push` ke `fresh-upload` langsung menarik perubahan ke server,
+- alur manual (SSH + `deploy.sh`) tetap dipakai untuk hal yang butuh kontrol.
+
+Perhatikan: workflow ini hanya menarik repo; build API + swap aset tetap
+dikerjakan `scripts/deploy.sh` (dijalankan hook `post-merge` bila hook terpasang).
 
 ### Kenapa dashboard TIDAK di-build di server
 VPS cuma punya RAM 1.9 GB tanpa swap. `vite build` di server pernah kena
@@ -54,34 +77,101 @@ git add apps/dashboard/dist/public
 git commit -m "..."
 ```
 
-### Hook post-merge di server
+### Hook post-merge di server (opsional)
+Hook ini hanya memanggil `scripts/deploy.sh`; tidak ada yang memancing hook
+secara otomatis. Berguna kalau nanti ada yang mengaktifkan `git pull`
+berkala di server.
 ```bash
 cd /var/www/lesavi
 ln -sf /var/www/lesavi/scripts/post-merge.sh .git/hooks/post-merge
 chmod +x scripts/post-merge.sh
 ```
 
-## Schema DB (TIDAK di-push otomatis)
-`drizzle-kit push` **tidak** dijalankan di tengah deploy. DB produksi dibuat
-dari SQL migration + DDL aplikasi, jadi constraint/index/precision-nya
-berbeda dari file schema di repo. Preview read-only menunjukkan push akan
-menjalankan:
+## Schema DB (satu sumber kebenaran, TIDAK di-push otomatis)
+
+### Sumber kebenaran
+
+```
+packages/db/src/schema/*.ts      <- definisi tabel (sumber kebenaran)
+        |  node scripts/db-gen-ddl.mjs
+        v
+packages/db/sql/001_schema.sql    <- DDL kanonik, idempotent, di-commit
+        |  node scripts/db-sync.mjs --apply
+        v
+database (lokal / VPS)            <- selalu bisa dicek: db-sync.mjs --check
+```
+
+`packages/db/sql/001_schema.sql` dibuat dari schema `.ts` oleh
+`drizzle-kit generate` (baseline kosong), lalu diubah supaya idempotent:
+`CREATE TABLE IF NOT EXISTS` + constraint FK dijaga `pg_constraint`.
+
+### Larangan: jangan pakai `drizzle-kit push` lagi
+
+Push membandingkan schema dengan DB live dan cenderung **menjatuhkan** hal yang
+masih dipakai. Di DB produksi dia akan:
 
 ```
 DROP TABLE "user_sessions" CASCADE   <- dipakai connect-pg-simple (login)
-DROP TABLE "sessions_old" CASCADE
 DROP VIEW "public"."accounts"
 DROP CONSTRAINT ... (13 FK + unique)
 DROP INDEX ... (17 index)
 ALTER COLUMN ... SET DATA TYPE numeric(20,4)   <- precision data performa
 ```
 
-Kalau memang perlu sinkronkan schema, jalankan manual (dry-run dulu, tolak
-truncate, batalkan push bila ada data-loss):
+File `packages/db/drizzle/*.sql` + `packages/db/drizzle/meta/_journal.json`
+adalah **riwayat lama** yang tidak pernah konsisten (file 0002–0004 tidak
+pernah masuk journal, sehingga `drizzle-kit migrate` hanya menjalankan
+0000 & 0001). Jangan dipakai untuk sinkronisasi.
+
+### Sinkronkan schema (manual, di luar deploy)
 
 ```bash
-bash /var/www/lesavi/scripts/db-push.sh
+# di laptop: regenerate DDL kanonik setiap schema .ts berubah
+node scripts/db-gen-ddl.mjs
+git add packages/db/sql/001_schema.sql packages/db/src/schema
+git commit -m "feat(db): update schema"
+
+# di server (setelah repo ter-deploy):
+bash /var/www/lesavi/scripts/db-push.sh            # cek dulu, read-only
+bash /var/www/lesavi/scripts/db-push.sh --apply    # terapkan
 ```
+
+`db-sync` hanya melakukan perubahan yang aman & idempotent:
+- `CREATE TABLE IF NOT EXISTS` untuk tabel yang belum ada
+- `ADD COLUMN IF NOT EXISTS` untuk kolom yang kurang
+- pelebaran tipe (`varchar`→`text`, `numeric(20,4)`→`numeric(24,10)`, `real`→`numeric`)
+
+Perubahan berisiko **dilewati dan dilaporkan**, bukan dipaksa:
+- `text`→`numeric` kalau ada nilai yang bukan angka
+- `varchar`→`varchar(n)` kalau ada nilai lebih panjang dari n
+- timezone dengan/ tanpa zona (berbeda makna)
+- kolom/tabel ekstra yang tidak ada di schema
+
+Untuk membandingkan tanpa tersambung ke DB (mis. audit snapshot produksi):
+
+```bash
+python scripts/prod_schema_dump.py            # ambil snapshot (read-only)
+node scripts/db-schema-diff.mjs <snapshot.json>
+```
+
+### Audit drift 2026-10-22
+
+DB lokal tertinggal dari schema (13 kolom belum ada) karena `create-tables.mts`
+lama masih dipakai sebagai sumber definisi tabel kedua. Setelah dibersihkan:
+
+| Perbedaan | Lokal | VPS | Sumber kebenaran |
+|---|---|---|---|
+| `auth_logs.session_id` | ada | **belum ada** | ada di schema |
+| `performance_data.*` numeric | `numeric(24,10)` | **`numeric(20,4)`** | `numeric(24,10)` |
+| `performance_data.ach_rate*` | `numeric(24,16)` | **`numeric(20,10)`** | `numeric(24,16)` |
+| `performance_data.proporsi` | `real` | **`text`** | `numeric(24,16)` |
+| `account_managers.status` & 3 kolom telegram | `varchar` | `text` | `text` |
+| `presentation_sessions.token` | `varchar(64)` | **`varchar` (tanpa batas)** | `varchar(64)` |
+| `app_settings.telegram_bot_username` | `text` | **`varchar(255)`** | `text` |
+| objek legacy | `presentation_session_store` | `accounts` (view), `sessions_old` | tidak ada di schema |
+
+Lokal sudah disinkronkan (lengkap dengan `db-sync --apply`). VPS masih punya
+selisih di atas — perlu dijalankan manual di server.
 
 Config drizzle wajib `.cjs` (bukan `.ts`/`.mts`): drizzle-kit memuat file
 config lewat `require()`, sedangkan package ini `"type": "module"`. Path

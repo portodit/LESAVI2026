@@ -8,8 +8,9 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.cjs",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.cjs"
+    "sync": "node --env-file=../../.env ../../scripts/db-sync.mjs --apply",
+    "check": "node --env-file=../../.env ../../scripts/db-sync.mjs --check",
+    "gen": "node ../../scripts/db-gen-ddl.mjs"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

@@ -223,8 +223,9 @@ export const presentationSessionsTable = pgTable("presentation_sessions", {
   userNik: varchar("user_nik", { length: 50 }),
   userNama: varchar("user_nama", { length: 255 }).notNull(),
   userRole: varchar("user_role", { length: 50 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Tanpa timezone, mengikuti DDL runtime aplikasi (TIMESTAMP(6)).
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
 });
 
 export const presentationSessionsRelations = relations(presentationSessionsTable, ({ one }) => ({

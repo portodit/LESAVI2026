@@ -40,16 +40,18 @@ cat <<'NOTES'
     SQL migration + DDL yang dijalankan aplikasi, sehingga constraint, index,
     dan precision kolomnya berbeda dari file schema di repo.
 
-    Push otomatis berbahaya: di DB produksi drizzle akan DROP TABLE
-    "user_sessions" (dipakai connect-pg-simple untuk session login),
+    `drizzle-kit push` tidak boleh dipakai lagi: di DB produksi drizzle akan
+    DROP TABLE "user_sessions" (dipakai connect-pg-simple untuk session login),
     DROP VIEW "accounts", drop 13 FK/unique constraint, drop 17 index, dan
     mengubah precision kolom numerik performance_data (numeric(24,10) ->
     numeric(20,4)) — itu berisiko merusak data.
 
-    Kalau memang perlu menyinkronkan schema, jalankan manual:
-      bash /var/www/lesavi/scripts/db-push.sh
-    Script itu non-interaktif, menolak opsi truncate, dan menolak perubahan
-    destruktif (data-loss) dengan cara membatalkan seluruh push.
+    Alur resmi sekarang (sumber kebenaran: packages/db/src/schema/*.ts):
+      node scripts/db-gen-ddl.mjs        # regenerate DDL kanonik (di laptop)
+      bash /var/www/lesavi/scripts/db-push.sh            # cek (read-only)
+      bash /var/www/lesavi/scripts/db-push.sh --apply    # terapkan
+    db-sync hanya mengubah yang aman (ADD COLUMN, perluasan tipe) dan
+    melewati perubahan berisiko untuk diperiksa manual.
 NOTES
 
 echo "==> [7/7] Swap aset dashboard ke nginx + restart API"

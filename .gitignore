@@ -147,6 +147,11 @@ scripts/*
 !scripts/package.json
 !scripts/tsconfig.json
 !scripts/src/
+# tooling schema DB (harus ikut ke server untuk sinkronisasi)
+!scripts/db-sync.mjs
+!scripts/db-gen-ddl.mjs
+!scripts/db-schema-diff.mjs
+!scripts/prod_schema_dump.py
 
 # Task files
 TASK/

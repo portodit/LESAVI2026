@@ -11,6 +11,7 @@ export * from "./appSettings";
 export * from "./driveReadLogs";
 export * from "./masterAm";
 export * from "./pendingAmDiscoveries";
+export * from "./appSessions";
 
 // RBAC + Auth schemas (consolidated to avoid circular imports)
 export * from "./rbac";
