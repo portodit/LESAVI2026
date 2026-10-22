@@ -306,9 +306,16 @@ async function main() {
   if (DROP_LEGACY) {
     for (const t of before.extraTables) {
       if (!LEGACY_OBJECTS[t]) continue;
-      await client.query(`drop table if exists "${t}" cascade`);
-      await client.query(`drop view if exists "${t}" cascade`);
-      changes.push(`hapus objek legacy: ${t}`);
+      const kind = await client.query(
+        `select relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = 'public' and c.relname = $1`,
+        [t],
+      );
+      if (!kind.rows.length) continue;
+      const relkind = kind.rows[0].relkind;
+      const keyword = relkind === "v" ? "view" : relkind === "m" ? "materialized view" : "table";
+      await client.query(`drop ${keyword} if exists "${t}" cascade`);
+      changes.push(`hapus objek legacy (${keyword}): ${t}`);
     }
   }
 
