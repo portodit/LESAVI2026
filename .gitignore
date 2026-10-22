@@ -113,6 +113,9 @@ apps/telegram-import.log
 apps/_*.log
 apps/_server*.log
 apps/dashboard/cookies_e2e.txt
+apps/dashboard/dev.log
+/api-server.log
+__pycache__/
 /dashboard/
 funnel_converter/
 import_performance_backup.zip
