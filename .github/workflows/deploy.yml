@@ -1,0 +1,61 @@
+name: Deploy ke VPS
+
+on:
+  push:
+    branches: [fresh-upload]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-lesavi
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy ke 103.183.74.104
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/known_hosts <<'KNOWN_HOSTS'
+          103.183.74.104 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCjFjhLug2QSPgmV4pR1ZdK+/EfORd06jVdonfmzj+rq86lr1Z6TjZW9fQG0zW26nXdKj/E/BvijVsDw4U1lUYYZK58qa8zncEcWMS2ZkOPbaQl+3Ej3iG0FL5MN7RLSgZswDwmvoslFqM7vV5+YQfu3NZTBdnuUCym9BGjHoREh4ueEahSxja5eLru7xk0fkWeYum+qF5Lr+iSmOfVJjddyfNcfqUOcEIobTrMCOtHPDIykXSrD4Ngmv9KBlCKHluTH7vBlY0h/gr/7bm2kuT6x8JQOXP7N9PFl29G7a3OCkJyMFd0No2CW2J1+Iy7N/xRQLcpqeHssROT+Krn+Pj+ZsJBX2NVfxUvgRUbCDHEtXBOLmVjovgCoKvT36HswwkdHVHTYFhKHQ0EZE2c5QLjR+DHE4QheBapbfCYSUhSJHUFZnh91RUaYDxEKRweDndkrI1AeB558rTUGYf75wQxskHl5xZ86gzS0d19FE4sxtLgSl1IAMjV6Edwu2AgWB8=
+          103.183.74.104 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB40geCmAHzW0okVJ6caisCOqvwtEWAT12ye8g1N7PEC
+          KNOWN_HOSTS
+
+      # deploy.sh = fetch + reset --hard + pnpm install + build API +
+      # swap aset dashboard + pm2 restart + verifikasi (rollback bila gagal).
+      # Dashboard tidak di-build di server (RAM 1.9GB tanpa swap -> OOM).
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes ivalora@103.183.74.104 \
+            'bash /var/www/lesavi/scripts/deploy.sh'
+
+      - name: Verifikasi
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes ivalora@103.183.74.104 '
+            set -e
+            cd /var/www/lesavi
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8081/api/healthz || echo 000)
+            echo "api /api/healthz -> $code"
+            [ "$code" = "200" ]
+
+            served=$(sha256sum public/index.html | cut -d" " -f1)
+            expected=$(git show HEAD:apps/dashboard/dist/public/index.html | sha256sum | cut -d" " -f1)
+            echo "aset dilayani : $served"
+            echo "aset di HEAD  : $expected"
+            if [ "$served" != "$expected" ]; then
+              echo "Deploy tidak konsisten: aset yang dilayani bukan dari HEAD." >&2
+              exit 1
+            fi
+
+            pm2 jlist | node -e "
+              let d=\"\";process.stdin.on(\"data\",c=>d+=c).on(\"end\",()=>{
+                const p=JSON.parse(d).find(x=>x.name===\"lesavi-api\");
+                console.log(\"pm2 lesavi-api status:\", p.pm2_env.status);
+                if (p.pm2_env.status !== \"online\") process.exit(1);
+              });"
+          '

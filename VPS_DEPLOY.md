@@ -54,15 +54,18 @@ server: bash /var/www/lesavi/scripts/deploy.sh
 Verifikasi otomatis: `GET /api/healthz` harus 200 dan `https://lesavi-suramadu.biz.id/`
 harus 200. Kalau gagal, aset dashboard dikembalikan ke versi sebelumnya (rollback).
 
-### Opsional: GitHub Actions (`.github/workflows/deploy.yml`)
-File ini berisi workflow yang SSH ke VPS lalu `git pull --ff-only` saat ada push
-ke `fresh-upload`. **Belum aktif** (belum di-commit). Kalau nanti di-commit:
+### GitHub Actions (`.github/workflows/deploy.yml`)
+File ini berisi workflow yang SSH ke VPS lalu menjalankan `scripts/deploy.sh`
+saat ada push ke `fresh-upload`. **Belum aktif** (belum di-commit). Kalau nanti
+di-commit:
 - `DEPLOY_SSH_KEY` harus diisi di secret repo,
-- `git push` ke `fresh-upload` langsung menarik perubahan ke server,
+- `git push` ke `fresh-upload` langsung menarik perubahan ke server, build API,
+  swap aset dashboard, restart PM2, dan verifikasi,
 - alur manual (SSH + `deploy.sh`) tetap dipakai untuk hal yang butuh kontrol.
 
-Perhatikan: workflow ini hanya menarik repo; build API + swap aset tetap
-dikerjakan `scripts/deploy.sh` (dijalankan hook `post-merge` bila hook terpasang).
+Workflow memanggil `deploy.sh` yang sama dengan alur manual — bukan `git pull`
+saja — supaya API ikut di-build ulang. Kalau hanya menarik repo, PM2 tetap
+menjalankan bundle lama dan verifikasi bisa lolos padahal server belum sinkron.
 
 ### Kenapa dashboard TIDAK di-build di server
 VPS cuma punya RAM 1.9 GB tanpa swap. `vite build` di server pernah kena
@@ -159,7 +162,7 @@ node scripts/db-schema-diff.mjs <snapshot.json>
 DB lokal tertinggal dari schema (13 kolom belum ada) karena `create-tables.mts`
 lama masih dipakai sebagai sumber definisi tabel kedua. Setelah dibersihkan:
 
-| Perbedaan | Lokal | VPS | Sumber kebenaran |
+| Perbedaan | Lokal | VPS (sebelum) | Sumber kebenaran |
 |---|---|---|---|
 | `auth_logs.session_id` | ada | **belum ada** | ada di schema |
 | `performance_data.*` numeric | `numeric(24,10)` | **`numeric(20,4)`** | `numeric(24,10)` |
@@ -170,8 +173,14 @@ lama masih dipakai sebagai sumber definisi tabel kedua. Setelah dibersihkan:
 | `app_settings.telegram_bot_username` | `text` | **`varchar(255)`** | `text` |
 | objek legacy | `presentation_session_store` | `accounts` (view), `sessions_old` | tidak ada di schema |
 
-Lokal sudah disinkronkan (lengkap dengan `db-sync --apply`). VPS masih punya
-selisih di atas — perlu dijalankan manual di server.
+**Status akhir: kedua DB sudah COCOK dengan schema.** Di VPS diterapkan 16
+perubahan (tambah `auth_logs.session_id`, lebarkan/selaraskan tipe numerik,
+`varchar(255)`→`text`, `varchar`→`varchar(64)`), lalu objek legacy `accounts`
+& `sessions_old` dihapus. Di lokal `presentation_session_store` dihapus.
+
+Efek samping yang ikut teratasi: `apps/api/src/shared/auth.ts` selalu
+menyisipkan `session_id` ke `auth_logs` (dalam try/catch), jadi di produksi
+sebelum sinkronisasi audit log login gagal diam-diam karena kolomnya belum ada.
 
 Config drizzle wajib `.cjs` (bukan `.ts`/`.mts`): drizzle-kit memuat file
 config lewat `require()`, sedangkan package ini `"type": "module"`. Path
