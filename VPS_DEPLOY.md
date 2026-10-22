@@ -22,62 +22,83 @@ Auto-deploy hook   : /var/www/lesavi/.git/hooks/post-merge
 > Dokumen ini pernah memakai layout lama (`/home/ivalora/LESAVI-SURAMADU`, port
 > 8080, pm2 `lesavi-suramadu`). Semua itu sudah tidak berlaku.
 
-## Alur Deploy (MANUAL — tidak ada CI/pull di server)
+## Alur Deploy (OTOMATIS lewat GitHub Actions)
 ```
-laptop: pnpm --filter @workspace/dashboard run build   # WAJIB build di laptop
-laptop: git add apps/dashboard/dist/public && git commit
-laptop: git push origin fresh-upload
-   ↓ (tidak ada apa-apa yang terjadi di VPS otomatis)
-server: ssh ivalora@103.183.74.104
-server: bash /var/www/lesavi/scripts/deploy.sh
-   1. git fetch origin fresh-upload
-   2. git reset --hard origin/fresh-upload
-   3. pnpm install --no-frozen-lockfile
-   4. build API          (pnpm --filter @workspace/api-server run build)
-   5. dashboard dari git (TIDAK di-build di server)
-   6. swap aset dashboard + pm2 restart lesavi-api + verifikasi
+laptop: git commit && git push origin fresh-upload
+   ↓ GitHub Actions runner (ubuntu-latest, RAM 7-16GB — BUKAN VPS)
+   1. checkout + pnpm install --no-frozen-lockfile
+   2. pnpm --filter @workspace/dashboard run build   <-- build dashboard di sini
+   3. tar -> scp ke VPS: /var/www/lesavi/.incoming/dashboard.tar.gz
+   ↓ SSH ke VPS, jalankan scripts/deploy.sh
+   4. git fetch + git reset --hard origin/fresh-upload
+   5. pnpm install --no-frozen-lockfile
+   6. build API          (pnpm --filter @workspace/api-server run build)
+   7. ambil aset dari .incoming/ (TIDAK build dashboard di server)
+   8. swap aset dashboard + pm2 restart lesavi-api + verifikasi (rollback bila gagal)
 ```
 
-> **Tidak ada CI, cron, systemd timer, atau webhook** yang menjalankan `git pull`
-> di server. `git push` dari laptop tidak mengubah apa pun di VPS sampai
-> `deploy.sh` dijalankan manual. Hook `post-merge` hanya bisa memicu
-> `deploy.sh`, tapi hook itu hanya fire kalau ada yang melakukan `git pull` —
-> dan `git pull` manual tidak disarankan karena working tree server sering
-> dirty (`apps/api/dist/*` ikut ter-commit) sehingga pull bisa abort.
-> Jalankan `deploy.sh` langsung: di dalamnya ada `git fetch` + `git reset --hard`
-> yang aman terhadap dirty tree.
+**Kenapa dashboard di-build di Actions runner, bukan di VPS:** VPS cuma punya
+RAM 1967 MB tanpa swap (measured: available ~813 MB). `vite build` butuh
+±1.5–2 GB dan kena OOM-killer (exit 137) — efeknya bukan sekadar build gagal,
+`temporary` folder aset sempat kosong dan situs produksi jadi 403. Runner
+GitHub Actions bukan VPS, jadi aman.
 
-> **Schema DB tidak ikut deploy.** Dulu langkah 6 memanggil `drizzle-kit push`;
-> itu dihapus. Perubahan schema sekarang lewat alur terpisah di bawah —
-> manual dan idempotent.
+**Kenapa tidak `pnpm run build` di root:** script itu menjalankan typecheck
+dulu, dan typecheck repo ini masih gagal (`lib/api-zod`,
+`packages/db/src/schema/performanceData.ts`). Workflow memanggil build per-paket
+secara langsung.
 
-Verifikasi otomatis: `GET /api/healthz` harus 200 dan `https://lesavi-suramadu.biz.id/`
-harus 200. Kalau gagal, aset dashboard dikembalikan ke versi sebelumnya (rollback).
+> **Schema DB tidak ikut deploy.** Perubahan schema lewat alur terpisah di bawah
+> — manual dan idempotent. Kalau schema berubah, jalankan `db-push.sh --apply`
+> setelah deploy.
+
+Verifikasi otomatis: `GET /api/healthz` 200, `https://lesavi-suramadu.biz.id/`
+200, `pm2` `lesavi-api` online, dan checksum `public/index.html` yang dilayani
+nginx harus sama dengan hasil build. Kalau gagal, aset dashboard dikembalikan ke
+versi sebelumnya (rollback).
+
+### Deploy manual (kalau perlu kontrol penuh)
+```bash
+# di laptop
+pnpm --filter @workspace/dashboard run build
+tar czf /tmp/dashboard.tar.gz -C apps/dashboard/dist/public .
+scp /tmp/dashboard.tar.gz ivalora@103.183.74.104:/var/www/lesavi/.incoming/
+ssh ivalora@103.183.74.104 'bash /var/www/lesavi/scripts/deploy.sh'
+```
+`deploy.sh` memakai `.incoming/dashboard.tar.gz` kalau ada; kalau tidak ada, ia
+memakai `apps/dashboard/dist/public` yang ada di git. Kalau keduanya tidak ada,
+script abort **tanpa menyentuh situs yang sedang berjalan**.
+
+Jangan pernah menjalankan `git pull` manual di server: working tree sering dirty
+karena `apps/api/dist/*` ikut ter-commit, jadi pull bisa abort. `deploy.sh`
+memakai `git fetch` + `git reset --hard` yang aman terhadap dirty tree.
 
 ### GitHub Actions (`.github/workflows/deploy.yml`)
-File ini berisi workflow yang SSH ke VPS lalu menjalankan `scripts/deploy.sh`
-saat ada push ke `fresh-upload`. **Belum aktif** (belum di-commit). Kalau nanti
-di-commit:
-- `DEPLOY_SSH_KEY` harus diisi di secret repo,
-- `git push` ke `fresh-upload` langsung menarik perubahan ke server, build API,
-  swap aset dashboard, restart PM2, dan verifikasi,
-- alur manual (SSH + `deploy.sh`) tetap dipakai untuk hal yang butuh kontrol.
+Sudah aktif. Tiap push ke `fresh-upload` menjalankan workflow di atas. Secret
+`DEPLOY_SSH_KEY` (kunci ED25519 `github-actions-lesavi-deploy`) sudah dibuat
+di secret repo `portodit/LESAVI2026`.
 
-Workflow memanggil `deploy.sh` yang sama dengan alur manual — bukan `git pull`
-saja — supaya API ikut di-build ulang. Kalau hanya menarik repo, PM2 tetap
-menjalankan bundle lama dan verifikasi bisa lolos padahal server belum sinkron.
+Kalau tidak ingin auto-deploy: matikan workflow di tab Actions, atau jangan
+push ke `fresh-upload`.
+
+### Menghapus `apps/dashboard/dist/public` dari git
+Saat ini hasil build dashboard masih ikut ter-commit (21 file). Setelah alur
+tarball → `.incoming/` stabil, folder itu bisa di-`git rm --cached` supaya repo
+tidak penuh aset binaire. Jangan dihapus sebelum alur tarball terbukti jalan
+beberapa kali.
 
 ### Kenapa dashboard TIDAK di-build di server
 VPS cuma punya RAM 1.9 GB tanpa swap. `vite build` di server pernah kena
 OOM-killer (exit 137) yang mengosongkan `public/` → situs produksi 403/mati.
-Karena itu build dashboard dilakukan di laptop, lalu hasilnya
-(`apps/dashboard/dist/public`) ikut di-commit & di-push.
+Karena itu build dashboard berjalan di **GitHub Actions runner** (RAM 7–16 GB),
+lalu hasilnya dikirim ke VPS sebagai `.incoming/dashboard.tar.gz`. `deploy.sh`
+tidak pernah menjalankan `vite build`.
 
+Perlu darurat (Actions down / mau deploy dari laptop):
 ```bash
-# di laptop, sebelum push
 pnpm --filter @workspace/dashboard run build
-git add apps/dashboard/dist/public
-git commit -m "..."
+tar czf /tmp/dashboard.tar.gz -C apps/dashboard/dist/public .
+scp /tmp/dashboard.tar.gz ivalora@103.183.74.104:/var/www/lesavi/.incoming/
 ```
 
 ### Hook post-merge di server (opsional)

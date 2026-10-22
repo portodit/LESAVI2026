@@ -6,8 +6,10 @@
 # CATATAN PENTING:
 #  Dashboard (vite build) TIDAK dibangun di server. Server hanya punya RAM 1.9GB
 #  tanpa swap, dan vite build akan kena OOM-killer (exit 137) yang sempat
-#  mengosongkan folder public/ => situs produksi mati. Build dashboard dilakukan
-#  di laptop, hasilnya (apps/dashboard/dist/public) ikut di-commit & push.
+#  mengosongkan folder public/ => situs produksi mati. Build dashboard berjalan
+#  di GitHub Actions runner, lalu dikirim sebagai .incoming/dashboard.tar.gz.
+#  Deploy manual: tar -czf /tmp/dashboard.tar.gz -C apps/dashboard/dist/public .
+#  lalu taruh di /var/www/lesavi/.incoming/ sebelum menjalankan script ini.
 set -euo pipefail
 
 APP_DIR="/var/www/lesavi"
@@ -26,13 +28,36 @@ pnpm install --no-frozen-lockfile
 echo "==> [4/7] Build API"
 pnpm --filter @workspace/api-server run build
 
-if [ ! -f "$APP_DIR/apps/dashboard/dist/public/index.html" ]; then
-  echo "    ERROR: apps/dashboard/dist/public tidak ada di git."
-  echo "    Build dashboard di laptop dulu: pnpm --filter @workspace/dashboard run build"
-  echo "    lalu commit + push apps/dashboard/dist/public."
+# Aset dashboard TIDAK di-build di server (RAM 1.9GB tanpa swap -> vite build
+# kena OOM-killer). Sumbernya salah satu:
+#   1. tarball dari GitHub Actions di .incoming/dashboard.tar.gz (preferred), atau
+#   2. apps/dashboard/dist/public yang ada di git (fallback untuk deploy manual).
+ASSET_TARBALL="$APP_DIR/.incoming/dashboard.tar.gz"
+ASSET_DIR="$APP_DIR/apps/dashboard/dist/public"
+
+echo "==> [5/7] Siapkan aset dashboard"
+rm -rf "$ASSET_DIR"
+mkdir -p "$ASSET_DIR"
+if [ -f "$ASSET_TARBALL" ]; then
+  echo "    memakai aset dari GitHub Actions"
+  tar xzf "$ASSET_TARBALL" -C "$ASSET_DIR" --strip-components=1
+elif git cat-file -e "HEAD:apps/dashboard/dist/public/index.html" 2>/dev/null; then
+  echo "    memakai aset dari git (deploy manual)"
+  git checkout HEAD -- apps/dashboard/dist/public 2>/dev/null || true
+else
+  echo "    ERROR: tidak ada aset dashboard."
+  echo "    Untuk deploy manual: pnpm --filter @workspace/dashboard run build"
+  echo "    lalu commit apps/dashboard/dist/public, atau tar lalu taruh di $ASSET_TARBALL"
   exit 1
 fi
-echo "==> [5/7] Dashboard build diambil dari git (tidak di-build di server)"
+
+if [ ! -f "$ASSET_DIR/index.html" ] || [ ! -d "$ASSET_DIR/assets" ]; then
+  echo "    ERROR: aset dashboard tidak lengkap, abort (situs lama tidak disentuh)"
+  exit 1
+fi
+# Tarball baru dibuang setelah aset dipastikan lengkap, supaya deploy yang
+# gagal masih bisa diulang tanpa mengirim ulang.
+rm -f "$ASSET_TARBALL"
 
 echo "==> [6/7] Schema DB: tidak di-push otomatis (lihat catatan di bawah)"
 cat <<'NOTES'
@@ -58,7 +83,7 @@ echo "==> [7/7] Swap aset dashboard ke nginx + restart API"
 STAGE="$APP_DIR/public.new"
 BACKUP="$APP_DIR/public.old"
 rm -rf "$STAGE"
-cp -r "$APP_DIR/apps/dashboard/dist/public" "$STAGE"
+cp -r "$ASSET_DIR" "$STAGE"
 if [ ! -f "$STAGE/index.html" ] || [ ! -d "$STAGE/assets" ]; then
   echo "    ERROR: build dashboard tidak lengkap, abort (situs lama tidak disentuh)"
   exit 1

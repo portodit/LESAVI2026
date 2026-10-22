@@ -11,11 +11,44 @@ concurrency:
 
 jobs:
   deploy:
-    name: SSH deploy ke 103.183.74.104
+    name: Build dashboard + deploy ke 103.183.74.104
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.9.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # Build dashboard DI RUNNER INI, bukan di VPS. VPS cuma punya RAM
+      # 1.9 GB tanpa swap; vite build di sana kena OOM-killer (exit 137)
+      # yang sempat mengosongkan public/ dan mematikan situs produksi.
+      #
+      # Panggil build per-paket secara langsung: `pnpm run build` di root
+      # menjalankan typecheck lebih dulu dan typecheck repo ini masih gagal
+      # (lib/api-zod, packages/db/src/schema/performanceData.ts).
+      - name: Build dashboard
+        run: pnpm --filter @workspace/dashboard run build
+
+      - name: Cek hasil build
+        run: |
+          test -f apps/dashboard/dist/public/index.html
+          test -d apps/dashboard/dist/public/assets
+          ls -la apps/dashboard/dist/public
+
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -26,9 +59,16 @@ jobs:
           103.183.74.104 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB40geCmAHzW0okVJ6caisCOqvwtEWAT12ye8g1N7PEC
           KNOWN_HOSTS
 
+      - name: Kirim aset dashboard ke VPS
+        run: |
+          tar czf /tmp/dashboard.tar.gz -C apps/dashboard/dist/public .
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes /tmp/dashboard.tar.gz \
+            ivalora@103.183.74.104:/tmp/dashboard.tar.gz
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes ivalora@103.183.74.104 \
+            'mkdir -p /var/www/lesavi/.incoming && mv /tmp/dashboard.tar.gz /var/www/lesavi/.incoming/'
+
       # deploy.sh = fetch + reset --hard + pnpm install + build API +
-      # swap aset dashboard + pm2 restart + verifikasi (rollback bila gagal).
-      # Dashboard tidak di-build di server (RAM 1.9GB tanpa swap -> OOM).
+      # pakai aset dari .incoming/ + pm2 restart + verifikasi (rollback bila gagal).
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes ivalora@103.183.74.104 \
@@ -44,11 +84,11 @@ jobs:
             [ "$code" = "200" ]
 
             served=$(sha256sum public/index.html | cut -d" " -f1)
-            expected=$(git show HEAD:apps/dashboard/dist/public/index.html | sha256sum | cut -d" " -f1)
+            built=$(sha256sum apps/dashboard/dist/public/index.html | cut -d" " -f1)
             echo "aset dilayani : $served"
-            echo "aset di HEAD  : $expected"
-            if [ "$served" != "$expected" ]; then
-              echo "Deploy tidak konsisten: aset yang dilayani bukan dari HEAD." >&2
+            echo "aset ter-build : $built"
+            if [ "$served" != "$built" ]; then
+              echo "Deploy tidak konsisten: nginx melayani aset berbeda dari hasil build." >&2
               exit 1
             fi
 
