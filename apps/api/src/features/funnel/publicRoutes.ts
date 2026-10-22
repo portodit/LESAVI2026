@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, salesFunnelTable, salesFunnelTargetTable, amFunnelTargetTable, dataImportsTable, accountManagersTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { matchesDivisi, expandDivisi } from "../../shared/divisi";
 
 const router: IRouter = Router();
@@ -221,6 +221,80 @@ router.get("/funnel", async (req, res): Promise<void> => {
 
   const shortage = targetFullHoVal > 0 ? targetFullHoVal - totalNilai : 0;
 
+  // ── Pergerakan LOP antar snapshot ───────────────────────────────────────────
+  // Bandingkan fase LOP yang sama di setiap snapshot funnel (terlama → terbaru)
+  // untuk memberi label BARU / NAIK / TURUN / STAGNAN + tanggal mulai perubahan.
+  const PHASE_ORDER = ["F0", "F1", "F2", "F3", "F4", "F5"];
+  const phaseIdx = (f: string | null) => { const i = PHASE_ORDER.indexOf(f || ""); return i < 0 ? -1 : i; };
+  const movements: Record<string, {
+    label: string; since: string | null; from: string | null; to: string | null;
+    history: { date: string; phase: string }[];
+  }> = {};
+
+  const isoDate = (d: Date | string | null | undefined) => (d instanceof Date ? d.toISOString() : String(d ?? ""));
+  const snapRows = (await db
+    .select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate })
+    .from(dataImportsTable)
+    .where(eq(dataImportsTable.type, "funnel")))
+    .filter(s => s.snapshotDate)
+    .map(s => ({ id: s.id, date: isoDate(s.snapshotDate) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const lopIds = [...new Set(allLops.map(l => l.lopid).filter(Boolean))] as string[];
+  if (snapRows.length > 0 && lopIds.length > 0) {
+    const histRows = await db
+      .select()
+      .from(salesFunnelTable)
+      .where(and(
+        inArray(salesFunnelTable.lopid, lopIds),
+        inArray(salesFunnelTable.importId, snapRows.map(s => s.id))
+      ));
+
+    const snapById = new Map(snapRows.map(s => [s.id, s.date]));
+    const taKey = (l: any) => String(l.tahunAnggaran ?? (l.reportDate ? String(l.reportDate).slice(0, 4) : ""));
+    // satu LOP bisa punya banyak baris dalam satu snapshot — ambil yang paling baru per (LOP, snapshot)
+    const byLop = new Map<string, Map<number, { date: string; phase: string | null; rowId: number }>>();
+    for (const r of histRows) {
+      const key = `${r.nikAm}|${r.lopid}|${taKey(r)}`;
+      let perSnap = byLop.get(key);
+      if (!perSnap) { perSnap = new Map(); byLop.set(key, perSnap); }
+      const prev = perSnap.get(r.importId);
+      if (!prev || prev.rowId < r.id) {
+        perSnap.set(r.importId, { date: snapById.get(r.importId) ?? "", phase: r.statusF ?? null, rowId: r.id });
+      }
+    }
+
+    for (const l of allLops) {
+      const perSnap = byLop.get(`${l.nikAm}|${l.lopid}|${taKey(l)}`);
+      const entries = perSnap
+        ? [...perSnap.values()].filter(e => e.phase).sort((a, b) => a.date.localeCompare(b.date))
+        : [];
+      if (entries.length === 0) continue;
+
+      const current = entries[entries.length - 1];
+      const history = entries.map(e => ({ date: e.date, phase: e.phase as string }));
+      if (entries.length === 1) {
+        movements[l.lopid] = { label: "baru", since: current.date, from: null, to: current.phase, history };
+        continue;
+      }
+      let lastDiff = -1;
+      for (let i = entries.length - 2; i >= 0; i--) if (entries[i].phase !== current.phase) { lastDiff = i; break; }
+      if (lastDiff < 0) {
+        movements[l.lopid] = { label: "stagnan", since: entries[0].date, from: null, to: current.phase, history };
+        continue;
+      }
+      const since = entries[lastDiff + 1];
+      const up = phaseIdx(current.phase) > phaseIdx(entries[lastDiff].phase);
+      movements[l.lopid] = {
+        label: up ? "naik" : "turun",
+        since: since.date,
+        from: entries[lastDiff].phase,
+        to: current.phase,
+        history,
+      };
+    }
+  }
+
   // AM-level annual targets
   const amTargetYear = tahun ? Number(tahun) : (() => {
     const importPeriod = import_id ? null : null; // resolved below
@@ -245,6 +319,7 @@ router.get("/funnel", async (req, res): Promise<void> => {
     amTargets,
     amTargetYear,
     availableTahunAnggaran,
+    movements,
     lops: allLops.map(l => ({
       id: l.id,
       lopid: l.lopid,

@@ -767,6 +767,254 @@ function kategoriColor(k: string): string {
   return "bg-amber-100 border border-amber-300 text-amber-800";
 }
 
+type Movement = { label: string; since: string | null; from: string | null; to: string | null; history: { date: string; phase: string }[] };
+
+const MOVEMENT_STYLE: Record<string, { bg: string; bd: string; fg: string; ic: string }> = {
+  baru:    { bg: "#f0f9ff", bd: "#bae6fd", fg: "#075985", ic: "✦" },
+  naik:    { bg: "#ecfdf5", bd: "#a7f3d0", fg: "#065f46", ic: "▲" },
+  turun:   { bg: "#fff1f2", bd: "#fecdd3", fg: "#be123c", ic: "▼" },
+  stagnan: { bg: "#fffbeb", bd: "#fde68a", fg: "#92400e", ic: "■" },
+};
+const movementStyle = (k: string) => MOVEMENT_STYLE[k] ?? MOVEMENT_STYLE.stagnan;
+const movementBadgeStyle = (k: string) => { const s = movementStyle(k); return { background: s.bg, borderColor: s.bd, color: s.fg }; };
+const MOVEMENT_LABEL: Record<string, string> = { baru: "Baru", naik: "Naik", turun: "Turun", stagnan: "Stagnan" };
+
+const MOVEMENT_LEGEND: { key: string; desc: string }[] = [
+  { key: "baru", desc: "Muncul pertama kali di snapshot tersebut." },
+  { key: "naik", desc: "Fase lebih maju dari snapshot sebelumnya." },
+  { key: "turun", desc: "Fase mundur dari snapshot sebelumnya." },
+  { key: "stagnan", desc: "Fase tidak berubah sejak snapshot tersebut." },
+];
+
+const ACCENT_INDIGO = "#4f46e5";
+const ACCENT_GREEN = "#059669";
+
+function movementSegments(history: { date: string; phase: string }[]) {
+  const segs: { phase: string; from: string; to: string; count: number; dates: string[] }[] = [];
+  for (const h of history) {
+    const last = segs[segs.length - 1];
+    if (last && last.phase === h.phase) { last.to = h.date; last.count++; last.dates.push(h.date); }
+    else segs.push({ phase: h.phase, from: h.date, to: h.date, count: 1, dates: [h.date] });
+  }
+  return segs;
+}
+
+function PergerakanDrawer({ mv, lop, onClose }: { mv: Movement; lop: any; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const [openSeg, setOpenSeg] = useState<number | null>(null);
+
+  const s = movementStyle(mv.label);
+  const segs = movementSegments(mv.history ?? []);
+  const last = segs.length ? segs[segs.length - 1] : null;
+  const curPhase = mv.to || last?.phase || "F0";
+  const curIdx = Math.max(FUNNEL_PHASES.indexOf(curPhase), 0);
+  const prevIdx = mv.from ? FUNNEL_PHASES.indexOf(mv.from) : -1;
+  const fill = curIdx === 5 ? ACCENT_GREEN : ACCENT_INDIGO;
+  const sinceTxt = mv.since ? shortSnap(mv.since) : "—";
+  const phaseName = (p: string) => FUNNEL_PHASE_LABELS[p] || "";
+
+  const delta = mv.label === "naik" ? `+${curIdx - prevIdx} fase`
+    : mv.label === "turun" ? `−${prevIdx - curIdx} fase`
+    : mv.label === "stagnan" ? `${last?.count ?? 1} snapshot`
+    : "Pertama tercatat";
+
+  const desc = mv.label === "stagnan" ? `Fase tidak berubah sejak ${sinceTxt} dan bertahan sampai snapshot terkini.`
+    : mv.label === "baru" ? `LOP ini baru pertama kali tercatat di snapshot ${sinceTxt}.`
+    : mv.label === "naik" ? `Fase naik dari ${mv.from} ke ${mv.to}, melangkah lebih dekat ke closing.`
+    : mv.label === "turun" ? `Fase mundur dari ${mv.from} ke ${mv.to}, kembali ke tahap yang lebih awal.`
+    : "";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex justify-end">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="relative w-full max-w-[420px] h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden">
+        {/* header */}
+        <div className="flex items-start justify-between gap-3 px-5 py-4 bg-secondary/50 border-b border-border shrink-0">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[.08em] text-muted-foreground">Riwayat Pergerakan</div>
+            <div className="mt-1 text-[17px] font-bold leading-tight truncate">{lop?.judulProyek || lop?.pelanggan || "—"}</div>
+            <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+              <span className="font-mono font-medium bg-card border border-border rounded-[5px] px-1.5 py-0.5 text-foreground">{lop?.lopid || "—"}</span>
+              {lop?.divisi ? (
+                <span className="font-medium bg-card border border-border rounded-[5px] px-1.5 py-0.5 text-foreground">{lop.divisi}</span>
+              ) : null}
+            </div>
+            {lop?.pelanggan ? <div className="mt-1 text-[12px] text-muted-foreground truncate">{lop.pelanggan}</div> : null}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Tutup"
+            className="shrink-0 w-8 h-8 rounded-[9px] border border-border bg-card text-muted-foreground hover:text-foreground grid place-items-center">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <section className="px-5 py-4 border-b border-border">
+            <div className="rounded-xl border p-4 flex items-center justify-between gap-3" style={{ background: s.bg, borderColor: s.bd }}>
+              <div className="flex items-center gap-3">
+                {prevIdx >= 0 ? (
+                  <>
+                    <div className="text-center min-w-[44px]">
+                      <div className="text-[11px] text-muted-foreground">Sebelumnya</div>
+                      <div className="text-[24px] font-bold leading-none mt-1.5 text-muted-foreground">{FUNNEL_PHASES[prevIdx]}</div>
+                      <div className="mt-1 text-[11px] font-medium text-muted-foreground">{phaseName(FUNNEL_PHASES[prevIdx])}</div>
+                    </div>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={s.fg} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                    <div className="text-center min-w-[44px]">
+                      <div className="text-[11px] text-muted-foreground">Sekarang</div>
+                      <div className="text-[24px] font-bold leading-none mt-1.5">{FUNNEL_PHASES[curIdx]}</div>
+                      <div className="mt-1 text-[11px] font-medium text-muted-foreground">{phaseName(FUNNEL_PHASES[curIdx])}</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-left min-w-[44px]">
+                    <div className="text-[11px] text-muted-foreground">Fase saat ini</div>
+                    <div className="text-[24px] font-bold leading-none mt-1.5">{FUNNEL_PHASES[curIdx]}</div>
+                    <div className="mt-1 text-[11px] font-medium text-muted-foreground">{phaseName(FUNNEL_PHASES[curIdx])}</div>
+                  </div>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-[.04em] border"
+                  style={movementBadgeStyle(mv.label)}>
+                  {s.ic} {MOVEMENT_LABEL[mv.label] || mv.label}
+                </span>
+                <div className="mt-2 text-[12px] text-muted-foreground">Sejak {sinceTxt}</div>
+                <div className="mt-0.5 text-[12px] font-semibold" style={{ color: s.fg }}>{delta}</div>
+              </div>
+            </div>
+            <p className="mt-3 text-[13px] leading-[1.55] text-muted-foreground">{desc}</p>
+          </section>
+
+          <section className="px-5 py-4 border-b border-border">
+            <div className="text-[11px] font-semibold uppercase tracking-[.08em] text-muted-foreground mb-3">Posisi Fase</div>
+            <div className="flex gap-1.5">
+              {FUNNEL_PHASES.map((p, i) => {
+                const on = i <= curIdx;
+                const isPrev = prevIdx === i;
+                return (
+                  <div key={p} className={`flex-1 text-center min-w-0 ${i === curIdx ? "text-foreground font-bold" : "text-muted-foreground"}`}>
+                    <div className="h-2 rounded-[99px]"
+                      style={{
+                        background: on ? fill : "#94a3b8",
+                        outline: isPrev ? `2px dashed ${s.fg}` : undefined,
+                        outlineOffset: isPrev ? "2px" : undefined,
+                        boxShadow: i === curIdx ? `0 0 0 4px ${fill}22` : undefined,
+                      }} />
+                    <span className="block mt-1.5 text-[11px]">{p}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 text-[13px]">
+              Saat ini di <b>{FUNNEL_PHASES[curIdx]} — {phaseName(FUNNEL_PHASES[curIdx])}</b>
+              {prevIdx >= 0 ? <span className="text-muted-foreground"> · garis putus-putus = posisi sebelumnya</span> : null}
+            </div>
+          </section>
+
+          <section className="px-5 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[.08em] text-muted-foreground mb-3">Riwayat per Snapshot</div>
+            <ol className="list-none m-0 p-0">
+              {segs.map((sg, i) => {
+                const isLast = i === segs.length - 1;
+                const expanded = openSeg === i;
+                const range = sg.count > 1
+                  ? `${format(new Date(sg.from), "d MMM", { locale: idLocale })} — ${format(new Date(sg.to), "d MMM yyyy", { locale: idLocale })} · ${sg.count} snapshot`
+                  : `${shortSnap(sg.from)}${mv.label === "baru" ? " · Pertama tercatat" : ""}`;
+                return (
+                  <li key={`${sg.phase}-${sg.from}-${i}`} className="relative flex gap-3 pb-5 last:pb-0">
+                    {isLast ? null : <span className="absolute left-[5px] top-4 bottom-0 w-px bg-muted-foreground/40" />}
+                    <span className="shrink-0 w-[11px] h-[11px] rounded-full mt-1"
+                      style={isLast
+                        ? { background: fill, boxShadow: `0 0 0 4px ${fill}20` }
+                        : { background: "#64748b" }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <b className="text-[14px] font-semibold">{sg.phase} — {phaseName(sg.phase)}</b>
+                        {isLast ? (
+                          <span className="rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.04em] border"
+                            style={movementBadgeStyle(mv.label)}>
+                            {MOVEMENT_LABEL[mv.label] || mv.label}
+                          </span>
+                        ) : null}
+                        {isLast ? <span className="ml-auto text-[11px] font-semibold" style={{ color: ACCENT_INDIGO }}>Saat ini</span> : null}
+                      </div>
+                      <button type="button" onClick={() => setOpenSeg(expanded ? null : i)}
+                        className="mt-0.5 flex items-center gap-1 text-left text-[12px] text-muted-foreground hover:text-foreground transition-colors">
+                        <span>{range}</span>
+                        {sg.count > 1 ? (
+                          <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                        ) : null}
+                      </button>
+                      {expanded && sg.count > 1 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {sg.dates.map((d, k) => (
+                            <span key={`${d}-${k}`} className="rounded-[5px] border border-border bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              {shortSnap(d)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+              {segs.length === 0 ? <div className="text-[12px] text-muted-foreground">Riwayat fase tidak tersedia.</div> : null}
+            </ol>
+          </section>
+        </div>
+
+        {/* footer */}
+        <div className="shrink-0 bg-secondary/50 border-t border-border">
+          <details className="group px-5 py-3.5">
+            <summary className="cursor-pointer flex items-center justify-between text-[12px] font-semibold text-muted-foreground list-none [&::-webkit-details-marker]:hidden">
+              Arti label
+              <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+            </summary>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center mt-3 text-[12px] text-muted-foreground">
+              {MOVEMENT_LEGEND.map((l) => (
+                <div key={l.key} className="contents">
+                  <dt className="m-0">
+                    <span className="rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.04em] border"
+                      style={movementBadgeStyle(l.key)}>
+                      {MOVEMENT_LABEL[l.key]}
+                    </span>
+                  </dt>
+                  <dd className="m-0">{l.desc}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function PergerakanCell({ mv, lop, onOpen }: { mv: Movement | undefined; lop: any; onOpen: (m: Movement, l: any) => void }) {
+  if (!mv) return <span className="text-muted-foreground text-xs">–</span>;
+  const s = movementStyle(mv.label);
+  return (
+    <div className="flex flex-col items-start gap-1 min-w-0">
+      <button type="button" onClick={() => onOpen(mv, lop)}
+        title="Klik untuk melihat riwayat pergerakan LOP"
+        style={movementBadgeStyle(mv.label)}
+        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-[.04em] border whitespace-nowrap cursor-pointer hover:opacity-80">
+        {s.ic} {MOVEMENT_LABEL[mv.label] || mv.label}
+      </button>
+      {mv.since ? <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap">Sejak {shortSnap(mv.since)}</span> : null}
+    </div>
+  );
+}
+
 function FSFaseBarChart({ data, compact }: { data:any; compact?: boolean }) {
   if(!data) return null;
   const phaseMap: Record<string,{count:number;nilai:number}> = {};
@@ -938,6 +1186,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
   const funnelSearchRef = useRef<HTMLInputElement>(null);
   const funnelTableRef = useRef<HTMLDivElement>(null);
   const [targetFullHoOverride,setTargetFullHoOverride] = useState("");
+  const [mvDrawer,setMvDrawer] = useState<{mv:Movement;lop:any}|null>(null);
 
   const { data: snapshots = [] } = useQuery<any[]>({
     queryKey:["funnel-snapshots-pres"],
@@ -1449,12 +1698,13 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                     <td colSpan={6} className="p-0 border-b border-slate-200">
                       <table className="w-full text-left text-sm" style={{tableLayout:"fixed",borderCollapse:"collapse"}}>
                         <colgroup>
-                          <col style={{width:"26%"}}/>
-                          <col style={{width:"10%"}}/>
-                          <col style={{width:"7%"}}/>
-                          <col style={{width:"12%"}}/>
-                          <col style={{width:"19%"}}/>
-                          <col style={{width:"26%"}}/>
+                          <col style={{width:"24%"}}/>
+                          <col style={{width:"9%"}}/>
+                          <col style={{width:"6.5%"}}/>
+                          <col style={{width:"10.5%"}}/>
+                          <col style={{width:"15%"}}/>
+                          <col style={{width:"14%"}}/>
+                          <col style={{width:"21%"}}/>
                         </colgroup>
                         <thead>
                           <tr className="bg-slate-200 border-y border-slate-400">
@@ -1463,6 +1713,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Durasi</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">LOP ID</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Pelanggan & Divisi</td>
+                            <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Pergerakan</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider text-right overflow-hidden">Nilai</td>
                           </tr>
                         </thead>
@@ -1479,11 +1730,14 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                                   {lop.divisi?<span className={`inline-flex items-center self-start px-1.5 py-0.5 rounded text-[10px] font-black uppercase border ${lop.divisi.toUpperCase()==="DPS"?"bg-blue-50 text-blue-700 border-blue-200":lop.divisi.toUpperCase()==="DSS"?"bg-purple-50 text-purple-700 border-purple-200":"bg-slate-100 text-slate-600 border-slate-300"}`}>{lop.divisi}</span>:null}
                                 </div>
                               </td>
+                              <td className="px-3 py-2.5 overflow-hidden">
+                                <PergerakanCell mv={(data as any)?.movements?.[lop.lopid]} lop={lop} onOpen={(m,l)=>setMvDrawer({mv:m,lop:l})} />
+                              </td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-xs font-bold text-foreground overflow-hidden">{fmtRupiah(lop.nilaiProyek||0)}</td>
                             </tr>
                           ))}
                           <tr className="bg-red-50 border-t border-red-200">
-                            <td colSpan={5} className="px-4 py-2 pl-16 overflow-hidden"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
+                            <td colSpan={6} className="px-4 py-2 pl-16 overflow-hidden"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
                             <td className="px-3 py-2 text-right tabular-nums text-sm font-black text-red-800 overflow-hidden">{fmtRupiah(phaseTotal)}</td>
                           </tr>
                         </tbody>
@@ -1606,12 +1860,13 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                     <td colSpan={6} className="p-0 border-b border-slate-200">
                       <table className="w-full text-left text-sm" style={{tableLayout:"fixed",borderCollapse:"collapse"}}>
                         <colgroup>
-                          <col style={{width:"26%"}}/>
-                          <col style={{width:"10%"}}/>
-                          <col style={{width:"7%"}}/>
-                          <col style={{width:"12%"}}/>
-                          <col style={{width:"19%"}}/>
-                          <col style={{width:"26%"}}/>
+                          <col style={{width:"24%"}}/>
+                          <col style={{width:"9%"}}/>
+                          <col style={{width:"6.5%"}}/>
+                          <col style={{width:"10.5%"}}/>
+                          <col style={{width:"15%"}}/>
+                          <col style={{width:"14%"}}/>
+                          <col style={{width:"21%"}}/>
                         </colgroup>
                         <thead>
                           <tr className="bg-slate-200 border-y border-slate-400">
@@ -1620,6 +1875,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Durasi</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">LOP ID</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Pelanggan & Divisi</td>
+                            <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider overflow-hidden">Pergerakan</td>
                             <td className="px-3 py-2 text-xs font-black text-slate-950 uppercase tracking-wider text-right overflow-hidden">Nilai</td>
                           </tr>
                         </thead>
@@ -1636,11 +1892,14 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                                   {lop.divisi?<span className={`inline-flex items-center self-start px-1.5 py-0.5 rounded text-[10px] font-black uppercase border ${lop.divisi.toUpperCase()==="DPS"?"bg-blue-50 text-blue-700 border-blue-200":lop.divisi.toUpperCase()==="DSS"?"bg-purple-50 text-purple-700 border-purple-200":"bg-slate-100 text-slate-600 border-slate-300"}`}>{lop.divisi}</span>:null}
                                 </div>
                               </td>
+                              <td className="px-3 py-2.5 overflow-hidden">
+                                <PergerakanCell mv={(data as any)?.movements?.[lop.lopid]} lop={lop} onOpen={(m,l)=>setMvDrawer({mv:m,lop:l})} />
+                              </td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-xs font-bold text-foreground overflow-hidden">{fmtRupiah(lop.nilaiProyek||0)}</td>
                             </tr>
                           ))}
                           <tr className="bg-red-50 border-t border-red-200">
-                            <td colSpan={5} className="px-4 py-2 pl-16 overflow-hidden"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
+                            <td colSpan={6} className="px-4 py-2 pl-16 overflow-hidden"><span className="text-sm font-black text-red-800 uppercase tracking-wide">Total Nilai {phase}</span></td>
                             <td className="px-3 py-2 text-right tabular-nums text-sm font-black text-red-800 overflow-hidden">{fmtRupiah(phaseTotal)}</td>
                           </tr>
                         </tbody>
@@ -2044,6 +2303,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
       )}
 
     </div>
+    {mvDrawer && <PergerakanDrawer mv={mvDrawer.mv} lop={mvDrawer.lop} onClose={()=>setMvDrawer(null)} />}
     </>
   );
 }

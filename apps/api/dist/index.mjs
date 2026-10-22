@@ -55917,6 +55917,8 @@ var init_salesFunnel = __esm({
       createdDate: text("created_date"),
       snapshotDate: text("snapshot_date"),
       tahunAnggaran: integer("tahun_anggaran"),
+      nikHandling: text("nik_handling"),
+      namaPembuatLop: text("nama_pembuat_lop"),
       importId: integer("import_id"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     });
@@ -55956,12 +55958,21 @@ var init_salesActivity = __esm({
       nik: text("nik").notNull(),
       fullname: text("fullname"),
       divisi: text("divisi"),
+      segmen: text("segmen"),
+      regional: text("regional"),
+      witel: text("witel"),
       nipnas: text("nipnas"),
       caName: text("ca_name"),
       activityType: text("activity_type"),
       label: text("label"),
       lopid: text("lopid"),
+      createdatActivity: text("createdat_activity"),
+      activityStartDate: text("activity_start_date"),
       activityEndDate: text("activity_end_date"),
+      picName: text("pic_name"),
+      picJobtitle: text("pic_jobtitle"),
+      picRole: text("pic_role"),
+      picPhone: text("pic_phone"),
       activityNotes: text("activity_notes"),
       snapshotDate: text("snapshot_date"),
       importId: integer("import_id"),
@@ -56071,6 +56082,9 @@ var init_rbac = __esm({
       slug: text("slug").notNull().unique(),
       email: text("email").unique(),
       passwordHash: text("password_hash"),
+      resetPasswordToken: text("reset_password_token"),
+      resetPasswordExpires: timestamp("reset_password_expires", { withTimezone: true }),
+      photoUrl: text("photo_url"),
       roleId: integer("role_id").references(() => rolesTable.id),
       role: text("role").notNull().default("AM"),
       tipe: text("tipe").default("LESA"),
@@ -56210,8 +56224,9 @@ var init_rbac = __esm({
       userNik: varchar("user_nik", { length: 50 }),
       userNama: varchar("user_nama", { length: 255 }).notNull(),
       userRole: varchar("user_role", { length: 50 }).notNull(),
-      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-      expiresAt: timestamp("expires_at", { withTimezone: true }).notNull()
+      // Tanpa timezone, mengikuti DDL runtime aplikasi (TIMESTAMP(6)).
+      createdAt: timestamp("created_at").notNull().defaultNow(),
+      expiresAt: timestamp("expires_at").notNull()
     });
     presentationSessionsRelations = relations(presentationSessionsTable, ({ one }) => ({
       user: one(accountManagersTable, {
@@ -56252,11 +56267,13 @@ var init_telegramBulkLinks = __esm({
       createdById: integer("created_by_id").references(() => accountManagersTable.id),
       createdByNik: text("created_by_nik").notNull(),
       createdByNama: text("created_by_nama").notNull(),
-      expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-      usedAt: timestamp("used_at", { withTimezone: true }),
+      // Tanpa timezone, mengikuti DDL runtime aplikasi (apps/api/src/index.ts:
+      // "expires_at TIMESTAMP(6)"). Nilai disimpan sebagai wall-clock lokal.
+      expiresAt: timestamp("expires_at").notNull(),
+      usedAt: timestamp("used_at"),
       usedByAmId: integer("used_by_am_id").references(() => accountManagersTable.id),
       status: varchar("status", { length: 20 }).notNull().default("ACTIVE"),
-      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+      createdAt: timestamp("created_at").notNull().defaultNow()
     });
   }
 });
@@ -56365,6 +56382,8 @@ var init_masterAm = __esm({
       nama: text("nama").notNull().unique(),
       segmen: text("segmen"),
       witel: text("witel").default("SURAMADU"),
+      divisiCc: text("divisi_cc"),
+      divisiAm: text("divisi_am"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     });
     insertMasterCustomerSchema = createInsertSchema(masterCustomerTable).omit({ id: true, createdAt: true });
@@ -56392,6 +56411,20 @@ var init_pendingAmDiscoveries = __esm({
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     });
     insertPendingAmDiscoverySchema = createInsertSchema(pendingAmDiscoveriesTable).omit({ id: true, createdAt: true });
+  }
+});
+
+// ../../packages/db/src/schema/appSessions.ts
+var userSessionsTable;
+var init_appSessions = __esm({
+  "../../packages/db/src/schema/appSessions.ts"() {
+    "use strict";
+    init_pg_core();
+    userSessionsTable = pgTable("user_sessions", {
+      sid: varchar("sid").notNull().primaryKey(),
+      sess: json("sess").notNull(),
+      expire: timestamp("expire").notNull()
+    });
   }
 });
 
@@ -56440,7 +56473,8 @@ __export(schema_exports, {
   telegramAccessCodesTable: () => telegramAccessCodesTable,
   telegramBotUsersTable: () => telegramBotUsersTable,
   telegramBulkLinksTable: () => telegramBulkLinksTable,
-  telegramLogsTable: () => telegramLogsTable
+  telegramLogsTable: () => telegramLogsTable,
+  userSessionsTable: () => userSessionsTable
 });
 var init_schema2 = __esm({
   "../../packages/db/src/schema/index.ts"() {
@@ -56457,6 +56491,7 @@ var init_schema2 = __esm({
     init_driveReadLogs();
     init_masterAm();
     init_pendingAmDiscoveries();
+    init_appSessions();
     init_rbac();
   }
 });
@@ -56509,7 +56544,8 @@ __export(src_exports, {
   telegramAccessCodesTable: () => telegramAccessCodesTable,
   telegramBotUsersTable: () => telegramBotUsersTable,
   telegramBulkLinksTable: () => telegramBulkLinksTable,
-  telegramLogsTable: () => telegramLogsTable
+  telegramLogsTable: () => telegramLogsTable,
+  userSessionsTable: () => userSessionsTable
 });
 var Pool3, pool, db;
 var init_src = __esm({
@@ -123808,6 +123844,65 @@ router4.get("/funnel", async (req, res) => {
     }
   }
   const shortage = targetFullHoVal > 0 ? targetFullHoVal - totalNilai : 0;
+  const PHASE_ORDER = ["F0", "F1", "F2", "F3", "F4", "F5"];
+  const phaseIdx = (f) => {
+    const i = PHASE_ORDER.indexOf(f || "");
+    return i < 0 ? -1 : i;
+  };
+  const movements = {};
+  const isoDate = (d) => d instanceof Date ? d.toISOString() : String(d ?? "");
+  const snapRows = (await db.select({ id: dataImportsTable.id, snapshotDate: dataImportsTable.snapshotDate }).from(dataImportsTable).where(eq(dataImportsTable.type, "funnel"))).filter((s) => s.snapshotDate).map((s) => ({ id: s.id, date: isoDate(s.snapshotDate) })).sort((a, b) => a.date.localeCompare(b.date));
+  const lopIds = [...new Set(allLops.map((l) => l.lopid).filter(Boolean))];
+  if (snapRows.length > 0 && lopIds.length > 0) {
+    const histRows = await db.select().from(salesFunnelTable).where(and(
+      inArray(salesFunnelTable.lopid, lopIds),
+      inArray(salesFunnelTable.importId, snapRows.map((s) => s.id))
+    ));
+    const snapById = new Map(snapRows.map((s) => [s.id, s.date]));
+    const taKey = (l) => String(l.tahunAnggaran ?? (l.reportDate ? String(l.reportDate).slice(0, 4) : ""));
+    const byLop = /* @__PURE__ */ new Map();
+    for (const r of histRows) {
+      const key = `${r.nikAm}|${r.lopid}|${taKey(r)}`;
+      let perSnap = byLop.get(key);
+      if (!perSnap) {
+        perSnap = /* @__PURE__ */ new Map();
+        byLop.set(key, perSnap);
+      }
+      const prev = perSnap.get(r.importId);
+      if (!prev || prev.rowId < r.id) {
+        perSnap.set(r.importId, { date: snapById.get(r.importId) ?? "", phase: r.statusF ?? null, rowId: r.id });
+      }
+    }
+    for (const l of allLops) {
+      const perSnap = byLop.get(`${l.nikAm}|${l.lopid}|${taKey(l)}`);
+      const entries = perSnap ? [...perSnap.values()].filter((e) => e.phase).sort((a, b) => a.date.localeCompare(b.date)) : [];
+      if (entries.length === 0) continue;
+      const current = entries[entries.length - 1];
+      const history = entries.map((e) => ({ date: e.date, phase: e.phase }));
+      if (entries.length === 1) {
+        movements[l.lopid] = { label: "baru", since: current.date, from: null, to: current.phase, history };
+        continue;
+      }
+      let lastDiff = -1;
+      for (let i = entries.length - 2; i >= 0; i--) if (entries[i].phase !== current.phase) {
+        lastDiff = i;
+        break;
+      }
+      if (lastDiff < 0) {
+        movements[l.lopid] = { label: "stagnan", since: entries[0].date, from: null, to: current.phase, history };
+        continue;
+      }
+      const since = entries[lastDiff + 1];
+      const up = phaseIdx(current.phase) > phaseIdx(entries[lastDiff].phase);
+      movements[l.lopid] = {
+        label: up ? "naik" : "turun",
+        since: since.date,
+        from: entries[lastDiff].phase,
+        to: current.phase,
+        history
+      };
+    }
+  }
   const amTargetYear = tahun ? Number(tahun) : (() => {
     const importPeriod = import_id2 ? null : null;
     return (/* @__PURE__ */ new Date()).getFullYear();
@@ -123832,6 +123927,7 @@ router4.get("/funnel", async (req, res) => {
     amTargets,
     amTargetYear,
     availableTahunAnggaran,
+    movements,
     lops: allLops.map((l) => ({
       id: l.id,
       lopid: l.lopid,
