@@ -1820,7 +1820,7 @@ export default function AmProfilePage({ nik, embedded = false, onAmLoaded }: Pro
               </div>
               <div className="space-y-1" style={{ fontSize: "13px" }}>
                 <div className="flex justify-between items-baseline gap-1">
-                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>F5 (Closed Won)</span>
+                  <span className="whitespace-nowrap shrink-0" style={{ color: "#1e1e1e" }}>F5 (Closed Win)</span>
                   <span className="font-bold tabular-nums shrink-0" style={{ color: "rgb(59,130,246)" }}>{fmtNilai(funnelData.wonLopNilai ?? 0)}</span>
                 </div>
                 <div className="flex justify-between items-baseline gap-1">

@@ -7,7 +7,6 @@ import { eq, and, sql } from "drizzle-orm";
 import { cleanFunnelRows, cleanActivityRows, parseIndonesianNumber, slugify } from "../import/excel";
 import type { ParsedRow } from "../import/excel";
 import { logger } from "../../shared/logger";
-import { notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 
 export interface SheetInfo {
   title: string;
@@ -23,6 +22,8 @@ export interface SyncSheetResult {
   type: "funnel" | "activity" | "performance";
   status: "imported" | "skipped" | "error";
   rowsImported?: number;
+  /** Id import — dipakai untuk mengirim notifikasi Telegram. */
+  importId?: number;
   message: string;
 }
 
@@ -299,7 +300,7 @@ async function importFunnelSheet(
 
     const count2026 = deduped.filter(r => r.reportDate?.startsWith("2026")).length;
     return {
-      sheetName: sheet.title, date, period, type: "funnel", status: "imported", rowsImported: deduped.length,
+      sheetName: sheet.title, date, period, type: "funnel", status: "imported", rowsImported: deduped.length, importId: imp.id,
       message: `${deduped.length} LOP total (${count2026} tahun 2026) dari ${rows.length} baris GSheets. Filter: witel=SURAMADU, divisi=DPS|DSS, nik_pembuat_lop numerik, 13 AM aktif`,
     };
   } catch (err: any) {
@@ -376,15 +377,7 @@ async function importActivitySheet(
 
     await db.update(dataImportsTable).set({ rowsImported: cleaned.length }).where(eq(dataImportsTable.id, imp.id));
 
-    // ── Send snapshot notifications (best-effort, fire-and-forget)
-    notifyActivitySnapshot(imp.id).catch((err: unknown) => {
-      logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in gsheets sync");
-    });
-    notifyManagerActivitySnapshot(imp.id).catch((err: unknown) => {
-      logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in gsheets sync");
-    });
-
-    return { sheetName: sheet.title, date, period, type: "activity", status: "imported", rowsImported: cleaned.length, message: `${cleaned.length} baris berhasil diimport dari ${rows.length} baris mentah` };
+    return { sheetName: sheet.title, date, period, type: "activity", status: "imported", rowsImported: cleaned.length, importId: imp.id, message: `${cleaned.length} baris berhasil diimport dari ${rows.length} baris mentah` };
   } catch (err: any) {
     return { sheetName: sheet.title, date, period, type: "activity", status: "error", message: err?.message || String(err) };
   }
@@ -508,7 +501,7 @@ async function importPerformanceSheet(
       await db.insert(accountManagersTable).values(newAMs.slice(i, i + 50)).onConflictDoNothing();
     }
 
-    return { sheetName: sheet.title, date, period, type: "performance", status: "imported", rowsImported: toInsert.length, message: `${toInsert.length} AM berhasil diimport dari ${rows.length} baris mentah` };
+    return { sheetName: sheet.title, date, period, type: "performance", status: "imported", rowsImported: toInsert.length, importId: imp.id, message: `${toInsert.length} AM berhasil diimport dari ${rows.length} baris mentah` };
   } catch (err: any) {
     return { sheetName: sheet.title, date, period, type: "performance", status: "error", message: err?.message || String(err) };
   }

@@ -7,6 +7,8 @@ import { pool } from "@workspace/db";
 import { startTelegramPoller } from "./features/telegram/poller";
 import { startGSheetsScheduler } from "./features/gsheets/scheduler";
 import { startGDriveScheduler } from "./features/gdrive/scheduler";
+import { startStagnantReminderScheduler } from "./features/telegram/scheduler";
+import { ensureAnnouncementSettingsTable } from "./features/telegram/funnelAnnouncements";
 
 async function ensureSessionTable(): Promise<void> {
   await pool.query(`
@@ -119,6 +121,10 @@ ensurePhotoUrlColumn()
   .then(() => logger.info("photo_url column ensured"))
   .catch(err => logger.error({ err }, "Failed to ensure photo_url column"));
 
+ensureAnnouncementSettingsTable()
+  .then(() => logger.info("Telegram announcement settings table ensured"))
+  .catch(err => logger.error({ err }, "Failed to ensure Telegram announcement settings table"));
+
 ensureDefaultAdmin()
   .then(() => logger.info("Default admin user ensured"))
   .catch(err => logger.error({ err }, "Failed to ensure default admin"));
@@ -145,4 +151,5 @@ app.listen(port, (err) => {
   startTelegramPoller(3000);
   startGSheetsScheduler();
   startGDriveScheduler();
+  startStagnantReminderScheduler();
 });

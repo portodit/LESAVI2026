@@ -3,7 +3,8 @@ import { db, telegramLogsTable, accountManagersTable, appSettingsTable, telegram
 import { eq, desc, inArray, and, isNull, isNotNull, gt } from "drizzle-orm";
 import { requireAuth } from "../../shared/auth";
 import { checkPermission } from "../../shared/permissions";
-import { sendReminderToAllAMs, sendToTelegram, notifyPerformanceSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
+import { sendToTelegram, notifyPerformanceSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
+import { notifyAmSnapshot, type SnapshotKind } from "../telegram/importNotifier";
 import { getBotUsers, pollOnce } from "./poller";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -52,29 +53,53 @@ function makeBotDeeplink(botUsername: string | null, code: string): string | nul
   return botUsername ? `https://t.me/${botUsername}?start=${code}` : null;
 }
 
+/** Import terbaru untuk satu tipe data — dipakai saat broadcast manual. */
+async function latestImportId(type: SnapshotKind): Promise<number | null> {
+  const [row] = await db.select({ id: dataImportsTable.id })
+    .from(dataImportsTable)
+    .where(eq(dataImportsTable.type, type))
+    .orderBy(desc(dataImportsTable.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 router.post("/send", requireAuth, async (req, res): Promise<void> => {
-  const { targetNiks, period, includePerformance, includeFunnel, includeActivity, customMessage,
-          perfSnapshotId, funnelCurrSnapshotId, funnelPrevSnapshotId, activitySnapshotId } = req.body;
+  const { targetNiks, includePerformance, includeFunnel, includeActivity,
+          perfSnapshotId, funnelCurrSnapshotId, activitySnapshotId } = req.body;
 
-  let effectivePeriod = period as string | undefined;
-
-  // Derive period from funnel or activity snapshot if not explicitly provided
-  if (!effectivePeriod && (includeFunnel || includeActivity)) {
-    const snapId = funnelCurrSnapshotId || activitySnapshotId;
-    if (snapId) {
-      const [snap] = await db.select({ period: dataImportsTable.period }).from(dataImportsTable).where(eq(dataImportsTable.id, Number(snapId)));
-      effectivePeriod = snap?.period ?? "";
-    }
+  const kinds: SnapshotKind[] = [];
+  if (includePerformance) kinds.push("performance");
+  if (includeFunnel) kinds.push("funnel");
+  if (includeActivity) kinds.push("activity");
+  if (kinds.length === 0) {
+    res.status(400).json({ error: "Pilih minimal satu tipe laporan" });
+    return;
   }
 
-  if (!effectivePeriod) { res.status(400).json({ error: "Period diperlukan — pilih snapshot atau atur periode laporan" }); return; }
+  const requestedIds: Partial<Record<SnapshotKind, number>> = {
+    performance: Number(perfSnapshotId) || undefined,
+    funnel: Number(funnelCurrSnapshotId) || undefined,
+    activity: Number(activitySnapshotId) || undefined,
+  };
+  const targets = Array.isArray(targetNiks) && targetNiks.length > 0 ? targetNiks : undefined;
 
-  const result = await sendReminderToAllAMs(
-    effectivePeriod,
-    { includePerformance: !!includePerformance, includeFunnel: !!includeFunnel, includeActivity: !!includeActivity },
-    targetNiks || undefined
-  );
-  res.json(result);
+  let sent = 0, failed = 0, skipped = 0;
+  const details: { nik: string; status: string; error?: string }[] = [];
+
+  for (const kind of kinds) {
+    const importId = requestedIds[kind] ?? await latestImportId(kind);
+    if (!importId) {
+      skipped++;
+      continue;
+    }
+    const outcome = await notifyAmSnapshot(kind, importId, { targetNiks: targets });
+    sent += outcome.sent;
+    failed += outcome.failed;
+    skipped += outcome.skipped;
+    details.push(...outcome.details);
+  }
+
+  res.json({ sent, failed, skipped, details });
 });
 
 router.get("/logs", requireAuth, async (req, res): Promise<void> => {

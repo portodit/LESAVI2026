@@ -32,7 +32,7 @@ const fmtRupiah = (n: number) => {
   return formatted;
 };
 const FUNNEL_PHASES = ["F0","F1","F2","F3","F4","F5"];
-const FUNNEL_PHASE_LABELS: Record<string,string> = { F0:"Lead",F1:"Prospect",F2:"Quote",F3:"Negosiasi",F4:"Closing",F5:"Won/Closed" };
+const FUNNEL_PHASE_LABELS: Record<string,string> = { F0:"Lead",F1:"Prospect",F2:"Quote",F3:"Negosiasi",F4:"Closing",F5:"Win/Closed" };
 const FUNNEL_PHASE_COLORS: Record<string,string> = { F0:"#93c5fd",F1:"#3b82f6",F2:"#818cf8",F3:"#6366f1",F4:"#8b5cf6",F5:"#10b981" };
 
 function fmtNilaiCompact(n: number): string {
@@ -345,7 +345,7 @@ function SelectDropdown({ label, value, onChange, options, className, disabled }
 // ─── Funnel Slide (full mirror of FunnelPage) ────────────────────────────────────
 
 const FS_PHASES = ["F0","F1","F2","F3","F4","F5"];
-const FS_PHASE_LABELS: Record<string,string> = { F0:"Lead",F1:"Prospect",F2:"Quote",F3:"Negosiasi",F4:"Closing",F5:"Won/Closed" };
+const FS_PHASE_LABELS: Record<string,string> = { F0:"Lead",F1:"Prospect",F2:"Quote",F3:"Negosiasi",F4:"Closing",F5:"Win/Closed" };
 const FS_PHASE_COLORS: Record<string,{ pill:string; bar:string; text:string }> = {
   F0:{pill:"bg-sky-100 text-sky-800",bar:"#38bdf8",text:"#0369a1"},
   F1:{pill:"bg-blue-100 text-blue-800",bar:"#3b82f6",text:"#1d4ed8"},
@@ -778,6 +778,9 @@ const MOVEMENT_STYLE: Record<string, { bg: string; bd: string; fg: string; ic: s
 const movementStyle = (k: string) => MOVEMENT_STYLE[k] ?? MOVEMENT_STYLE.stagnan;
 const movementBadgeStyle = (k: string) => { const s = movementStyle(k); return { background: s.bg, borderColor: s.bd, color: s.fg }; };
 const MOVEMENT_LABEL: Record<string, string> = { baru: "Baru", naik: "Naik", turun: "Turun", stagnan: "Stagnan" };
+/** Opsi filter Pergerakan — urutan sesuai legendanya. */
+const PERGERAKAN_OPTIONS = ["baru", "naik", "turun", "stagnan"];
+const pergerakanLabelFn = (v: string) => `${movementStyle(v).ic} ${MOVEMENT_LABEL[v] || v}`;
 
 const MOVEMENT_LEGEND: { key: string; desc: string }[] = [
   { key: "baru", desc: "Muncul pertama kali di snapshot tersebut." },
@@ -1145,7 +1148,7 @@ function FSCRGauge({ f5, denom, cr, divisi }: { f5:number; denom:number; cr:numb
       </div>
       <div className="flex-1 min-w-0 space-y-1" style={{fontSize:"clamp(9px,1.05vw,12px)"}}>
         <div className="flex justify-between items-baseline gap-1">
-          <span className="text-muted-foreground whitespace-nowrap shrink-0">F5 (Closed Won)</span>
+          <span className="text-muted-foreground whitespace-nowrap shrink-0">F5 (Closed Win)</span>
           <span className="font-bold tabular-nums truncate text-right ml-1" style={{color:divColor}}>{fmtRupiahFS(f5)}</span>
         </div>
         <div className="flex justify-between items-baseline gap-1">
@@ -1173,6 +1176,8 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
   const [importId,setImportId] = useState<number|null>(null);
   const [filterMode,setFilterMode] = useState<"ho"|"fullho">("fullho");
   const [filterStatus,setFilterStatus] = useState<Set<string>>(new Set());
+  // Pergerakan LOP (baru/naik/turun/stagnan) — default kosong = semua
+  const [filterGerakan,setFilterGerakan] = useState<Set<string>>(new Set());
   // Default: GTMA & Own Channel saja — sesuai filter PIVOT F Excel MyTENS
   const [filterKontrak,setFilterKontrak] = useState<Set<string>>(new Set(["GTMA","Own Channel"]));
   const [filterDurasi,setFilterDurasi] = useState<"all"|"single_year"|"multi_year">("all");
@@ -1351,6 +1356,15 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
     for(const l of periodFilteredLops){if(l.nikAm&&l.namaAm)map.set(l.nikAm,l.namaAm);}
     return (nik:string)=>map.get(nik)||nik;
   },[periodFilteredLops]);
+  // ?am=NIK — preseleksi filter AM (dipakai tombol per-AM pada pesan Telegram)
+  const urlAmParam = useMemo(()=>new URLSearchParams(window.location.search).get("am"),[]);
+  const urlAmApplied = useRef(false);
+  useEffect(()=>{
+    if(urlAmApplied.current||!urlAmParam) return;
+    if(!amOptions.includes(urlAmParam)) return;
+    urlAmApplied.current=true;
+    setFilterAm(new Set([urlAmParam]));
+  },[urlAmParam,amOptions]);
   const kontrakOptions = useMemo(()=>{
     // Hanya tampilkan kategori yang relevan untuk PIVOT F — jangan tampilkan Uncategorized, Reseller, dll
     const ALLOWED = new Set(["GTMA","Own Channel","New GTMA","Uncategorized"]);
@@ -1381,6 +1395,10 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
       if(filterStatus.size>0&&(!l.statusF||!filterStatus.has(l.statusF))) return false;
       if(filterKontrak.size>0&&(!l.kategoriKontrak||!filterKontrak.has(l.kategoriKontrak))) return false;
       if(filterDurasi==="multi_year"&&!(l.monthSubs!=null&&l.monthSubs>12)) return false;
+      if(filterGerakan.size>0&&filterGerakan.size<PERGERAKAN_OPTIONS.length){
+        const mv=(data as any)?.movements?.[l.lopid];
+        if(!mv||!filterGerakan.has(mv.label)) return false;
+      }
       return true;
     });
     if(filterDurasi==="all") return base;
@@ -1390,7 +1408,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
       if(!m||m<12) return l; // < 12 bulan dianggap 1 tahun → nilai penuh
       return {...l, nilaiProyek: Math.round(l.nilaiProyek*12/m)};
     });
-  },[data,periodFilteredLops,filterAm,filterStatus,filterKontrak,filterDurasi,search]);
+  },[data,periodFilteredLops,filterAm,filterStatus,filterKontrak,filterDurasi,filterGerakan,search]);
 
   // Stats dihitung dari filteredLops (SEMUA filter aktif — termasuk filterKontrak, filterAm, dll)
   const filteredStats = useMemo(()=>{
@@ -1581,7 +1599,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
   const dpsPct=dpsTgt?(dpsStats.totalNilai/dpsTgt)*100:0;
   const dssPct=dssTgt?(dssStats.totalNilai/dssTgt)*100:0;
 
-  const hasActiveFilter=filterAm.size>0||filterStatus.size>0||filterKontrak.size>0||filterDurasi!=="all"||filterMonths.size>0||filterTahunAnggaran.size>0;
+  const hasActiveFilter=filterAm.size>0||filterStatus.size>0||filterKontrak.size>0||filterDurasi!=="all"||filterMonths.size>0||filterTahunAnggaran.size>0||filterGerakan.size>0;
   const lopBadge=filteredLops.length!==(data?.totalLop||0)?`${filteredLops.length} / ${data?.totalLop||0}`:filteredLops.length.toLocaleString("id-ID");
 
 
@@ -1659,7 +1677,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                   )}
                 </td>
                 <td className="px-4 py-3 text-right relative" style={stickyCell}>
-                  {typeof cr==="number"&&!isNaN(cr)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",cr>=0.7?"text-emerald-600":"text-red-600")}>{(cr*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Won)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",cr>=0.7?"text-emerald-600":"text-red-600")}>= {(cr*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}
+                  {typeof cr==="number"&&!isNaN(cr)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",cr>=0.7?"text-emerald-600":"text-red-600")}>{(cr*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Win)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",cr>=0.7?"text-emerald-600":"text-red-600")}>= {(cr*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}
                 </td>
               </>);
             })()}
@@ -1803,7 +1821,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                 <span className="font-black tabular-nums text-sm block">{fmtRupiah(amTotal)}</span>
                 {amTgt>0&&(<div className="mt-1.5"><div className="h-2.5 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full" style={{width:`${pctBarAm}%`,background:barColorAm}}/></div><div className="flex items-center gap-1 mt-0.5"><span className="text-sm font-black tabular-nums" style={{color:barColorAm}}>{typeof pctRawAm === "number" && !isNaN(pctRawAm) ? pctRawAm.toFixed(0) : "0"}%</span><span className="text-xs font-bold text-muted-foreground">capaian</span></div></div>)}
               </td>
-              <td className="px-4 py-3 text-right relative">{typeof crAm==="number"&&!isNaN(crAm)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",crAm>=0.7?"text-emerald-600":"text-red-600")}>{(crAm*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Won)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",crAm>=0.7?"text-emerald-600":"text-red-600")}>= {(crAm*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}</td>
+              <td className="px-4 py-3 text-right relative">{typeof crAm==="number"&&!isNaN(crAm)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",crAm>=0.7?"text-emerald-600":"text-red-600")}>{(crAm*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Win)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",crAm>=0.7?"text-emerald-600":"text-red-600")}>= {(crAm*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}</td>
             </tr>
           </tbody>
         </table>
@@ -1827,7 +1845,7 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
                 <span className="font-black tabular-nums text-sm block">{fmtRupiah(amTotal)}</span>
                 {amTgt>0&&(<div className="mt-1.5"><div className="h-2.5 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full" style={{width:`${pctBarAm}%`,background:barColorAm}}/></div><div className="flex items-center gap-1 mt-0.5"><span className="text-sm font-black tabular-nums" style={{color:barColorAm}}>{typeof pctRawAm === "number" && !isNaN(pctRawAm) ? pctRawAm.toFixed(0) : "0"}%</span><span className="text-xs font-bold text-muted-foreground">capaian</span></div></div>)}
               </td>
-              <td className="px-4 py-2.5 text-right relative" style={bg}>{typeof crAm==="number"&&!isNaN(crAm)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",crAm>=0.7?"text-emerald-600":"text-red-600")}>{(crAm*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Won)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",crAm>=0.7?"text-emerald-600":"text-red-600")}>= {(crAm*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}</td>
+              <td className="px-4 py-2.5 text-right relative" style={bg}>{typeof crAm==="number"&&!isNaN(crAm)?(<div className="relative inline-block group"><span className={cn("font-bold text-sm tabular-nums cursor-help underline decoration-dotted decoration-1 underline-offset-2",crAm>=0.7?"text-emerald-600":"text-red-600")}>{(crAm*100).toFixed(1)}%</span><div className="absolute right-0 top-full mt-1 z-[200] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150" style={{minWidth:"220px"}}><div className="bg-popover border border-border rounded-lg shadow-xl p-3 text-left"><div className="text-[10px] font-black text-slate-900 uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div><div className="space-y-1.5"><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F5 (Closed/Win)</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f5Val)}</span></div><div className="flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">F3 + F4 + F5</span><span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{fmtRupiah(f345Val)}</span></div><div className="border-t border-border pt-1.5 flex items-center justify-between gap-4"><span className="text-xs font-medium text-slate-700 whitespace-nowrap">CR = F5 ÷ (F3+F4+F5)</span><span className={cn("text-xs font-black tabular-nums whitespace-nowrap",crAm>=0.7?"text-emerald-600":"text-red-600")}>= {(crAm*100).toFixed(1)}%</span></div></div></div></div></div>):<span className="text-muted-foreground text-xs">—</span>}</td>
             </tr>
           </tbody>
         </table>
@@ -2013,8 +2031,18 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
             <button onClick={() => setFilterTahunAnggaran(new Set())} className="hover:opacity-70"><X className="w-3 h-3"/></button>
           </span>
         )}
-        {(filterStatus.size > 0 || filterKontrak.size > 0 || filterDurasi !== "all" || filterMonths.size > 0 || filterAm.size > 0) && (
-          <button onClick={() => { setFilterStatus(new Set()); setFilterKontrak(new Set()); setFilterDurasi("all"); setFilterMonths(new Set()); setFilterAm(new Set()); }}
+        {filterGerakan.size > 0 && (
+          <span className="inline-flex shrink-0 items-center gap-1 bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/30 dark:text-fuchsia-400 text-xs font-semibold px-2.5 py-1 rounded-full border border-fuchsia-200 dark:border-fuchsia-800">
+            Pergerakan: {filterGerakan.size === PERGERAKAN_OPTIONS.length
+              ? "semua"
+              : filterGerakan.size === 1
+                ? pergerakanLabelFn([...filterGerakan][0])
+                : `${filterGerakan.size} pergerakan`}
+            <button onClick={() => setFilterGerakan(new Set())} className="hover:opacity-70"><X className="w-3 h-3"/></button>
+          </span>
+        )}
+        {(filterStatus.size > 0 || filterKontrak.size > 0 || filterDurasi !== "all" || filterMonths.size > 0 || filterAm.size > 0 || filterGerakan.size > 0) && (
+          <button onClick={() => { setFilterStatus(new Set()); setFilterKontrak(new Set()); setFilterDurasi("all"); setFilterMonths(new Set()); setFilterAm(new Set()); setFilterGerakan(new Set()); }}
             className="shrink-0 flex items-center gap-1 px-3 py-1 rounded-full border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
             <X className="w-3 h-3"/> Reset filter
           </button>
@@ -2127,6 +2155,8 @@ function FunnelSlide({ onTitleChange }: { onTitleChange?: (t: string) => void })
               className="w-48 shrink-0"/>
             <FSCheckboxDropdown label="Tahun Anggaran" options={tahunAnggaranStringOptions} selected={filterTahunAnggaran} onChange={setFilterTahunAnggaran}
               placeholder="Pilih Tahun Anggaran" summaryLabel="T. Anggaran" className="w-48 shrink-0"/>
+            <FSCheckboxDropdown label="Pergerakan" options={PERGERAKAN_OPTIONS} selected={filterGerakan} onChange={setFilterGerakan}
+              placeholder="Semua Pergerakan" labelFn={pergerakanLabelFn} summaryLabel="pergerakan" className="w-44 shrink-0"/>
             <div className="flex flex-col gap-0.5 shrink-0">
               <label className="text-xs font-display font-bold text-foreground uppercase tracking-wide">Pencarian Data LOP</label>
               <div className="relative">

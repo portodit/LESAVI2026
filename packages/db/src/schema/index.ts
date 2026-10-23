@@ -5,6 +5,7 @@ export * from "./salesFunnel";
 export * from "./salesActivity";
 export * from "./dataImports";
 export * from "./telegramLogs";
+export * from "./telegramAnnouncementSettings";
 export * from "./telegramBotUsers";
 export * from "./telegramBulkLinks";
 export * from "./appSettings";

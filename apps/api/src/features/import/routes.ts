@@ -8,7 +8,7 @@ import {
   cleanFunnelRows, cleanActivityRows,
   detectExcelFormat, parsePivotCache, parseNipnas2AmSheet, pivotCacheRowsToParsedRows, pivotCacheRowsToParsedRowsFromCache2, ParsedRow,
 } from "./excel";
-import { sendReminderToAllAMs, notifyPerformanceSnapshot, notifyManagerSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
+import { notifyImportSnapshot } from "../telegram/importNotifier";
 
 // ── Helper: auto-register new AM to accounts table with aktif=false ───────────
 export async function autoRegisterNewAms(entries: { nik: string; nama: string; divisi: string; witel?: string }[], source: string): Promise<number> {
@@ -190,7 +190,10 @@ router.post("/funnel", requireAuth, async (req, res): Promise<void> => {
 
   const [settings] = await db.select().from(appSettingsTable);
   if (settings?.autoSendOnImport && settings.telegramBotToken) {
-    sendReminderToAllAMs(importPeriod, { includePerformance: false, includeFunnel: true, includeActivity: false }).catch(() => {});
+    const funnelUploader = (req as any).user
+      ? { nama: (req as any).user.nama ?? "Officer", role: (req as any).user.role ?? "OFFICER" }
+      : undefined;
+    notifyImportSnapshot("funnel", imp.id, { uploader: funnelUploader }).catch(() => {});
   }
 
   res.json({
@@ -303,18 +306,10 @@ router.post("/activity", requireAuth, async (req, res): Promise<void> => {
   const currentUser = (req as any).user;
   const uploader = currentUser ? { nama: currentUser.nama ?? "Officer", role: currentUser.role ?? "OFFICER" } : undefined;
 
-  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyActivitySnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
-  });
+  const { am: notifResult, manager: managerNotifResult } = await notifyImportSnapshot("activity", imp.id, { uploader });
   if (notifResult.sent > 0 || notifResult.failed > 0) {
     console.log(`[ACT-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
   }
-
-  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyManagerActivitySnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
-  });
   if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
     console.log(`[ACT-MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
   }
@@ -597,19 +592,10 @@ router.post("/performance", requireAuth, async (req, res): Promise<void> => {
   );
 
   // ── Send personalized snapshot notifications to all linked AMs
-  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
-  });
+  const { am: notifResult, manager: managerNotifResult } = await notifyImportSnapshot("performance", imp.id, { uploader });
   if (notifResult.sent > 0 || notifResult.failed > 0) {
     console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
   }
-
-  // ── Send manager-level summary to all linked MANAGER role users
-  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
-  });
   if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
     console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
   }
@@ -1032,19 +1018,10 @@ router.post("/internal/performance", async (req, res): Promise<void> => {
   const amCount = new Set(records.map(r => r.nik)).size;
 
   // ── Notify all linked AMs of their personalized performance snapshot
-  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyPerformanceSnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
-  });
+  const { am: notifResult, manager: managerNotifResult } = await notifyImportSnapshot("performance", imp.id, { uploader });
   if (notifResult.sent > 0 || notifResult.failed > 0) {
     console.log(`[PERF-NOTIFY] sent=${notifResult.sent} failed=${notifResult.failed} skipped=${notifResult.skipped}`);
   }
-
-  // ── Send manager-level summary to all linked MANAGER role users
-  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
-    console.error("[notifyManagerSnapshot] Error:", err instanceof Error ? err.message : err);
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
-  });
   if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
     console.log(`[MANAGER-NOTIFY] sent=${managerNotifResult.sent} failed=${managerNotifResult.failed} skipped=${managerNotifResult.skipped}`);
   }

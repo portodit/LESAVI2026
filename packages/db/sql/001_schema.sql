@@ -157,6 +157,16 @@ CREATE TABLE IF NOT EXISTS "telegram_logs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "telegram_announcement_settings" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"funnel_announce_enabled" boolean DEFAULT false NOT NULL,
+	"stagnant_reminder_enabled" boolean DEFAULT false NOT NULL,
+	"stagnant_reminder_interval_days" integer DEFAULT 3 NOT NULL,
+	"stagnant_reminder_hour_wib" integer DEFAULT 9 NOT NULL,
+	"stagnant_reminder_last_sent_at" timestamp with time zone,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS "telegram_bot_users" (
 	"chat_id" text PRIMARY KEY NOT NULL,
 	"first_name" text DEFAULT '' NOT NULL,

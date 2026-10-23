@@ -138,31 +138,7 @@ function getEmbedUrl(importId?: number): string {
   return `${base}/presentation`;
 }
 
-function getFunnelDetailUrl(): string {
-  return `${getPublicBaseUrlSafe()}/visualisasi/funnel`;
-}
-
 // ── Funnel helpers ──────────────────────────────────────────────────────────
-
-function isFunnel5(status: string | null | undefined): boolean {
-  return status === "F5" || status === "Won";
-}
-
-interface FunnelCounts { F0: number; F1: number; F2: number; F3: number; F4: number; F5: number }
-
-function countByStatus(lops: { statusF?: string | null }[]): FunnelCounts {
-  const counts: FunnelCounts = { F0: 0, F1: 0, F2: 0, F3: 0, F4: 0, F5: 0 };
-  for (const l of lops) {
-    const s = l.statusF || "";
-    if (s === "F0") counts.F0++;
-    else if (s === "F1") counts.F1++;
-    else if (s === "F2") counts.F2++;
-    else if (s === "F3") counts.F3++;
-    else if (s === "F4") counts.F4++;
-    else if (s === "F5" || s === "Won") counts.F5++;
-  }
-  return counts;
-}
 
 // --- BUILD FUNCTIONS: each returns ONE message string ---
 
@@ -468,190 +444,6 @@ async function buildPerformanceMessage(
   return { parts: [part1, part2], keyboard };
 }
 
-async function buildFunnelMessage(nik: string): Promise<string | null> {
-  const [am] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, nik));
-  if (!am) return null;
-
-  const funnelImportsRaw = await db.select()
-    .from(dataImportsTable)
-    .where(eq(dataImportsTable.type, "funnel"))
-    .orderBy(desc(dataImportsTable.createdAt))
-    .limit(10);
-
-  if (funnelImportsRaw.length === 0) return null;
-
-  const funnelImports = [...funnelImportsRaw].sort((a, b) => {
-    const aDate = a.snapshotDate;
-    const bDate = b.snapshotDate;
-    if (!aDate && !bDate) return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-    if (!aDate) return -1;
-    if (!bDate) return 1;
-    if (bDate > aDate) return 1;
-    if (aDate > bDate) return -1;
-    return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
-  });
-
-  const latestImport = funnelImports[0];
-  const prevImport = funnelImports.length >= 2 ? funnelImports[1] : null;
-
-  const relevantImportIds = [latestImport.id, ...(prevImport ? [prevImport.id] : [])];
-  const allLopsRaw = await db.select().from(salesFunnelTable).where(eq(salesFunnelTable.nikAm, nik));
-
-  const REPORT_YEAR = new Date().getFullYear().toString();
-  const allLops = allLopsRaw.filter(l =>
-    relevantImportIds.includes(l.importId!) &&
-    l.reportDate?.startsWith(REPORT_YEAR)
-  );
-
-  const latestLops = allLops.filter(l => l.importId === latestImport.id);
-  const counts = countByStatus(latestLops);
-  const total = latestLops.length;
-  const snapshotDateLatest = formatSnapshotDate(
-    latestImport.snapshotDate,
-    latestImport.period,
-    latestImport.createdAt?.toISOString()?.slice(0, 10) || "-"
-  );
-
-  if (!prevImport) {
-    let msg = `📋 *MONITORING SALES FUNNELING*\n`;
-    msg += `LESA VI — Witel Suramadu\n\n`;
-    msg += `Halo kak *${am.nama}*! 👋\n\n`;
-    msg += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak 🙏\n\n`;
-    msg += `📊 *Ringkasan LOP Kakak Saat Ini:*\n`;
-    msg += `├ F0 (Lead)        : ${counts.F0} proyek\n`;
-    msg += `├ F1 (Prospect)    : ${counts.F1} proyek\n`;
-    msg += `├ F2 (Quote)       : ${counts.F2} proyek\n`;
-    msg += `├ F3 (Negosiasi)   : ${counts.F3} proyek\n`;
-    msg += `├ F4 (Closing)     : ${counts.F4} proyek\n`;
-    msg += `└ F5 (Won) ✅      : ${counts.F5} proyek\n`;
-    msg += `*Total             : ${total} proyek*\n\n`;
-    msg += `_ℹ️ Perbandingan belum tersedia — ini snapshot pertama yang tercatat._\n`;
-    msg += `_Perbandingan akan muncul pada laporan berikutnya._\n\n`;
-    msg += `📎 Detail lengkap:\n`;
-    msg += getFunnelDetailUrl();
-    return msg;
-  }
-
-  const prevLops = allLops.filter(l => l.importId === prevImport.id);
-  const snapshotDatePrev = formatSnapshotDate(
-    prevImport.snapshotDate,
-    prevImport.period,
-    prevImport.createdAt?.toISOString()?.slice(0, 10) || "-"
-  );
-
-  const prevMap = new Map(prevLops.map(l => [l.lopid, l]));
-
-  const lopStagnan: { lopid: string; pelanggan: string; status: string }[] = [];
-  const lopBergerak: { lopid: string; pelanggan: string; statusLama: string; statusBaru: string }[] = [];
-  const lopBaru: { lopid: string; pelanggan: string; status: string }[] = [];
-
-  for (const lop of latestLops) {
-    const prev = prevMap.get(lop.lopid);
-    if (!prev) {
-      lopBaru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: lop.statusF || "" });
-      continue;
-    }
-
-    const statusBaru = lop.statusF || "";
-    const statusLama = prev.statusF || "";
-
-    if (statusBaru === statusLama) {
-      if (!isFunnel5(statusBaru)) {
-        lopStagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, status: statusBaru });
-      }
-    } else {
-      lopBergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan, statusLama, statusBaru });
-    }
-  }
-
-  const hasStagnan = lopStagnan.length > 0;
-
-  let msg = `📋 *MONITORING SALES FUNNELING*\n`;
-  msg += `LESA VI — Witel Suramadu\n\n`;
-  msg += `Halo kak *${am.nama}*! 👋\n\n`;
-  msg += `Berikut data funneling kakak per *${snapshotDateLatest}* ya kak 🙏\n\n`;
-  msg += `📊 *Ringkasan LOP Kakak Saat Ini:*\n`;
-  msg += `├ F0 (Lead)        : ${counts.F0} proyek\n`;
-  msg += `├ F1 (Prospect)    : ${counts.F1} proyek\n`;
-  msg += `├ F2 (Quote)       : ${counts.F2} proyek\n`;
-  msg += `├ F3 (Negosiasi)   : ${counts.F3} proyek\n`;
-  msg += `├ F4 (Closing)     : ${counts.F4} proyek\n`;
-  msg += `└ F5 (Won) ✅      : ${counts.F5} proyek\n`;
-  msg += `*Total             : ${total} proyek*\n\n`;
-  msg += `📅 _Dibandingkan dengan snapshot *${snapshotDatePrev}*_\n`;
-
-  const MAX_LIST = 10;
-
-  if (lopBaru.length > 0) {
-    msg += `\n🆕 *LOP Baru di Snapshot Ini (${lopBaru.length}):*\n`;
-    const baruShow = lopBaru.slice(0, MAX_LIST);
-    const baruRest = lopBaru.length - baruShow.length;
-    for (const lop of baruShow) {
-      msg += `\n• *${lop.lopid}* — ${lop.pelanggan}\n`;
-      msg += `  Status: *${lop.status}*\n`;
-    }
-    if (baruRest > 0) {
-      msg += `\n_...dan ${baruRest} LOP baru lainnya (lihat detail)_\n`;
-    }
-  }
-
-  if (hasStagnan) {
-    msg += `\n⚠️ *LOP Belum Bergerak (${lopStagnan.length}):*\n`;
-    msg += `_(status sama dengan snapshot *${snapshotDatePrev}*)_\n`;
-    const stagnanShow = lopStagnan.slice(0, MAX_LIST);
-    const stagnanRest = lopStagnan.length - stagnanShow.length;
-    for (const lop of stagnanShow) {
-      msg += `\n• *${lop.lopid}* — ${lop.pelanggan}\n`;
-      msg += `  Status masih *${lop.status}* sejak *${snapshotDatePrev}*\n`;
-    }
-    if (stagnanRest > 0) {
-      msg += `\n_...dan ${stagnanRest} LOP lainnya belum bergerak (lihat detail)_\n`;
-    }
-
-    msg += `\n✅ *LOP yang Sudah Bergerak (${lopBergerak.length}):*\n`;
-    msg += `_(ada perubahan status dibanding *${snapshotDatePrev}*)_\n`;
-    if (lopBergerak.length > 0) {
-      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
-      const bergerakRest = lopBergerak.length - bergerakShow.length;
-      for (const lop of bergerakShow) {
-        msg += `\n• *${lop.lopid}* — ${lop.pelanggan}\n`;
-        msg += `  ${lop.statusLama} → *${lop.statusBaru}* 🎯\n`;
-      }
-      if (bergerakRest > 0) {
-        msg += `\n_...dan ${bergerakRest} LOP lainnya (lihat detail)_\n`;
-      }
-    } else {
-      msg += `\n_Belum ada pergerakan status pada periode ini._\n`;
-    }
-  } else {
-    if (lopBergerak.length > 0) {
-      msg += `\n🎉 *Semua LOP Bergerak — Keren!*\n\n`;
-      msg += `✅ *Perubahan Status LOP (${lopBergerak.length}):*\n`;
-      const bergerakShow = lopBergerak.slice(0, MAX_LIST);
-      const bergerakRest = lopBergerak.length - bergerakShow.length;
-      for (const lop of bergerakShow) {
-        msg += `\n• *${lop.lopid}* — ${lop.pelanggan}\n`;
-        msg += `  ${lop.statusLama} → *${lop.statusBaru}* 🎯\n`;
-      }
-      if (bergerakRest > 0) {
-        msg += `\n_...dan ${bergerakRest} LOP lainnya (lihat detail)_\n`;
-      }
-    } else {
-      msg += `\n_Belum ada LOP tahun ${REPORT_YEAR} yang dapat dibandingkan pada snapshot ini._\n`;
-    }
-  }
-
-  msg += `\n📎 Detail lengkap:\n`;
-  msg += getFunnelDetailUrl();
-
-  if (msg.length > 4000) {
-    const footer = `\n\n_[Pesan terpotong] Detail lengkap:\n${getFunnelDetailUrl()}_`;
-    msg = msg.slice(0, 4000 - footer.length) + footer;
-  }
-
-  return msg;
-}
-
 export interface ActivityReport {
   summary: string;
   details: string[];
@@ -826,18 +618,12 @@ export async function buildActivityReport(nik: string, monthKey?: string): Promi
   };
 }
 
-async function buildActivityMessage(nik: string, _period: string): Promise<string[]> {
-  const report = await buildActivityReport(nik);
-  if (!report) return [];
-  return [report.summary, ...report.details];
-}
-
 // --- PUBLIC API ---
 
 export async function buildTelegramMessages(
   nik: string,
   period: string,
-  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean; autoFallback?: boolean }
+  options: { includePerformance: boolean; autoFallback?: boolean }
 ): Promise<{ messages: string[]; perfKeyboard?: object }> {
   const messages: string[] = [];
   let perfKeyboard: object | undefined;
@@ -850,27 +636,7 @@ export async function buildTelegramMessages(
     }
   }
 
-  if (options.includeFunnel) {
-    const m = await buildFunnelMessage(nik);
-    if (m) messages.push(m);
-  }
-
-  if (options.includeActivity) {
-    const msgs = await buildActivityMessage(nik, period);
-    messages.push(...msgs);
-  }
-
   return { messages, perfKeyboard };
-}
-
-/** @deprecated Use buildTelegramMessages (returns {messages, perfKeyboard}) instead */
-export async function buildTelegramMessage(
-  nik: string,
-  period: string,
-  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean; autoFallback?: boolean }
-): Promise<string> {
-  const result = await buildTelegramMessages(nik, period, options);
-  return result.messages.join("\n\n");
 }
 
 async function fetchWith429Retry(
@@ -1005,6 +771,41 @@ export async function sendToTelegramHtml(
   }
 }
 
+/**
+ * Edit pesan yang sudah ada — dipakai navigasi halaman agar isi pesan berubah
+ * di tempat, bukan menumpuk pesan baru setiap kali tombol ditekan.
+ *
+ * Mengembalikan false bila Telegram menolak (pesan dihapus, tidak berubah,
+ * dll) supaya pemanggil bisa falls back ke kirim pesan baru.
+ */
+export async function editMessageTextHtml(
+  botToken: string,
+  chatId: string,
+  messageId: number,
+  text: string,
+  replyMarkup?: object
+): Promise<boolean> {
+  const url = `https://api.telegram.org/bot${botToken}/editMessageText`;
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "HTML",
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  const response = await fetchWith429Retry(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json() as { description?: string };
+    logger.error({ status: response.status, chatId, messageId, error: data.description }, "editMessageTextHtml failed");
+    return false;
+  }
+  return true;
+}
+
 export async function answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string): Promise<void> {
   await fetchWith429Retry(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
     method: "POST",
@@ -1014,80 +815,6 @@ export async function answerCallbackQuery(botToken: string, callbackQueryId: str
 }
 
 export { greetingByTime };
-
-export async function sendReminderToAllAMs(
-  period: string,
-  options: { includePerformance: boolean; includeFunnel: boolean; includeActivity: boolean },
-  targetNiks?: string[]
-): Promise<{ sent: number; failed: number; skipped: number; details: { nik: string; namaAm: string; status: string; error?: string }[] }> {
-  const [settings] = await db.select().from(appSettingsTable);
-  if (!settings?.telegramBotToken) {
-    return { sent: 0, failed: 0, skipped: 0, details: [] };
-  }
-
-  let ams = await db.select().from(accountManagersTable);
-  if (targetNiks && targetNiks.length > 0) {
-    ams = ams.filter(a => targetNiks.includes(a.nik));
-  }
-
-  let sent = 0, failed = 0, skipped = 0;
-  const details: { nik: string; namaAm: string; status: string; error?: string }[] = [];
-
-  for (const am of ams) {
-    if (!am.telegramChatId) {
-      skipped++;
-      details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
-      continue;
-    }
-
-    try {
-      const { messages, perfKeyboard } = await buildTelegramMessages(am.nik, period, options);
-      if (!messages.length) {
-        skipped++;
-        details.push({ nik: am.nik, namaAm: am.nama, status: "skipped" });
-        continue;
-      }
-
-      for (let i = 0; i < messages.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, 500));
-        await sendToTelegramHtml(settings.telegramBotToken!, am.telegramChatId, messages[i]);
-      }
-
-      if (perfKeyboard) {
-        await new Promise(r => setTimeout(r, 500));
-        const firstName = am.nama.split(" ")[0];
-        await sendToTelegramHtml(
-          settings.telegramBotToken!, am.telegramChatId,
-          `Mau apa lagi kak <b>${firstName}</b>? 😊`, perfKeyboard
-        );
-      }
-
-      sent++;
-      details.push({ nik: am.nik, namaAm: am.nama, status: "sent" });
-
-      await db.insert(telegramLogsTable).values({
-        nik: am.nik, namaAm: am.nama, telegramChatId: am.telegramChatId,
-        status: "sent", period, messageType: "reminder",
-      });
-
-      // Delay between different AMs to avoid rate limiting (Telegram limit ~30 msg/sec)
-      await new Promise(r => setTimeout(r, 120));
-    } catch (error) {
-      failed++;
-      const errMsg = error instanceof Error ? error.message : "Unknown error";
-      details.push({ nik: am.nik, namaAm: am.nama, status: "failed", error: errMsg });
-
-      await db.insert(telegramLogsTable).values({
-        nik: am.nik, namaAm: am.nama, telegramChatId: am.telegramChatId || null,
-        status: "failed", period, messageType: "reminder", error: errMsg,
-      });
-
-      logger.error({ nik: am.nik, error: errMsg }, "Failed to send Telegram message");
-    }
-  }
-
-  return { sent, failed, skipped, details };
-}
 
 // ── Performance Snapshot Notification (personalized per-AM) ─────────────────────
 
@@ -1711,6 +1438,7 @@ export async function notifyManagerSnapshot(
 export async function notifyPerformanceSnapshot(
   importId: number,
   uploader?: { nama: string; role: string },
+  targetNiks?: string[],
 ): Promise<{
   sent: number; failed: number; skipped: number;
   details: { nik: string; status: string; error?: string }[];
@@ -1735,6 +1463,7 @@ export async function notifyPerformanceSnapshot(
 
   const latestRanks = await computeSnapshotRanks(importId);
   const prevRanks = prevImp ? await computeSnapshotRanks(prevImp.id) : new Map<string, RankedAm>();
+  const targetSet = targetNiks?.length ? new Set(targetNiks) : null;
 
   const snapshotName = formatSnapshotNameId(latestImp.snapshotDate);
   const greeting = getGreetingWIB(new Date());
@@ -1747,6 +1476,7 @@ export async function notifyPerformanceSnapshot(
   const details: { nik: string; status: string; error?: string }[] = [];
 
   for (const [nik, curr] of latestRanks) {
+    if (targetSet && !targetSet.has(nik)) continue;
     if (!curr.telegramChatId) {
       skipped++;
       details.push({ nik, status: "skipped" });
@@ -1876,6 +1606,7 @@ export interface ActivitySnapshotResult {
 export async function notifyActivitySnapshot(
   importId: number,
   uploader?: { nama: string; role: string; nik?: string },
+  targetNiks?: string[],
 ): Promise<ActivitySnapshotResult> {
   const [settings] = await db.select().from(appSettingsTable);
   if (!settings?.telegramBotToken) {
@@ -1923,8 +1654,10 @@ export async function notifyActivitySnapshot(
 
   // Active AMs (matching notifyPerformanceSnapshot rules)
   const allAms = await db.select().from(accountManagersTable);
+  const targetSet = targetNiks?.length ? new Set(targetNiks) : null;
   const activeAms = allAms.filter(m =>
     m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role || "") && m.nik
+    && (!targetSet || targetSet.has(m.nik))
   );
   const activeNikSet = new Set(activeAms.map(m => m.nik!));
   const chatIdMap = new Map(allAms.map(m => [m.nik, m.telegramChatId]));

@@ -2,33 +2,26 @@ import { Router, type IRouter } from "express";
 import { db, appSettingsTable } from "@workspace/db";
 import { requireAuth } from "../../shared/auth";
 import { runGSheetsSync, listAllSheets, syncSelectedSheets, extractSpreadsheetId, type SyncResult } from "./sync";
-import { sendReminderToAllAMs } from "../telegram/service";
+import { notifyImportSnapshot } from "../telegram/importNotifier";
 import { logger } from "../../shared/logger";
 
 const router: IRouter = Router();
 
-/** Send Telegram reminders based on what types were imported in a GSheets sync */
+/** Kirim notifikasi Telegram untuk sheet yang barusan diimport — template sama dengan import via bot. */
 async function triggerSyncReminders(result: SyncResult): Promise<void> {
   if (!result.results || result.results.length === 0) return;
   const [settings] = await db.select().from(appSettingsTable);
   if (!settings?.autoSendOnImport || !settings?.telegramBotToken) return;
 
-  const imported = result.results.filter((r) => r.status === "imported");
+  const imported = result.results.filter((r) => r.status === "imported" && r.importId != null);
   if (imported.length === 0) return;
 
-  // Use the period from the most recently imported funnel/activity/performance sheet
-  const period =
-    imported.find((r) => r.type === "performance")?.period ??
-    imported.find((r) => r.type === "funnel")?.period ??
-    imported.find((r) => r.type === "activity")?.period ??
-    "";
-
-  logger.info({ importedTypes: imported.map((r) => r.type), period }, "GDrive sync: triggering Telegram reminders");
-  await sendReminderToAllAMs(period, {
-    includePerformance: imported.some((r) => r.type === "performance"),
-    includeFunnel: imported.some((r) => r.type === "funnel"),
-    includeActivity: imported.some((r) => r.type === "activity"),
-  });
+  for (const r of imported) {
+    logger.info({ type: r.type, importId: r.importId, sheetName: r.sheetName }, "GSheets: triggering Telegram notification");
+    await notifyImportSnapshot(r.type, r.importId!).catch((err) =>
+      logger.error({ err, type: r.type }, "GSheets Telegram notification failed"),
+    );
+  }
 }
 
 // ── Manual sync trigger (all auto-detected sheets) ─────────────────────────────

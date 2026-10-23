@@ -36,7 +36,7 @@ interface FunnelData {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PHASES = ["F0", "F1", "F2", "F3", "F4", "F5"];
-const PHASE_LABELS: Record<string, string> = { F0:"Lead", F1:"Prospect", F2:"Quote", F3:"Negosiasi", F4:"Closing", F5:"Won/Closed" };
+const PHASE_LABELS: Record<string, string> = { F0:"Lead", F1:"Prospect", F2:"Quote", F3:"Negosiasi", F4:"Closing", F5:"Win/Closed" };
 const PHASE_COLORS: Record<string, { pill: string; bar: string; text: string }> = {
   F0: { pill: "bg-sky-100 text-sky-800",    bar: "#38bdf8", text: "#0369a1" },
   F1: { pill: "bg-blue-100 text-blue-800",  bar: "#3b82f6", text: "#1d4ed8" },
@@ -1044,7 +1044,7 @@ export default function FunnelPage() {
                           <div className="text-[10px] font-black text-muted-foreground uppercase tracking-wide mb-2">Perhitungan Conversion Rate</div>
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-4">
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">F5 (Closed/Won)</span>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">F5 (Closed/Win)</span>
                               <span className="text-xs font-bold text-foreground tabular-nums whitespace-nowrap">{formatRupiahFull(f5Val)}</span>
                             </div>
                             <div className="flex items-center justify-between gap-4">

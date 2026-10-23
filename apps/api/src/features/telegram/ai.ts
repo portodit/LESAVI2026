@@ -130,7 +130,7 @@ export async function generateFunnelMotivation(
       `Kamu adalah BOT LESA VI, asisten AM di Telkom Witel Suramadu.`,
       `AM bernama "${namaLengkap}" baru saja dikirim laporan funneling dan semua LOP-nya bergerak (ada perubahan status).`,
       `Tulis apresiasi singkat yang hangat dan memotivasi — 2-3 kalimat saja.`,
-      `Dorong AM untuk terus mempertahankan momentum hingga F5/Won supaya bonus cair.`,
+      `Dorong AM untuk terus mempertahankan momentum hingga F5/Win supaya bonus cair.`,
       `Bahasa Indonesia santai dan akrab, pakai sapaan "kak".`,
       `Jangan mulai dengan "Halo" atau "Hai". Format teks biasa, tanpa markdown berlebihan.`,
     ].join("\n");

@@ -352,6 +352,237 @@ export function renderActivityAmAnnouncement(ctx: ActivityAmCtx): string {
   ].join("\n");
 }
 
+// ── Sales Funnel Snapshot Announcement (per-AM) ────────────────────────────
+
+/** Potong nama LOP di ±35 karakter; ID LOP tidak pernah dipotong. */
+export function formatLopTitle(name: string | null | undefined, lopid: string): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return lopid;
+  if (trimmed.length <= 35) return trimmed;
+  return trimmed.slice(0, 34).trimEnd() + "…";
+}
+
+/** Nilai rupiah tanpa prefix "Rp" (template sudah menulis "Rp ..."). */
+function rupiahValue(n: number): string {
+  return formatRupiahId(n).replace(/^Rp\s*/, "");
+}
+
+export interface FunnelHighlightCtx {
+  nama: string;
+  lopid: string;
+  phase: string;
+  phaseLabel: string;
+  from: string | null;
+  to: string | null;
+  delta: number;
+  snapshotCount: number;
+  sinceLabel: string;
+  /** Nama AM pemilik LOP — dipakai pada daftar level divisi. */
+  namaAm?: string;
+}
+
+export interface FunnelAnnouncementCtx {
+  amName: string;
+  officerName: string;
+  officerRole: string;
+  snapshotName: string;
+  previousSnapshotName: string | null;
+  greeting: string;
+  /** Disclaimer scope (kategori kontrak + tahun anggaran). */
+  scopeLabel: string;
+  totalLop: number;
+  totalNilai: number;
+  realisasi: number;
+  target: number;
+  /** Capaian dalam persen (bisa > 100 bila melewati target). */
+  capaianPct: number;
+  /** Kelebihan realisasi di atas target (0 bila tidak melewati). */
+  overTarget: number;
+  /** Conversion rate F5 ÷ (F3+F4+F5) dalam persen, null bila denom 0. */
+  crPct: number | null;
+  /** Jumlah LOP di fase F3–F5 — penyebut conversion rate. */
+  crLopCount: number;
+  counts: Record<string, number>;
+  movements: { baru: number; naik: number; turun: number; stagnan: number };
+}
+
+/** "Dian (OFFICER)" — kalau nama kosong atau sama dengan role, role saja yang tampil. */
+export function formatOfficerLine(officerName: string, officerRole: string): string {
+  const name = (officerName || "").trim();
+  const role = (officerRole || "").trim();
+  if (!name || name.toLowerCase() === role.toLowerCase()) {
+    return htmlEscape(role || "Officer");
+  }
+  return `${htmlEscape(name)} (${htmlEscape(role)})`;
+}
+
+/** Pesan pertama: ringkasan funnel. */
+export function renderFunnelAnnouncement(ctx: FunnelAnnouncementCtx): string {
+  const amNameEsc = htmlEscape(ctx.amName);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const scopeEsc = htmlEscape(ctx.scopeLabel);
+  const prevEsc = htmlEscape(ctx.previousSnapshotName ?? "snapshot sebelumnya");
+
+  // Capaian ditampilkan apa adanya (bukan di-cap 100) supaya AM tahu
+  // sejauh mana melampaui target; kalimat "melebihi target" sudah terpisah.
+  const pencapaian = formatPctId(Math.max(ctx.capaianPct, 0));
+  const crDisplay = ctx.crPct == null ? "—" : formatPctId(ctx.crPct);
+
+  const lines: string[] = [
+    `<b>[UPDATE SNAPSHOT SALES FUNNEL]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, kak <b>${amNameEsc}</b> 👋`,
+    ``,
+    `Mohon izin menginformasikan bahwa ${formatOfficerLine(ctx.officerName, ctx.officerRole)} baru saja mengunggah data <b>Sales Funnel</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    `<blockquote>ℹ️ Daftar di bawah mencakup LOP kategori kontrak <b>${scopeEsc}</b>.</blockquote>`,
+    ``,
+    `<b>📌 Ringkasan Funnel</b>`,
+    `├ <b>Total LOP:</b> ${ctx.totalLop} proyek senilai Rp ${rupiahValue(ctx.totalNilai)}`,
+  ];
+
+  if (ctx.target > 0) {
+    const targetLine =
+      ctx.overTarget > 0
+        ? `<b>Realisasi funnel</b> Rp ${rupiahValue(ctx.realisasi)} dari target Rp ${rupiahValue(ctx.target)} (capaian <b>${pencapaian}%</b>, melebihi target Rp ${rupiahValue(ctx.overTarget)})`
+        : `<b>Realisasi funnel</b> Rp ${rupiahValue(ctx.realisasi)} dari target Rp ${rupiahValue(ctx.target)} (capaian <b>${pencapaian}%</b>)`;
+    lines.push(`├ ${targetLine}`);
+  } else {
+    lines.push(`├ <b>Realisasi funnel</b> Rp ${rupiahValue(ctx.realisasi)} (target belum diatur)`);
+  }
+
+  if (ctx.crPct == null) {
+    lines.push(`└ <b>Conversion Rate:</b> — (belum ada LOP di F3–F5)`);
+  } else {
+    lines.push(
+      `└ <b>Conversion Rate:</b> ${crDisplay}% (nilai F5 ÷ nilai F3+F4+F5 · ${ctx.crLopCount} LOP di F3–F5)`,
+    );
+  }
+
+  lines.push(
+    ``,
+    `<b>🧭 Sebaran fase</b>`,
+    renderPhaseLine(ctx.counts),
+    ``,
+    `<b>🔄 Pergerakan vs snapshot ${prevEsc}</b>`,
+    `├ ✦ ${ctx.movements.baru} LOP baru muncul`,
+    `├ ▲ ${ctx.movements.naik} LOP naik fase`,
+    `├ ▼ ${ctx.movements.turun} LOP turun fase`,
+    `└ ■ ${ctx.movements.stagnan} LOP stagnan`,
+    ``,
+    `Daftar LOP beserta pergerakannya ada di pesan berikutnya 👇`,
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * Sebaran fase sebagai satu baris angka.
+ *
+ * Baris "— jumlah LOP per fase" dalam satu baris; memakai bar/grafik
+ * menyesatkan karena panjangnya relatif, jadi angkanya yang jadi acuan.
+ */
+export function renderPhaseLine(counts: Record<string, number>): string {
+  return ["F0", "F1", "F2", "F3", "F4", "F5"]
+    .map((p) => `<b>${p}</b> ${counts[p] ?? 0} LOP`)
+    .join(" | ");
+}
+
+/**
+ * Pesan pertama versi manager: ringkasan level divisi.
+ *
+ * Bedanya dengan pesan AM: angka agregat seluruh AM aktif, dan CR memakai
+ * basis jumlah LOP (bukan nilai) supaya manager bisa membaca proporsi LOP.
+ */
+export interface FunnelManagerAnnouncementCtx {
+  managerName: string;
+  /** Sapaan untuk manager, mis. "Bu" atau "kak". */
+  managerHonorific: string;
+  officerName: string;
+  officerRole: string;
+  snapshotName: string;
+  previousSnapshotName: string | null;
+  greeting: string;
+  /** Kategori kontrak yang tercakup, mis. "GTMA, Own Channel". */
+  kategoriKontrak: string;
+  tahunAnggaran: number | null;
+  /** Jumlah AM aktif yang tercakup dalam ringkasan. */
+  activeAmCount: number;
+  totalLop: number;
+  totalNilai: number;
+  realisasi: number;
+  target: number;
+  capaianPct: number;
+  overTarget: number;
+  /** CR berbasis jumlah LOP: nF5 ÷ (nF3+nF4+nF5) dalam persen. */
+  crPct: number | null;
+  crF5Count: number;
+  crLopCount: number;
+  counts: Record<string, number>;
+  movements: { baru: number; naik: number; turun: number; stagnan: number };
+  /** Persentase LOP stagnan terhadap total LOP divisi. */
+  stagnantPct: number;
+}
+
+export function renderFunnelManagerAnnouncement(ctx: FunnelManagerAnnouncementCtx): string {
+  const managerNameEsc = htmlEscape(ctx.managerName);
+  const snapshotNameEsc = htmlEscape(ctx.snapshotName);
+  const kategoriEsc = htmlEscape(ctx.kategoriKontrak);
+  const prevEsc = htmlEscape(ctx.previousSnapshotName ?? "snapshot sebelumnya");
+  const officerBlock = `<b>${formatOfficerLine(ctx.officerName, ctx.officerRole)}</b>`;
+
+  const pencapaian = formatPctId(Math.max(ctx.capaianPct, 0));
+  const crDisplay = ctx.crPct == null ? "—" : formatPctId(ctx.crPct);
+  const tahunLine = ctx.tahunAnggaran != null ? String(ctx.tahunAnggaran) : "—";
+
+  const lines: string[] = [
+    `<b>[UPDATE SNAPSHOT SALES FUNNEL]</b>`,
+    ``,
+    `Selamat ${ctx.greeting}, ${ctx.managerHonorific} <b>${managerNameEsc}</b> 👋`,
+    ``,
+    `Mohon izin menginformasikan bahwa ${officerBlock} baru saja mengunggah data Sales Funnel terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
+    ``,
+    `<blockquote>ℹ️ Ringkasan mencakup LOP kategori kontrak <b>${kategoriEsc}</b>, Tahun Anggaran ${tahunLine}, dari ${ctx.activeAmCount} AM aktif LESA VI.</blockquote>`,
+    ``,
+    `<b>📌 Ringkasan Divisi</b>`,
+    `├ <b>Total LOP:</b> ${ctx.totalLop} proyek senilai Rp ${rupiahValue(ctx.totalNilai)}`,
+  ];
+
+  if (ctx.target > 0) {
+    const targetLine =
+      ctx.overTarget > 0
+        ? `<b>Realisasi funnel:</b> Rp ${rupiahValue(ctx.realisasi)} dari target Rp ${rupiahValue(ctx.target)} (capaian <b>${pencapaian}%</b>, melebihi target Rp ${rupiahValue(ctx.overTarget)})`
+        : `<b>Realisasi funnel:</b> Rp ${rupiahValue(ctx.realisasi)} dari target Rp ${rupiahValue(ctx.target)} (capaian <b>${pencapaian}%</b>)`;
+    lines.push(`├ ${targetLine}`);
+  } else {
+    lines.push(`├ <b>Realisasi funnel:</b> Rp ${rupiahValue(ctx.realisasi)} (target belum diatur)`);
+  }
+
+  if (ctx.crPct == null) {
+    lines.push(`└ <b>Conversion Rate:</b> — (belum ada LOP di F3–F5)`);
+  } else {
+    lines.push(
+      `└ <b>Conversion Rate:</b> ${crDisplay}% (F5 ÷ F3+F4+F5, ${ctx.crF5Count} dari ${ctx.crLopCount} LOP)`,
+    );
+  }
+
+  lines.push(
+    ``,
+    `<b>🧭 Sebaran fase</b>`,
+    renderPhaseLine(ctx.counts),
+    ``,
+    `<b>🔄 Pergerakan vs snapshot ${prevEsc}</b>`,
+    `├ ✦ ${ctx.movements.baru} LOP baru muncul`,
+    `├ ▲ ${ctx.movements.naik} LOP naik fase`,
+    `├ ▼ ${ctx.movements.turun} LOP turun fase`,
+    `└ ■ ${ctx.movements.stagnan} LOP stagnan (${formatPctId(ctx.stagnantPct)}% dari total)`,
+    ``,
+    `Rincian per AM ada di pesan berikutnya 👇`,
+  );
+
+  return lines.join("\n");
+}
+
 export function renderActivityManagerAnnouncement(ctx: ActivityManagerCtx): string {
   const rataPctDisplay = ctx.rataPct.toFixed(1).replace(".", ",");
   const pctAmDisplay = ctx.pctAmMemenuhi.toFixed(0);

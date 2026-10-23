@@ -13,7 +13,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 }
 
 const PHASES = ["F0", "F1", "F2", "F3", "F4", "F5"];
-const PHASE_LABELS: Record<string, string> = { F0:"Lead", F1:"Prospect", F2:"Quote", F3:"Negosiasi", F4:"Closing", F5:"Won/Closed" };
+const PHASE_LABELS: Record<string, string> = { F0:"Lead", F1:"Prospect", F2:"Quote", F3:"Negosiasi", F4:"Closing", F5:"Win/Closed" };
 const PHASE_COLORS: Record<string, { pill: string; bar: string; text: string }> = {
   F0: { pill:"bg-sky-100 text-sky-800",     bar:"#38bdf8", text:"#0369a1" },
   F1: { pill:"bg-blue-100 text-blue-800",   bar:"#3b82f6", text:"#1d4ed8" },

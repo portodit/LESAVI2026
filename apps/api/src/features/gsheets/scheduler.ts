@@ -1,7 +1,7 @@
 import { db, appSettingsTable } from "@workspace/db";
 import { runGSheetsSync } from "./sync";
 import { logger } from "../../shared/logger";
-import { sendReminderToAllAMs } from "../telegram/service";
+import { notifyImportSnapshot } from "../telegram/importNotifier";
 
 let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -33,22 +33,17 @@ async function tick() {
     const errors = result.results.filter(r => r.status === "error").length;
     logger.info({ imported, skipped, errors, sheetsFound: result.sheetsFound }, "GSheets scheduled sync complete");
 
-    // Auto-send Telegram reminders for newly imported sheets
+    // Auto-send Telegram notifications for newly imported sheets
     if (imported > 0) {
       const [settings] = await db.select().from(appSettingsTable);
       if (settings?.autoSendOnImport && settings?.telegramBotToken) {
-        const importedResults = result.results.filter(r => r.status === "imported");
-        const period =
-          importedResults.find(r => r.type === "performance")?.period ??
-          importedResults.find(r => r.type === "funnel")?.period ??
-          importedResults.find(r => r.type === "activity")?.period ??
-          "";
-        logger.info({ importedTypes: importedResults.map(r => r.type), period }, "GSheets scheduler: triggering Telegram reminders");
-        await sendReminderToAllAMs(period, {
-          includePerformance: importedResults.some(r => r.type === "performance"),
-          includeFunnel: importedResults.some(r => r.type === "funnel"),
-          includeActivity: importedResults.some(r => r.type === "activity"),
-        });
+        const importedResults = result.results.filter(r => r.status === "imported" && r.importId != null);
+        for (const r of importedResults) {
+          logger.info({ type: r.type, importId: r.importId, sheetName: r.sheetName }, "GSheets scheduler: triggering Telegram notification");
+          await notifyImportSnapshot(r.type, r.importId!).catch((err) =>
+            logger.error({ err, type: r.type }, "GSheets scheduler notification failed"),
+          );
+        }
       }
     }
   } catch (err) {

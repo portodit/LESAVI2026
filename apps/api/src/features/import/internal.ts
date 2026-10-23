@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { db, dataImportsTable, performanceDataTable, accountManagersTable, salesFunnelTable, salesActivityTable, masterCustomerTable, telegramBulkLinksTable, appSettingsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { autoRegisterNewAms } from "./routes";
-import { notifyPerformanceSnapshot, notifyManagerSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
+import { notifyStagnantReminder } from "../telegram/funnelAnnouncements";
+import { notifyImportSnapshot } from "../telegram/importNotifier";
 import { logger } from "../../shared/logger";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -239,19 +240,10 @@ router.post("/import-performance", async (req, res): Promise<void> => {
       .where(eq(accountManagersTable.nik, uploadedByNik)).limit(1);
     if (u) uploader = { nama: u.nama, role: u.role || "OFFICER", nik: u.nik || undefined };
   }
-  const notifResult = await notifyPerformanceSnapshot(imp.id, uploader).catch((err: unknown) => {
-    logger.error({ err }, "notifyPerformanceSnapshot failed in internal import");
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; scenario: string; status: string; error?: string }[] };
-  });
+  const { am: notifResult, manager: managerNotifResult } = await notifyImportSnapshot("performance", imp.id, { uploader });
   if (notifResult.sent > 0 || notifResult.failed > 0) {
     logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Performance snapshot notifications sent");
   }
-
-  // ── Send manager-level summary to all linked MANAGER role users
-  const managerNotifResult = await notifyManagerSnapshot(imp.id, uploader).catch((err: unknown) => {
-    logger.error({ err }, "notifyManagerSnapshot failed in internal import");
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nama: string; status: string; error?: string }[] };
-  });
   if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
     logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager snapshot notifications sent");
   }
@@ -441,6 +433,22 @@ router.post("/import-funnel", async (req, res): Promise<void> => {
 
   const amCount = new Set(cleaned.map(r => r.nikAm)).size;
 
+  // ── Kirim notifikasi [UPDATE SNAPSHOT SALES FUNNEL] ke AM yang terhubung
+  const funnelUploader = uploadedByNik
+    ? await (async () => {
+        const [u] = await db.select().from(accountManagersTable).where(eq(accountManagersTable.nik, uploadedByNik));
+        return u ? { nama: u.nama, role: u.role ?? "OFFICER", nik: u.nik ?? undefined } : undefined;
+      })()
+    : undefined;
+
+  const { am: funnelNotifResult, manager: managerNotifResult } = await notifyImportSnapshot("funnel", imp.id, { uploader: funnelUploader });
+  if (funnelNotifResult.sent > 0 || funnelNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: funnelNotifResult.sent, failed: funnelNotifResult.failed }, "Funnel snapshot notifications sent");
+  }
+  if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
+    logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Funnel manager snapshot notifications sent");
+  }
+
   res.json({
     success: true,
     rowsImported: cleaned.length,
@@ -451,8 +459,30 @@ router.post("/import-funnel", async (req, res): Promise<void> => {
     rawCount: rows.length,
     cleanedCount: cleaned.length,
     newAmDiscovered: newFunnelAmCount,
+    notifSent: funnelNotifResult.sent,
+    notifFailed: funnelNotifResult.failed,
     importId: imp.id,
   });
+});
+
+// ── Internal: trigger manual reminder LOP stagnan (untuk tes) ────────────────
+router.post("/stagnant-reminder", async (req, res): Promise<void> => {
+  const secret = req.headers["x-telegram-secret"];
+  const validSecret = process.env["TELEGRAM_IMPORT_SECRET"] || "telegram-bot-internal-secret-2024";
+  if (secret !== validSecret) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const result = await notifyStagnantReminder().catch((err: unknown) => {
+    logger.error(
+      { err: err instanceof Error ? err.message : err },
+      "notifyStagnantReminder failed (manual trigger)",
+    );
+    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
+  });
+
+  res.json({ success: true, ...result });
 });
 
 // ── Internal: Sales Activity import (Telegram) ───────────────────────────────────
@@ -597,18 +627,10 @@ router.post("/import-activity", async (req, res): Promise<void> => {
       })()
     : undefined;
 
-  const notifResult = await notifyActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
-    logger.error({ err: err instanceof Error ? err.message : err }, "notifyActivitySnapshot failed in internal import");
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
-  });
+  const { am: notifResult, manager: managerNotifResult } = await notifyImportSnapshot("activity", imp.id, { uploader });
   if (notifResult.sent > 0 || notifResult.failed > 0) {
     logger.info({ importId: imp.id, sent: notifResult.sent, failed: notifResult.failed }, "Activity snapshot notifications sent");
   }
-
-  const managerNotifResult = await notifyManagerActivitySnapshot(imp.id, uploader).catch((err: unknown) => {
-    logger.error({ err: err instanceof Error ? err.message : err }, "notifyManagerActivitySnapshot failed in internal import");
-    return { sent: 0, failed: 0, skipped: 0, details: [] as { nik: string; status: string; error?: string }[] };
-  });
   if (managerNotifResult.sent > 0 || managerNotifResult.failed > 0) {
     logger.info({ importId: imp.id, sent: managerNotifResult.sent, failed: managerNotifResult.failed }, "Manager activity snapshot notifications sent");
   }

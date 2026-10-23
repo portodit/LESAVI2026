@@ -1,8 +1,30 @@
 import { db, accountManagersTable, appSettingsTable, telegramBotUsersTable, telegramAccessCodesTable, telegramBulkLinksTable, dataImportsTable, salesFunnelTable, salesActivityTable, performanceDataTable } from "@workspace/db";
 import { eq, and, gt, inArray, desc, sql } from "drizzle-orm";
-import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, editMessageText, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, getAvailablePerfPeriodsAll, buildActivityReport } from "./service";
+import { sendToTelegram, sendToTelegramHtml, sendPhotoToTelegram, answerCallbackQuery, answerCallbackQueryAndEdit, editMessageText, editMessageTextHtml, greetingByTime, buildTelegramMessages, getAvailablePerfPeriods, getAvailablePerfPeriodsAll, buildActivityReport } from "./service";
 import { chatWithGemini, generateBasaBasi } from "./ai";
-import { htmlEscape, formatSnapshotNameId } from "./announcementTemplates";
+import { htmlEscape, formatSnapshotNameId, getGreetingWIB } from "./announcementTemplates";
+import {
+  buildFunnelPageKeyboard,
+  buildScopeLabel,
+  countFunnelPages,
+  countStagnantPages,
+  formatTanggalPendek,
+  parseFunnelPageCallback,
+  renderFunnelLopListPage,
+  renderStagnantReminderPage,
+  toHighlightCtx,
+  type FunnelLopListPageCtx,
+  type StagnantReminderPageCtx,
+} from "./funnelPages";
+import {
+  buildManagerAmKeyboard,
+  countManagerAmPages,
+  renderFunnelManagerAmListPage,
+  type ManagerAmRow,
+} from "./funnelManagerPages";
+import { buildLatestFunnelReport, splitTelegramMessage } from "./funnelLatestReport";
+import { notifyFunnelSnapshot } from "./funnelAnnouncements";
+import { loadFunnelScope, summarizeAm, summarizeDivision } from "../funnel/analysis";
 import { logger } from "../../shared/logger";
 import { getPublicBaseUrl, toHttpsUrl, isLocalUrl } from "../../shared/publicUrl";
 import bcrypt from "bcryptjs";
@@ -1083,7 +1105,7 @@ export async function pollOnce() {
           // ── perf:laporan — latest performance report ───────────────────────
           if (cbData === "perf:laporan") {
             const period = await latestSnapshotPeriod("performance");
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, autoFallback: true });
             if (!result.messages.length) {
               const now = new Date();
               await sendToTelegram(token, cbChatId,
@@ -1410,7 +1432,7 @@ export async function pollOnce() {
           // ── perf:current — current month, snapshot-aware ─────────────────
           if (cbData === "perf:current") {
             const period = await latestSnapshotPeriod("performance");
-            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, includeFunnel: false, includeActivity: false, autoFallback: true });
+            const result = await buildTelegramMessages(resolvedAm.nik, period, { includePerformance: true, autoFallback: true });
             if (!result.messages.length) {
               const now = new Date();
               await sendToTelegram(token, cbChatId,
@@ -1455,7 +1477,7 @@ export async function pollOnce() {
           if (cbData.startsWith("perf:")) {
             const periodStr = cbData.slice(5);
             if (/^\d{4}-\d{2}$/.test(periodStr)) {
-              const result = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true, includeFunnel: false, includeActivity: false });
+              const result = await buildTelegramMessages(resolvedAm.nik, periodStr, { includePerformance: true });
               if (!result.messages.length) {
                 const [yr, mo] = periodStr.split("-").map(Number);
                 await sendToTelegram(token, cbChatId,
@@ -1561,250 +1583,26 @@ export async function pollOnce() {
           // ── funnel:laporan — Laporan Terkini Sales Funneling ──────────────
           if (cbData === "funnel:laporan") {
             const firstName = resolvedAm.nama.split(" ")[0];
-            const reportYear = new Date().getFullYear().toString();
 
-            // Get funnel snapshots — sorted by createdAt DESC (newest first)
-            const funnelImportsRaw = await db.select()
-              .from(dataImportsTable)
-              .where(eq(dataImportsTable.type, "funnel"))
-              .orderBy(desc(dataImportsTable.createdAt))
-              .limit(10);
-
-            if (funnelImportsRaw.length === 0) {
+            const report = await buildLatestFunnelReport(resolvedAm.nik ?? "", resolvedAm.nama);
+            if (!report) {
               await sendToTelegram(token, cbChatId, `Belum ada data Sales Funneling tersedia kak *${firstName}*.`).catch(() => {});
               continue;
             }
 
-            // funnelImportsRaw[0] = newest, [1] = second newest
-            const latestImport = funnelImportsRaw[0];
-            const prevImport = funnelImportsRaw.length >= 2 ? funnelImportsRaw[1] : null;
-
-            // Load active AM NIKs (same rule as dashboard: ACCOUNT_MANAGER or AM, aktif=true)
-            const activeAms = await db.select().from(accountManagersTable);
-            const activeNikSet = new Set(
-              activeAms
-                .filter(m => m.aktif && ["ACCOUNT_MANAGER", "AM"].includes(m.role) && m.nik)
-                .map(m => m.nik)
-            );
-
-            const allLopsRaw = await db.select().from(salesFunnelTable)
-              .where(eq(salesFunnelTable.nikAm, resolvedAm.nik));
-
-            // Build latest state (highest importId per lopid — same as dashboard)
-            const lopLatest = new Map<string, typeof allLopsRaw[0]>();
-            for (const l of allLopsRaw) {
-              const existing = lopLatest.get(l.lopid);
-              if (!existing || (l.importId || 0) > (existing.importId || 0)) {
-                lopLatest.set(l.lopid, l);
+            await sendToTelegram(token, cbChatId, report.msg1).catch(() => {});
+            if (report.msg2) {
+              const chunks = splitTelegramMessage(report.msg2);
+              for (let i = 0; i < chunks.length; i++) {
+                const isLast = i === chunks.length - 1;
+                const stagnanKeyboard =
+                  isLast && report.stagnantCount > 10
+                    ? isLocalUrl(toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`))
+                      ? undefined
+                      : { inline_keyboard: [[{ text: `🔍 Lihat Semua ${report.stagnantCount} LOP`, url: toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`) }]] }
+                    : undefined;
+                await sendToTelegram(token, cbChatId, chunks[i], stagnanKeyboard).catch(() => {});
               }
-            }
-
-            // Build prev state: lopids from prevImport only (for CR comparison)
-            const prevLopIds = new Set<number>();
-            if (prevImport) {
-              for (const l of allLopsRaw) {
-                if (l.importId === prevImport.id) prevLopIds.add(l.lopid);
-              }
-            }
-
-            // Year from latest snapshot's period (same as dashboard auto-select year from snapshot)
-            const latestSnapYear = latestImport.period
-              ? latestImport.period.slice(0, 4)
-              : reportYear;
-
-            function isValidLop(l: typeof allLopsRaw[0] | undefined): boolean {
-              if (!l) return false;
-              // Filter by snapshot's year (same as dashboard: reportDate year matches snapshot period year)
-              const rdYear = l.reportDate?.slice(0, 4);
-              if (!rdYear || rdYear !== latestSnapYear) return false;
-              if (["LOSE", "CANCEL"].includes((l.statusProyek || "").toUpperCase())) return false;
-              const vReport = l.isReport;
-              if (vReport && vReport.trim().toUpperCase() !== "Y") return false;
-              const vType = l.projectType;
-              if (vType && !["AO", "MO"].includes(vType.trim().toUpperCase())) return false;
-              // Filter by kontrak type — GTMA & Own Channel only (sama kayak dashboard)
-              const kontrak = l.kategoriKontrak || "";
-              if (kontrak && !["GTMA", "Own Channel"].includes(kontrak)) return false;
-              // Only include lopids from active AMs (same as dashboard API filter)
-              if (!l.nikAm || !activeNikSet.has(l.nikAm)) return false;
-              return true;
-            }
-
-            const latestLops = [...lopLatest.values()].filter(isValidLop);
-            const prevLops = prevImport
-              ? allLopsRaw.filter(l => prevLopIds.has(l.lopid) && isValidLop(l))
-              : [];
-
-            const FCOUNT = (lops: typeof latestLops, status: string) =>
-              lops.filter(l => l.statusF === status).length;
-            // Annualized nilaiProyek — kontrak <12 bln dihitung per tahun (nilai × 12 / bulan)
-            const FVAL = (lops: typeof latestLops, status: string) =>
-              lops.reduce((s, l) => {
-                if (l.statusF !== status) return s;
-                const m = l.monthSubs;
-                const v = Number(l.nilaiProyek || 0);
-                return s + (m && m < 12 ? Math.round(v * 12 / m) : v);
-              }, 0);
-            const fmt = (n: number) => n >= 1e9 ? `Rp${(n / 1e9).toFixed(2)}M` : n >= 1e6 ? `Rp${(n / 1e6).toFixed(2)}Jt` : n >= 1e3 ? `Rp${(n / 1e3).toFixed(0)}Rb` : `Rp${n}`;
-
-            // Phase counts & nilai — same as dashboard funnel (F0/F1 excluded from display & totals)
-            const f2 = FCOUNT(latestLops, "F2"); const v2 = FVAL(latestLops, "F2");
-            const f3 = FCOUNT(latestLops, "F3"); const v3 = FVAL(latestLops, "F3");
-            const f4 = FCOUNT(latestLops, "F4"); const v4 = FVAL(latestLops, "F4");
-            const f5 = FCOUNT(latestLops, "F5"); const v5 = FVAL(latestLops, "F5");
-            // Total from F2-F5 only (dashboard AM detail shows only F2+)
-            const totalProj = f2 + f3 + f4 + f5;
-            const totalNilai = v2 + v3 + v4 + v5;
-
-            const currentSnap = latestImport.snapshotDate || latestImport.createdAt?.toISOString().slice(0, 10) || "-";
-            const currentSnapLabel = latestImport.snapshotDate
-              ? new Date(latestImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-              : latestImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
-
-            // ── PESAN 1: LAPORAN TERKINI ────────────────────────────────
-            let msg1 = `📋 *LAPORAN TERKINI SALES FUNNELING*\n\n`;
-            msg1 += `Kak *${firstName}* — Edisi *${currentSnapLabel}*\n\n`;
-            msg1 += `Berikut merupakan laporan perkembangan Sales Funneling LESA VI.\n\n`;
-            msg1 += `📅 Report Date : *${latestSnapYear} (semua bulan)*\n`;
-            msg1 += `📋 Snapshot    : *#${latestImport.id}*\n`;
-            msg1 += `📑 Jenis Kontrak : GTMA & Own Channel\n`;
-            msg1 += `🧮 Perhitungan : Nilai Kontrak per Tahun\n\n`;
-            msg1 += `📊 *Ringkasan LOP Kakak Saat Ini:*\n\n`;
-            msg1 += `├ F2 (Quote)     : ${f2} proyek | ${fmt(v2)}\n`;
-            msg1 += `├ F3 (Negosiasi) : ${f3} proyek | ${fmt(v3)}\n`;
-            msg1 += `├ F4 (Closing)   : ${f4} proyek | ${fmt(v4)}\n`;
-            msg1 += `└ F5 (Win) ✅   : ${f5} proyek | ${fmt(v5)}\n\n`;
-            msg1 += `Total LOP        : *${totalProj} proyek | ${fmt(totalNilai)}*\n\n`;
-
-            if (prevLops.length > 0) {
-              const prevF5_val = FVAL(prevLops, "F5");
-              const prevF345 = FVAL(prevLops, "F3") + FVAL(prevLops, "F4") + prevF5_val;
-              const prevRate = prevF345 > 0 ? (prevF5_val / prevF345 * 100) : 0;
-              const f345 = v3 + v4 + v5;
-              const currRate = f345 > 0 ? (v5 / f345 * 100) : 0;
-              const diff = currRate - prevRate;
-              // Truncate (bukan round) agar 12.91% jadi 12.9%, bukan 13.0%
-              const fmtRate = (r: number) => `${Math.trunc(r * 10) / 10}%`;
-              const prevSnapLabel = prevImport.snapshotDate
-                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
-
-              msg1 += `📈 *Perubahan dibanding snapshot sebelumnya:*\n`;
-              msg1 += `Conversion Rate : *${fmtRate(currRate)}* (${diff >= 0 ? "▲" : "▼"} ${fmtRate(Math.abs(diff))} vs ${fmtRate(prevRate)})\n`;
-              msg1 += `_Snapshot sebelumnya: #${prevImport.id} (${prevSnapLabel})_`;
-            }
-
-            await sendToTelegram(token, cbChatId, msg1).catch(() => {});
-
-            // ── PESAN 2: ANALISIS PERKEMBANGAN LOP ───────────────────
-            if (prevLops.length > 0) {
-              const prevMap = new Map(prevLops.map(l => [l.lopid, l]));
-              const stagnan: { lopid: string; pelanggan: string; status: string }[] = [];
-              const bergerak: { lopid: string; pelanggan: string; lama: string; baru: string }[] = [];
-              const baru: { lopid: string; pelanggan: string; status: string }[] = [];
-
-              for (const lop of latestLops) {
-                const prev = prevMap.get(lop.lopid);
-                if (!prev) {
-                  baru.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: lop.statusF || "-" });
-                  continue;
-                }
-                const sb = lop.statusF || "";
-                const sl = prev.statusF || "";
-                if (sb === sl) {
-                  stagnan.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", status: sb });
-                } else {
-                  bergerak.push({ lopid: lop.lopid, pelanggan: lop.pelanggan || "-", lama: sl, baru: sb });
-                }
-              }
-
-              const prevSnapLabel = prevImport.snapshotDate
-                ? new Date(prevImport.snapshotDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-                : prevImport.createdAt?.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) || "-";
-
-              let msg2 = `📈 *ANALISIS PERKEMBANGAN LOP*\n\n`;
-              msg2 += `Benchmark: Snapshot #${latestImport.id} (terbaru) vs #${prevImport.id} (${prevSnapLabel})\n\n`;
-
-              if (bergerak.length > 0) {
-                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
-                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:\n\n`;
-                for (const l of bergerak) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  *${l.lama}* → *${l.baru}*\n\n`;
-                }
-                msg2 += `\n`;
-              }
-
-              if ( baru.length > 0) {
-                msg2 += `🆕 *LOP Baru Muncul (${ baru.length})*\n`;
-                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):\n\n`;
-                for (const l of  baru) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  Status saat ini: *${l.status}*\n\n`;
-                }
-                msg2 += `\n`;
-              }
-
-              const stagnanF5 = stagnan.filter(l => l.status === "F5");
-              const stagnanNon = stagnan.filter(l => l.status !== "F5");
-              const totalTercakup = bergerak.length + baru.length + stagnanNon.length + stagnanF5.length;
-              msg2 += `_Total: ${totalTercakup} LOP tercakup dalam analisis_\n\n`;
-
-              if (bergerak.length > 0) {
-                msg2 += `✅ *LOP Sudah Bergerak (${bergerak.length})*\n`;
-                msg2 += `Perubahan status dari snapshot #${prevImport.id} ke #${latestImport.id}:\n\n`;
-                for (const l of bergerak) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  *${l.lama}* → *${l.baru}*\n\n`;
-                }
-                msg2 += `\n`;
-              }
-
-              if ( baru.length > 0) {
-                msg2 += `🆕 *LOP Baru Muncul (${ baru.length})*\n`;
-                msg2 += `LOP yang tidak ada di snapshot #${prevImport.id} (muncul di #${latestImport.id}):\n\n`;
-                for (const l of  baru) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  Status saat ini: *${l.status}*\n\n`;
-                }
-                msg2 += `\n`;
-              }
-
-              if (stagnanNon.length > 0) {
-                msg2 += `⚠️ *LOP Belum Bergerak (${stagnanNon.length})*\n`;
-                msg2 += `Status masih sama dibanding snapshot #${prevImport.id}:\n\n`;
-                const show = stagnanNon.slice(0, 10);
-                for (const l of show) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                  msg2 += `  Status tetap *${l.status}* sejak *${prevSnapLabel}*\n\n`;
-                }
-                if (stagnanNon.length > 10) msg2 += `...dan *${stagnanNon.length - 10}* LOP lainnya belum bergerak\n\n`;
-              }
-
-              if (stagnanF5.length > 0) {
-                msg2 += `🏆 *LOP F5 / Win (${stagnanF5.length})*\n`;
-                msg2 += `LOP yang sudah menang dan status tetap *F5* sejak *${prevSnapLabel}* (#${prevImport.id}):\n\n`;
-                for (const l of stagnanF5) {
-                  msg2 += `• *${l.lopid}* — ${l.pelanggan}\n`;
-                }
-                msg2 += `\n`;
-              }
-
-              if (bergerak.length === 0 &&  baru.length === 0 && stagnanNon.length === 0) {
-                msg2 += `✅ *LOP Sudah Bergerak (0)*\n`;
-                msg2 += `Tidak ada LOP yang berubah status dari snapshot #${prevImport.id} ke #${latestImport.id}.\n\n`;
-              }
-
-              msg2 += `\n💡 *Catatan:*\n`;
-              msg2 += `Yuk, segera lakukan follow up dan update progress LOP yang masih belum bergerak agar setiap peluang dapat terus berkembang menuju tahap berikutnya.\n\n`;
-              msg2 += `_Pastikan setiap aktivitas dan perkembangan terbaru sudah tercatat agar monitoring Sales Funneling tetap akurat._`;
-
-              const stagnanKeyboard = stagnanNon.length > 10
-                ? isLocalUrl(toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`))
-                  ? undefined
-                  : { inline_keyboard: [[{ text: `🔍 Lihat Semua ${stagnanNon.length} LOP`, url: toHttpsUrl(`${getPublicBaseUrl()}/visualisasi/funnel`) }]] }
-                : undefined;
-              await sendToTelegram(token, cbChatId, msg2, stagnanKeyboard).catch(() => {});
             }
 
             await sendToTelegram(token, cbChatId, `Mau apa lagi kak *${firstName}*? 😊`, FUNNEL_SUB_KEYBOARD).catch(() => {});
@@ -2277,6 +2075,229 @@ export async function pollOnce() {
               `🔗 <a href="${url}">Klik Disini Untuk Akses</a>`,
               { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
             ).catch(() => {});
+            continue;
+          }
+
+          // ── funnel:terkini — tombol "Laporan Terkini Sales Funnel" ────────
+          if (cbData === "funnel:terkini") {
+            await answerCallbackQuery(token, cb.id, "Menyiapkan tautan laporan...").catch(() => {});
+            const base = getPublicBaseUrl();
+            const url = toHttpsUrl(`${base}/presentation?type=funnel`);
+            await sendToTelegram(token, cbChatId,
+              `📊 *Laporan Terkini Sales Funneling*\n\n` +
+              `Halaman funnel terbaru untuk Witel Suramadu.\n\n` +
+              `🔗 ${url}`,
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── am:profile — tombol "Lihat Profil" (notifikasi LOP stagnan) ──
+          if (cbData === "am:profile") {
+            await answerCallbackQuery(token, cb.id, "Menyiapkan tautan profil...").catch(() => {});
+            if (!resolvedAm) {
+              await sendToTelegram(token, cbChatId,
+                `👤 Profil AM\n\nAkun Telegram ini belum ditautkan ke data AM mana pun kak. Silakan tautkan dulu ya.`,
+                { inline_keyboard: [[{ text: "🔗 Tautkan Akun", callback_data: VERIF_LINK_UUID }]] }
+              ).catch(() => {});
+              continue;
+            }
+            const base = getPublicBaseUrl();
+            const nik = resolvedAm.nik ?? "";
+            const profileUrl = toHttpsUrl(`${base}/presentation/am/${encodeURIComponent(nik)}`);
+            const amPublicUrl = resolvedAm.slug
+              ? toHttpsUrl(`${base}/am-public/${encodeURIComponent(resolvedAm.slug)}`)
+              : null;
+            await sendToTelegram(token, cbChatId,
+              `👤 *Profil AM — ${resolvedAm.nama}*\n\n` +
+              `Halaman profil untuk AM ini. Pilih link di bawah:\n\n` +
+              `🔗 Dashboard AM: ${profileUrl}\n` +
+              (amPublicUrl ? `🔗 Halaman Publik: ${amPublicUrl}\n` : ``),
+              { inline_keyboard: [[{ text: "◀️ Kembali", callback_data: "nav:main" }]] }
+            ).catch(() => {});
+            continue;
+          }
+
+          // ── fn:noop — tombol indikator halaman (tidak ada aksi) ──────────
+          if (cbData === "fn:noop") {
+            continue;
+          }
+
+          // ── mgr:am:<nik> — laporan terkini AM versi bot AM ────────────────
+          if (cbData.startsWith("mgr:am:")) {
+            await answerCallbackQuery(token, cb.id, "Menyiapkan laporan...").catch(() => {});
+            const targetNik = cbData.slice("mgr:am:".length);
+            const target = await db
+              .select({ nama: accountManagersTable.nama })
+              .from(accountManagersTable)
+              .where(eq(accountManagersTable.nik, targetNik))
+              .limit(1);
+            const nama = target[0]?.nama || targetNik;
+
+            const report = await buildLatestFunnelReport(
+              targetNik,
+              nama,
+              `👤 *Laporan LOP — ${nama}* (NIK ${targetNik})`,
+            );
+            if (!report) {
+              await sendToTelegram(
+                token,
+                cbChatId,
+                `Belum ada data Sales Funneling tersedia untuk *${nama}* kak.`,
+              ).catch(() => {});
+              continue;
+            }
+
+            const dashUrl = toHttpsUrl(
+              `${getPublicBaseUrl()}/presentation?type=funnel&am=${encodeURIComponent(targetNik)}`,
+            );
+            const dashKeyboard = isLocalUrl(dashUrl)
+              ? undefined
+              : {
+                  inline_keyboard: [
+                    [{ text: `🔗 Dashboard ${nama.split(" ")[0]}`, url: dashUrl }],
+                  ],
+                };
+
+            await sendToTelegram(token, cbChatId, report.msg1, dashKeyboard).catch(() => {});
+            if (report.msg2) {
+              const chunks = splitTelegramMessage(report.msg2);
+              for (const chunk of chunks) {
+                await sendToTelegram(token, cbChatId, chunk).catch(() => {});
+              }
+            }
+            continue;
+          }
+
+          // ── fn:stag:* / fn:mov:* — halaman daftar LOP (notifikasi dorongan)
+          const pageReq = parseFunnelPageCallback(cbData);
+          if (pageReq) {
+            await answerCallbackQuery(token, cb.id, "Memuat halaman...").catch(() => {});
+
+            // Navigasi mengubah pesan yang sama di tempat — bukan mengirim
+            // pesan baru, supaya chat tidak menumpuk salinan tiap halaman.
+            // Callback dari inline keyboard selalu punya cb.message; kalau
+            // tidak (mis. pesan lama dihapus) jatuh ke kirim pesan baru.
+            const cbMessageId = cb.message?.message_id;
+            const renderPage = async (text: string, markup: object | undefined) => {
+              if (cbMessageId == null) {
+                await sendToTelegramHtml(token, cbChatId, text, markup).catch(() => {});
+                return;
+              }
+              const ok = await editMessageTextHtml(token, cbChatId, cbMessageId, text, markup).catch(
+                () => false,
+              );
+              if (!ok) await sendToTelegramHtml(token, cbChatId, text, markup).catch(() => {});
+            };
+
+            // ── fn:mgr:* — halaman daftar pergerakan per AM (khusus manager) ──
+            if (pageReq.kind === "mgr") {
+              if (resolvedAm.role !== "MANAGER") {
+                await sendToTelegramHtml(
+                  token,
+                  cbChatId,
+                  `Halaman pergerakan per AM ini khusus untuk <b>Manager</b> kak.`,
+                ).catch(() => {});
+                continue;
+              }
+
+              const scope = await loadFunnelScope({ upToSnapshotDate: pageReq.snapshotDate });
+              const division = summarizeDivision(scope);
+              const amRows: ManagerAmRow[] = division.amRows.map((r) => ({
+                nik: r.nik,
+                namaAm: r.namaAm,
+                baru: r.movements.baru,
+                naik: r.movements.naik,
+                turun: r.movements.turun,
+                stagnan: r.movements.stagnan,
+              }));
+              const totalPages = countManagerAmPages(amRows);
+              const page = Math.min(pageReq.page, totalPages - 1);
+
+              const keyboard = buildManagerAmKeyboard({
+                rows: amRows,
+                page,
+                totalPages,
+                snapshotDate: scope.latestSnapshotDate,
+              });
+
+              await renderPage(renderFunnelManagerAmListPage(amRows, page, totalPages), keyboard);
+              continue;
+            }
+
+            const nik = resolvedAm.nik;
+            if (!nik || !["ACCOUNT_MANAGER", "AM"].includes(resolvedAm.role || "")) {
+              await sendToTelegramHtml(
+                token,
+                cbChatId,
+                `Halaman daftar LOP ini khusus untuk <b>Account Manager</b> kak.`,
+              ).catch(() => {});
+              continue;
+            }
+
+            const scope = await loadFunnelScope({ upToSnapshotDate: pageReq.snapshotDate });
+            if (!scope.latestSnapshotDate) {
+              await sendToTelegramHtml(
+                token,
+                cbChatId,
+                `Data snapshot Sales Funnel tidak ditemukan kak.`,
+              ).catch(() => {});
+              continue;
+            }
+
+            const summary = summarizeAm(scope, nik, resolvedAm.nama);
+            const snapshotName = formatTanggalPendek(scope.latestSnapshotDate);
+            const base = getPublicBaseUrl();
+            const publicHttps = toHttpsUrl(base);
+            const localMode = isLocalUrl(publicHttps);
+
+            if (pageReq.kind === "stag") {
+              const items = summary.stagnant.map(toHighlightCtx);
+              const totalPages = countStagnantPages(items);
+              const page = Math.min(pageReq.page, totalPages - 1);
+              const ctx: StagnantReminderPageCtx = {
+                amName: resolvedAm.nama,
+                greeting: getGreetingWIB(new Date()),
+                snapshotName,
+                scopeLabel: buildScopeLabel(scope),
+                totalStagnant: summary.movements.stagnan,
+                items,
+              };
+              const profilUrl = `${publicHttps}/presentation/am/${encodeURIComponent(nik)}`;
+              const keyboard = buildFunnelPageKeyboard({
+                kind: "stag",
+                page,
+                totalPages,
+                snapshotDate: scope.latestSnapshotDate,
+                extraRows: [
+                  localMode
+                    ? [{ text: "👤 Lihat Profil", callback_data: "am:profile" }]
+                    : [{ text: "👤 Lihat Profil", url: profilUrl }],
+                ],
+              });
+              await renderPage(renderStagnantReminderPage(ctx, page, totalPages), keyboard);
+              continue;
+            }
+
+            const listCtx: FunnelLopListPageCtx = {
+              amName: resolvedAm.nama,
+              snapshotName,
+              lists: {
+                baru: summary.movementLists.baru.map(toHighlightCtx),
+                naik: summary.movementLists.naik.map(toHighlightCtx),
+                turun: summary.movementLists.turun.map(toHighlightCtx),
+                stagnan: summary.movementLists.stagnan.map(toHighlightCtx),
+              },
+            };
+            const totalPages = countFunnelPages(listCtx.lists);
+            const page = Math.min(pageReq.page, totalPages - 1);
+            const keyboard = buildFunnelPageKeyboard({
+              kind: "mov",
+              page,
+              totalPages,
+              snapshotDate: scope.latestSnapshotDate,
+            });
+            await renderPage(renderFunnelLopListPage(listCtx, page, totalPages), keyboard);
             continue;
           }
 
@@ -3722,12 +3743,23 @@ export async function pollOnce() {
           continue;
         }
 
-        const period = currentPeriod();
-        const opts = { includePerformance: false, includeFunnel: text === "/funneling", includeActivity: false };
-        const msgs = await buildTelegramMessages(linkedAm.nik, period, opts);
-        for (const m of msgs) await sendToTelegram(token, chatId, m).catch(() => {});
-        if (!msgs.length) await sendToTelegram(token, chatId, `Belum ada data untuk periode ini kak *${amFirstName}*.`).catch(() => {});
-        continue;
+        // /funneling → kirim pengumuman funnel yang sama seperti saat import
+        if (text === "/funneling") {
+          const [latestFunnel] = await db.select({ id: dataImportsTable.id })
+            .from(dataImportsTable)
+            .where(eq(dataImportsTable.type, "funnel"))
+            .orderBy(desc(dataImportsTable.id))
+            .limit(1);
+          if (!latestFunnel) {
+            await sendToTelegram(token, chatId, `Belum ada data funneling kak *${amFirstName}*.`).catch(() => {});
+            continue;
+          }
+          const funnelRes = await notifyFunnelSnapshot(latestFunnel.id, undefined, [linkedAm.nik!]).catch(() => null);
+          if (!funnelRes || funnelRes.sent === 0) {
+            await sendToTelegram(token, chatId, `Belum ada data funneling untuk periode ini kak *${amFirstName}*.`).catch(() => {});
+          }
+          continue;
+        }
       }
 
       // /list — show snapshot list (for ADMIN/OFFICER/MANAGER)
