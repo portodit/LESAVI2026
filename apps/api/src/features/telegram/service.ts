@@ -1622,34 +1622,24 @@ export async function notifyActivitySnapshot(
   const greeting = getGreetingWIB(new Date());
   const isAwalBulan = day >= 1 && day <= 7;
 
-  // Cumulative view (matches dashboard): include all activity imports with
-  // snapshotDate <= selected import's snapshotDate. Activities from imports
-  // with snapshotDate = null are also included if their importId <= importId
-  // (catches legacy/null snapshotDate data).
-  const allImports = await db.select({
-    id: dataImportsTable.id,
-    snapshotDate: dataImportsTable.snapshotDate,
-  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
-
-  const allActsRaw = await db.select().from(salesActivityTable);
-  const allowedImpIds = new Set(
-    allImports.filter(i => i.snapshotDate == null
-      || (imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate)
-    ).map(i => i.id)
-  );
-  const allActs = allActsRaw.filter(a => a.importId != null && allowedImpIds.has(a.importId));
+  // Setiap file import activity adalah dump kumulatif: isinya SELURUH
+  // aktivitas dari awal sampai tanggal snapshot. Jadi import yang lebih lama
+  // sudah tercakup penuh di import ini. Kalau import-import lama ikut
+  // dijumlahkan, aktivitas yang sama terhitung berulang (NADYA 29 → 64,
+  // total tim 97 → 226) dan KPI terlihat jauh lebih tinggi dari dashboard.
+  // Ambil HANYA import terpilih — sama dengan /api/public/activity.
+  const allActs = (await db.select().from(salesActivityTable))
+    .filter(a => a.importId === importId);
 
   // Filter activities to the target month (by activityEndDate YYYY-MM).
-  // Match dashboard: parse timestamp as UTC ("...Z" suffix) so late-evening
-  // UTC entries near month boundaries shift to the correct local month
-  // (e.g. "2026-09-30 23:59:48" → Oct 1 in WIB). Without "Z" the dashboard
-  // would show October but the notifier would show September.
+  // Parse sebagai UTC lalu ambil bulan UTC-nya supaya hasilnya sama dengan
+  // filter prefix "YYYY-MM" di dashboard, apa pun zona waktu server.
   const monthActs = allActs.filter(a => {
     const d = a.activityEndDate;
     if (!d || d.length < 7) return false;
     const dt = new Date(d.replace(" ", "T") + "Z");
     if (isNaN(dt.getTime())) return false;
-    return dt.getFullYear() === year && dt.getMonth() + 1 === month;
+    return dt.getUTCFullYear() === year && dt.getUTCMonth() + 1 === month;
   });
 
   // Active AMs (matching notifyPerformanceSnapshot rules)
@@ -1778,29 +1768,19 @@ export async function notifyManagerActivitySnapshot(
   const greeting = getGreetingWIB(new Date());
   const isAwalBulan = day >= 1 && day <= 7;
 
-  // Cumulative view (matches dashboard + AM notif): include all activity
-  // imports with snapshotDate <= selected import's snapshotDate, plus any
-  // import with null snapshotDate.
-  const allImports = await db.select({
-    id: dataImportsTable.id,
-    snapshotDate: dataImportsTable.snapshotDate,
-  }).from(dataImportsTable).where(eq(dataImportsTable.type, "activity"));
+  // Sama seperti notifier level AM: file import activity adalah dump
+  // kumulatif, jadi cukup ambil import terpilih agar tidak ada aktivitas
+  // yang terhitung berkali-kali.
+  const allActs = (await db.select().from(salesActivityTable))
+    .filter(a => a.importId === importId);
 
-  const allowedImpIds = new Set(
-    allImports.filter(i => i.snapshotDate == null
-      || (imp.snapshotDate != null && i.snapshotDate <= imp.snapshotDate)
-    ).map(i => i.id)
-  );
-  const allActsRaw = await db.select().from(salesActivityTable);
-  const allActs = allActsRaw.filter(a => a.importId != null && allowedImpIds.has(a.importId));
-
-  // Filter by month (Z-suffix to match dashboard's UTC parse)
+  // Filter by month (bulan UTC dari string naive = sama dengan prefix filter dashboard)
   const monthActs = allActs.filter(a => {
     const d = a.activityEndDate;
     if (!d || d.length < 7) return false;
     const dt = new Date(d.replace(" ", "T") + "Z");
     if (isNaN(dt.getTime())) return false;
-    return dt.getFullYear() === year && dt.getMonth() + 1 === month && isKpiLabel(a.label);
+    return dt.getUTCFullYear() === year && dt.getUTCMonth() + 1 === month && isKpiLabel(a.label);
   });
 
   const allAms = await db.select().from(accountManagersTable);
