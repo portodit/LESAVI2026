@@ -606,6 +606,7 @@ export function renderActivityManagerAnnouncement(ctx: ActivityManagerCtx): stri
   if (ctx.reachedCount > 0) {
     summaryLines.push(
       `├ ✅ <b>${ctx.reachedCount} AM sudah memenuhi KPI (≥25 kegiatan):</b>\n   ${ctx.daftarMemenuhi}`,
+      ``,
     );
   }
   if (ctx.belumCount > 0) {
@@ -620,7 +621,7 @@ export function renderActivityManagerAnnouncement(ctx: ActivityManagerCtx): stri
   return [
     `<b>[UPDATE SNAPSHOT SALES ACTIVITY]</b>`,
     ``,
-    `Selamat ${ctx.greeting}, ${ctx.managerHonorific} <b>${amNameEsc}</b> 👋`,
+    `Selamat ${ctx.greeting}, <b>${ctx.managerHonorific} ${amNameEsc}</b> 👋`,
     ``,
     `Mohon izin menginformasikan bahwa <b>${officerEsc}</b> baru saja mengunggah data <b>Sales Activity</b> terbaru untuk snapshot <b>${snapshotNameEsc}</b>.`,
     ``,
