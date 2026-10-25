@@ -193,7 +193,16 @@ router.post("/funnel", requireAuth, async (req, res): Promise<void> => {
     const funnelUploader = (req as any).user
       ? { nama: (req as any).user.nama ?? "Officer", role: (req as any).user.role ?? "OFFICER" }
       : undefined;
-    notifyImportSnapshot("funnel", imp.id, { uploader: funnelUploader }).catch(() => {});
+    notifyImportSnapshot("funnel", imp.id, { uploader: funnelUploader })
+      .then(({ am, manager }) => {
+        if (am.sent > 0 || am.failed > 0) {
+          console.log(`[FUNNEL-NOTIFY] sent=${am.sent} failed=${am.failed} skipped=${am.skipped}`);
+        }
+        if (manager.sent > 0 || manager.failed > 0) {
+          console.log(`[FUNNEL-MANAGER-NOTIFY] sent=${manager.sent} failed=${manager.failed} skipped=${manager.skipped}`);
+        }
+      })
+      .catch(() => {});
   }
 
   res.json({

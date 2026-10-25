@@ -461,6 +461,8 @@ router.post("/import-funnel", async (req, res): Promise<void> => {
     newAmDiscovered: newFunnelAmCount,
     notifSent: funnelNotifResult.sent,
     notifFailed: funnelNotifResult.failed,
+    managerNotifSent: managerNotifResult.sent,
+    managerNotifFailed: managerNotifResult.failed,
     importId: imp.id,
   });
 });

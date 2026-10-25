@@ -68,23 +68,53 @@ const EMPTY_RESULT: FunnelNotifyResult = { sent: 0, failed: 0, skipped: 0, detai
 
 // ── Pengaturan pengumuman ─────────────────────────────────────────────────
 
+/**
+ * Nyalakan pengumuman funnel untuk instalasi lama.
+ *
+ * Tabel ini dulu dibuat dengan `funnel_announce_enabled` default false dan tidak
+ * ada jalan untuk mengaktifkannya, sehingga pengumuman funnel tidak pernah
+ * terkirim ke AM maupun Manager sama sekali. Flag di sini hanya dinyalakan bila
+ * belum pernah disetel manual lewat API (`funnel_announce_configured = false`),
+ * jadi keputusan admin tidak ditimpa.
+ */
+async function bootstrapFunnelAnnouncement(): Promise<void> {
+  const { rowCount } = await pool.query(
+    `UPDATE telegram_announcement_settings
+        SET funnel_announce_enabled = true, updated_at = now()
+      WHERE id = (SELECT min(id) FROM telegram_announcement_settings)
+        AND funnel_announce_configured = false
+        AND funnel_announce_enabled = false`,
+  );
+  if ((rowCount ?? 0) > 0) {
+    logger.info("Funnel announcement diaktifkan (belum pernah disetel manual)");
+  }
+}
+
 /** Tabel pengaturan dibuat saat boot supaya tidak butuh migrasi manual. */
 export async function ensureAnnouncementSettingsTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS telegram_announcement_settings (
       id SERIAL PRIMARY KEY,
-      funnel_announce_enabled BOOLEAN DEFAULT false NOT NULL,
+      funnel_announce_enabled BOOLEAN DEFAULT true NOT NULL,
+      funnel_announce_configured BOOLEAN DEFAULT false NOT NULL,
       stagnant_reminder_enabled BOOLEAN DEFAULT false NOT NULL,
       stagnant_reminder_interval_days INTEGER DEFAULT 3 NOT NULL,
       stagnant_reminder_hour_wib INTEGER DEFAULT 9 NOT NULL,
       stagnant_reminder_last_sent_at TIMESTAMP WITH TIME ZONE,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
     );
+
+    ALTER TABLE telegram_announcement_settings
+      ADD COLUMN IF NOT EXISTS funnel_announce_configured BOOLEAN DEFAULT false NOT NULL;
   `);
+
+  await bootstrapFunnelAnnouncement();
 }
 
 export interface AnnouncementSettings {
   funnelAnnounceEnabled: boolean;
+  /** true bila nilai funnel_announce_enabled pernah disetel manual. */
+  funnelAnnounceConfigured: boolean;
   stagnantReminderEnabled: boolean;
   stagnantReminderIntervalDays: number;
   stagnantReminderHourWib: number;
@@ -95,12 +125,14 @@ export async function loadAnnouncementSettings(): Promise<AnnouncementSettings> 
   await ensureAnnouncementSettingsTable();
   const { rows } = await pool.query<{
     funnel_announce_enabled: boolean;
+    funnel_announce_configured: boolean;
     stagnant_reminder_enabled: boolean;
     stagnant_reminder_interval_days: number;
     stagnant_reminder_hour_wib: number;
     stagnant_reminder_last_sent_at: Date | null;
   }>(
-    `select funnel_announce_enabled, stagnant_reminder_enabled, stagnant_reminder_interval_days,
+    `select funnel_announce_enabled, funnel_announce_configured,
+            stagnant_reminder_enabled, stagnant_reminder_interval_days,
             stagnant_reminder_hour_wib, stagnant_reminder_last_sent_at
        from telegram_announcement_settings order by id limit 1`,
   );
@@ -113,6 +145,7 @@ export async function loadAnnouncementSettings(): Promise<AnnouncementSettings> 
   }
   return {
     funnelAnnounceEnabled: row.funnel_announce_enabled,
+    funnelAnnounceConfigured: row.funnel_announce_configured ?? false,
     stagnantReminderEnabled: row.stagnant_reminder_enabled,
     stagnantReminderIntervalDays: row.stagnant_reminder_interval_days,
     stagnantReminderHourWib: row.stagnant_reminder_hour_wib,
@@ -123,16 +156,22 @@ export async function loadAnnouncementSettings(): Promise<AnnouncementSettings> 
 export async function saveAnnouncementSettings(patch: Partial<AnnouncementSettings>): Promise<void> {
   await ensureAnnouncementSettingsTable();
   const current = await loadAnnouncementSettings();
+  // funnel_announce_configured hanya jadi true kalau flag diubah eksplisit,
+  // supaya bootstrap tidak menghidupkan lagi setting yang dimatikan admin.
+  const funnelExplicitlySet = patch.funnelAnnounceEnabled !== undefined;
   await pool.query(
     `update telegram_announcement_settings
         set funnel_announce_enabled = $1,
-            stagnant_reminder_enabled = $2,
-            stagnant_reminder_interval_days = $3,
-            stagnant_reminder_hour_wib = $4,
-            stagnant_reminder_last_sent_at = $5,
-            updated_at = now()`,
+            funnel_announce_configured = funnel_announce_configured OR $2::boolean,
+            stagnant_reminder_enabled = $3,
+            stagnant_reminder_interval_days = $4,
+            stagnant_reminder_hour_wib = $5,
+            stagnant_reminder_last_sent_at = $6,
+            updated_at = now()
+      where id = (select min(id) from telegram_announcement_settings)`,
     [
       patch.funnelAnnounceEnabled ?? current.funnelAnnounceEnabled,
+      funnelExplicitlySet,
       patch.stagnantReminderEnabled ?? current.stagnantReminderEnabled,
       patch.stagnantReminderIntervalDays ?? current.stagnantReminderIntervalDays,
       patch.stagnantReminderHourWib ?? current.stagnantReminderHourWib,

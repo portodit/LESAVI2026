@@ -5,6 +5,8 @@ import { requireAuth } from "../../shared/auth";
 import { checkPermission } from "../../shared/permissions";
 import { sendToTelegram, notifyPerformanceSnapshot, notifyActivitySnapshot, notifyManagerActivitySnapshot } from "../telegram/service";
 import { notifyAmSnapshot, type SnapshotKind } from "../telegram/importNotifier";
+import { loadAnnouncementSettings, saveAnnouncementSettings } from "./funnelAnnouncements";
+import { rescheduleStagnantReminder } from "./scheduler";
 import { getBotUsers, pollOnce } from "./poller";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -516,6 +518,70 @@ router.get("/bot-status", requireAuth, async (req, res): Promise<void> => {
   } catch {
     res.json({ connected: false, botName: null, botUsername: null });
   }
+});
+
+// ── Pengaturan pengumuman snapshot (funnel / reminder LOP stagnan) ─────────
+// Route ini yang dulu hilang: flag funnel_announce_enabled dibuat default false
+// dan tidak punya jalan untuk dinyalakan, jadi pengumuman funnel tidak pernah
+// terkirim ke AM maupun Manager.
+router.get("/announcement-settings", requireAuth, async (_req, res): Promise<void> => {
+  const ann = await loadAnnouncementSettings();
+  res.json({
+    funnelAnnounceEnabled: ann.funnelAnnounceEnabled,
+    funnelAnnounceConfigured: ann.funnelAnnounceConfigured,
+    stagnantReminderEnabled: ann.stagnantReminderEnabled,
+    stagnantReminderIntervalDays: ann.stagnantReminderIntervalDays,
+    stagnantReminderHourWib: ann.stagnantReminderHourWib,
+    stagnantReminderLastSentAt: ann.stagnantReminderLastSentAt,
+  });
+});
+
+router.put("/announcement-settings", requireAuth, async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const patch: Parameters<typeof saveAnnouncementSettings>[0] = {};
+  if (typeof body.funnelAnnounceEnabled === "boolean") {
+    patch.funnelAnnounceEnabled = body.funnelAnnounceEnabled;
+  }
+  if (typeof body.stagnantReminderEnabled === "boolean") {
+    patch.stagnantReminderEnabled = body.stagnantReminderEnabled;
+  }
+  if (body.stagnantReminderIntervalDays !== undefined) {
+    const days = Number(body.stagnantReminderIntervalDays);
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      res.status(400).json({ error: "stagnantReminderIntervalDays harus angka 1-30" });
+      return;
+    }
+    patch.stagnantReminderIntervalDays = Math.round(days);
+  }
+  if (body.stagnantReminderHourWib !== undefined) {
+    const hour = Number(body.stagnantReminderHourWib);
+    if (!Number.isFinite(hour) || hour < 0 || hour > 23) {
+      res.status(400).json({ error: "stagnantReminderHourWib harus angka 0-23" });
+      return;
+    }
+    patch.stagnantReminderHourWib = Math.round(hour);
+  }
+
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: "Tidak ada pengaturan yang dikirim" });
+    return;
+  }
+
+  await saveAnnouncementSettings(patch);
+  // Ulangi jadwal reminder karena interval/jam bisa saja berubah.
+  rescheduleStagnantReminder();
+
+  const ann = await loadAnnouncementSettings();
+  res.json({
+    success: true,
+    funnelAnnounceEnabled: ann.funnelAnnounceEnabled,
+    funnelAnnounceConfigured: ann.funnelAnnounceConfigured,
+    stagnantReminderEnabled: ann.stagnantReminderEnabled,
+    stagnantReminderIntervalDays: ann.stagnantReminderIntervalDays,
+    stagnantReminderHourWib: ann.stagnantReminderHourWib,
+    stagnantReminderLastSentAt: ann.stagnantReminderLastSentAt,
+  });
 });
 
 // ── Hapus semua akses bot (putuskan semua koneksi Telegram) ─────────────────

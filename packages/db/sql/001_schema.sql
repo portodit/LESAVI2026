@@ -159,7 +159,8 @@ CREATE TABLE IF NOT EXISTS "telegram_logs" (
 
 CREATE TABLE IF NOT EXISTS "telegram_announcement_settings" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"funnel_announce_enabled" boolean DEFAULT false NOT NULL,
+	"funnel_announce_enabled" boolean DEFAULT true NOT NULL,
+	"funnel_announce_configured" boolean DEFAULT false NOT NULL,
 	"stagnant_reminder_enabled" boolean DEFAULT false NOT NULL,
 	"stagnant_reminder_interval_days" integer DEFAULT 3 NOT NULL,
 	"stagnant_reminder_hour_wib" integer DEFAULT 9 NOT NULL,

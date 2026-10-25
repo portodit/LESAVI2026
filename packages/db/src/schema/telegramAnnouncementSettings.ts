@@ -8,7 +8,13 @@ import { z } from "zod/v4";
  */
 export const telegramAnnouncementSettingsTable = pgTable("telegram_announcement_settings", {
   id: serial("id").primaryKey(),
-  funnelAnnounceEnabled: boolean("funnel_announce_enabled").notNull().default(false),
+  funnelAnnounceEnabled: boolean("funnel_announce_enabled").notNull().default(true),
+  /**
+   * true = `funnel_announce_enabled` pernah disetel manual lewat API.
+   * Bootstrap hanya mengaktifkan flag yang belum pernah dikonfigurasi, jadi
+   * ini yang mencegah admin mematikan pengumuman secara permanen.
+   */
+  funnelAnnounceConfigured: boolean("funnel_announce_configured").notNull().default(false),
   stagnantReminderEnabled: boolean("stagnant_reminder_enabled").notNull().default(false),
   stagnantReminderIntervalDays: integer("stagnant_reminder_interval_days").notNull().default(3),
   stagnantReminderHourWib: integer("stagnant_reminder_hour_wib").notNull().default(9),
