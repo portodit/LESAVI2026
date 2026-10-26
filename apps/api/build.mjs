@@ -104,7 +104,9 @@ async function buildAll() {
       "electron",
       "dotenv",
     ],
-    sourcemap: "linked",
+    // Source map tidak dikirim ke server: file .map membocorkan seluruh
+    // source code API ke whoever bisa mengunduhnya.
+    sourcemap: false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

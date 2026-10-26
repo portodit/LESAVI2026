@@ -1,75 +1,68 @@
-# Context - 2026-05-07
+# Context — LESAVI2026
 
-## Tujuan Sesi
-User meminta assistant memahami project ini secara menyeluruh: arsitektur frontend, backend, dan terutama cara kerja Telegram bot agar siap lanjut ke perubahan/fitur berikutnya tanpa investigasi ulang dari nol.
+> Ditulis ulang mengikuti struktur repo saat ini. Path lama (`artifacts/api-server`,
+> `artifacts/lesavi-dashboard`, `lib/db`) sudah tidak berlaku.
 
-## Progress & Status
-- Sudah dilakukan eksplorasi struktur project dan pembacaan file inti frontend/backend/telegram bot.
-- Sudah dipetakan alur utama frontend (routing + auth guard), backend (route composition + auth middleware), dan bot (polling, linking akun, role-based menu, import file via Telegram).
-- Belum ada perubahan kode implementasi; sesi masih tahap pemahaman dan dokumentasi konteks.
-- Task list:
-  - #1 Petakan arsitektur frontend — completed
-  - #2 Petakan arsitektur backend — completed
-  - #3 Pahami alur Telegram bot — in_progress (secara substansi sudah dianalisis, tinggal sinkronisasi status task bila diperlukan)
+## Monorepo
 
-## File yang Dimodifikasi
-Pada sesi ini oleh assistant:
-- `.claude/context.md` — dibuat/diperbarui untuk menyimpan ringkasan konteks sesi.
+Workspace pnpm di root. Paket utama:
 
-Tidak ada file kode aplikasi yang diedit pada sesi ini.
+| Area | Lokasi |
+|---|---|
+| Backend API (Express 5) | `apps/api` — paket `@workspace/api-server` |
+| Dashboard (React + Vite) | `apps/dashboard` — paket `@workspace/dashboard` |
+| Skema DB (Drizzle) | `packages/db/src/schema` — sumber kebenaran tunggal |
+| Zod / API client | `packages/api-zod`, `packages/api-client-react` |
 
-Kondisi repo saat awal sesi (sudah ada dari sebelum interaksi ini):
-- `artifacts/api-server/src/features/gdrive/importer.ts` (modified)
-- `artifacts/api-server/src/features/gdrive/routes.ts` (modified)
-- `artifacts/api-server/src/features/telegram/poller.ts` (modified)
-- `artifacts/api-server/src/features/telegram/service.ts` (modified)
-- `.claude/` (untracked)
-- `.env` (untracked)
+`lib/` berisi salinan lama paket `packages/` yang tidak lagi dipakai sebagai
+sumber build — jangan diedit, tapi masih ada di repo.
 
-## Keputusan Penting
-- Pendekatan yang dipilih: lakukan code-reading terarah pada entrypoint dan modul inti (bukan mengubah kode) untuk membangun pemahaman end-to-end sebelum implementasi.
-- Fokus investigasi Telegram bot diarahkan ke 3 titik: `routes.ts` (admin/API control), `poller.ts` (runtime state machine bot), `service.ts` (message builder + delivery).
-- Komunikasi tetap Bahasa Indonesia mengikuti instruksi global.
+## Backend
 
-## Konteks Teknis
-- Monorepo/workspace dengan area utama:
-  - Frontend: `artifacts/lesavi-dashboard` (React, Wouter, TanStack Query, role-based guarded routing).
-  - Backend: `artifacts/api-server` (Express, express-session, pino-http logger, modular feature routes).
-  - Data layer: `lib/db` (Drizzle ORM schema + PostgreSQL).
-- Backend startup:
-  - `artifacts/api-server/src/index.ts` menjalankan server, seeding/patching, lalu start scheduler/poller (`Telegram`, `GSheets`, `GDrive`).
-- Routing backend:
-  - `artifacts/api-server/src/routes/index.ts` memisahkan route public vs dashboard.
-  - Route dashboard dilindungi `requireAuth` + `requireManagerOrOfficer`.
-- Frontend routing:
-  - `artifacts/lesavi-dashboard/src/App.tsx` mengatur public routes, protected routes, dan pembatasan role AM ke presentation-only.
-- Telegram bot runtime:
-  - Polling via `getUpdates` (bukan webhook), offset `lastUpdateId`, timer loop via `setTimeout`.
-  - In-memory chat state per chat (`chatStateMap`) untuk mode interaktif (upload/search/pick).
-  - Persistensi user bot ke tabel `telegram_bot_users` lewat upsert.
-  - Linking akun AM via kode/deep-link (`/start <code>`), validasi expiry, simpan `telegram_chat_id`.
-  - Menu dan flow berbeda berdasarkan role (`AM`, `OFFICER`, `MANAGER`).
-  - OFFICER bisa upload Excel di chat → download file Telegram → parse → import ke modul gdrive/importer.
-  - Service bot membangun pesan terpisah per tipe data (performance/funnel/activity) dan mengirim via Telegram API.
-- Endpoint admin Telegram (`features/telegram/routes.ts`) mencakup send reminder, log, register/link/unlink, generate link, sync-now, bot-status.
+- `apps/api/src/app.ts` — komposisi Express: helmet, CORS whitelist, session
+  (`connect-pg-simple`, tabel `user_sessions`), router per fitur.
+- `apps/api/src/index.ts` — entrypoint: seeding, scheduler, Telegram poller.
+- `apps/api/src/features/*` — modular per domain (auth, telegram, import, funnel,
+  activity, performance, am, corporate, presentation, gdrive, gsheets, settings).
+- `apps/api/src/shared/` — `auth.ts` (requireAuth, logAuthEvent,
+  regenerateSession), `security.ts` (rahasia sesi, whitelist CORS, rate limiter),
+  `publicUrl.ts`.
+- Build: `apps/api/build.mjs` (esbuild, **tanpa** source map).
 
-## Langkah Selanjutnya
-1. Sinkronkan task status #3 menjadi completed jika user setuju bahwa analisis alur bot sudah cukup.
-2. Jika user ingin implementasi perubahan, tentukan scope spesifik (contoh: ubah flow linking, format pesan, role permissions, atau upload handling).
-3. Sebelum edit kode, cek ulang `git status` dan baca file target terbaru karena repo sudah dirty sejak awal.
-4. Setelah implementasi nanti, lakukan verifikasi terarah (readback + test/lint/run yang relevan).
+## Auth
 
-## Catatan Penting
-- Jangan asumsi perubahan di `poller.ts`/`service.ts` saat ini berasal dari sesi ini; file tersebut sudah modified dari awal.
-- `poller.ts` sangat besar dan berisi banyak branch callback berbasis role; perubahan kecil bisa berdampak ke flow lain, jadi wajib uji tiap role (AM/OFFICER/MANAGER).
-- Ada `.env` untracked; jangan ikut ter-commit.
-- Jika agent/model berikutnya lanjut pekerjaan, mulai dari file kunci ini:
-  - `artifacts/lesavi-dashboard/src/App.tsx`
-  - `artifacts/api-server/src/index.ts`
-  - `artifacts/api-server/src/routes/index.ts`
-  - `artifacts/api-server/src/features/telegram/routes.ts`
-  - `artifacts/api-server/src/features/telegram/poller.ts`
-  - `artifacts/api-server/src/features/telegram/service.ts`
-  - `lib/db/src/schema/accountManagers.ts`
-  - `lib/db/src/schema/telegramBotUsers.ts`
-  - `lib/db/src/schema/telegramLogs.ts`
+- Dashboard: OTP via Telegram, sesi cookie `connect.sid` (DB-backed).
+  `verifyOtp` memanggil `regenerateSession()` sebelum mengisi `userId`
+  (anti session fixation).
+- Presentation: **sessionless** — token acak disimpan di tabel
+  `presentation_sessions`, frontend menyimpannya di `localStorage`.
+- Rate limit (`shared/security.ts`): `authIpLimiter` (per IP),
+  `loginAttemptLimiter` (per akun), `otpRequestLimiter`, `otpVerifyLimiter`.
+
+## Frontend
+
+- `apps/dashboard/src/App.tsx` — routing, guard per role.
+- Role AM hanya boleh masuk lewat halaman `/presentation/login`.
+
+## Database
+
+- Sumber kebenaran: `packages/db/src/schema/*.ts`.
+- Sinkronisasi: `scripts/db-sync.mjs` (`--check` / `--apply`).
+  **`drizzle-kit push` dilarang** — merusak `user_sessions`, view `accounts`,
+  constraint & index di DB produksi.
+- DDL kanonik: `packages/db/sql/001_schema.sql`.
+
+## Deploy
+
+- Push ke branch `fresh-upload` → GitHub Actions → `scripts/deploy.sh` di VPS
+  (103.183.74.104).
+- Dashboard **wajib** di-build di runner Actions (VPS RAM 1.9 GB tanpa swap →
+  vite build kena OOM-killer). Aset dikirim sebagai `.incoming/dashboard.tar.gz`.
+- API di-build di VPS (esbuild, ringan).
+- PM2: `lesavi-api`. File env produksi ada **di luar repo** di VPS.
+
+## Konvensi
+
+- Balas user dalam Bahasa Indonesia.
+- Jangan pernah commit `.env`, `cookies*.txt`, atau skrip berisi kredensial SSH.
+- File import = dump kumulatif; jangan menjumlahkan data lintas import.

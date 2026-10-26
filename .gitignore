@@ -128,6 +128,26 @@ test_cookies.txt
 cookies*.txt
 vps_poller.ts
 
+# Source map API — membocorkan seluruh source code API ke server
+apps/api/dist/*.map
+
+# File scratch/scratchcard di root repo
+/-w
+/_amprofile_*.tsx
+/act_*.json
+/activity_*.json
+/snapshots.json
+
+# Skrip akses VPS (berisi kredensial) — jangan pernah di-commit
+/ssh_connect.py
+/vps_exec.py
+/vps_connect.py
+/remote.py
+/temp_addkey.py
+/temp_install_cron.py
+/temp_auto_pull.sh
+/temp_check.mjs
+
 # Local node modules override / build artifacts
 apps/api/.env
 

@@ -67,11 +67,7 @@ export async function ensureDefaultAdmin(): Promise<void> {
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const session = (req as any).session;
-  const cookies = req.headers["cookie"] ?? "(none)";
-  const sessionId = (req as any).sessionID ?? "(unknown)";
-  console.log("[requireAuth] url:", req.url, "session cookie name:", session?.cookie?.name, "sessionID:", sessionId, "cookies:", cookies);
   if (!session?.userId) {
-    console.log("[requireAuth] UNAUTHORIZED - session.userId:", session?.userId, "sessionKeys:", Object.keys(session ?? {}));
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -83,6 +79,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     tipe: session.userTipe,
   };
   next();
+}
+
+/**
+ * Buat ID sesi baru. Wajib dipanggil setiap kali status otentikasi berubah
+ * (login/verifikasi OTP) supaya ID sesi lama tidak bisa dipakai ulang —
+ * mencegah session fixation.
+ */
+export async function regenerateSession(req: any): Promise<void> {
+  const session = (req as any).session;
+  if (!session?.regenerate) return;
+  await new Promise<void>((resolve, reject) => {
+    session.regenerate((err: any) => (err ? reject(err) : resolve()));
+  });
 }
 
 // Extend express-session to include OTP challenge state

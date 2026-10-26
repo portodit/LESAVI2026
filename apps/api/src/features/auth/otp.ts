@@ -2,9 +2,8 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, otpChallengesTable, accountManagersTable, appSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { sendToTelegram, sendToTelegramHtml } from "../telegram/service";
-import { getClientIp } from "../../shared/auth";
-import { storeOtp } from "./otpStore";
+import { sendToTelegramHtml } from "../telegram/service";
+import { regenerateSession } from "../../shared/auth";
 
 const OTP_LENGTH = 5;
 const OTP_EXPIRY_MINUTES = 5;
@@ -96,7 +95,6 @@ export async function requestOtp(userId: number, req: Request): Promise<{
       `⚠️ Kode ini berlaku selama <b>${OTP_EXPIRY_MINUTES} menit</b>. Jangan bagikan kode ini ke siapa pun.\n\n` +
       `Jika Anda tidak meminta kode ini, abaikan pesan ini.`;
 
-    storeOtp(challengeId, otp, user.telegramChatId);
     await sendToTelegramHtml(settings.telegramBotToken, user.telegramChatId, message).catch(() => {});
   }
 
@@ -185,25 +183,28 @@ export async function verifyOtp(
     .set({ status: "VERIFIED", verifiedAt: new Date() })
     .where(eq(otpChallengesTable.id, challenge.id));
 
-  session.userId = session.pendingUserId;
-  session.userEmail = session.pendingEmail;
-  session.userRole = session.pendingRole;
-  session.userNama = session.pendingNama;
-  session.userTipe = session.pendingTipe;
+  // Cegah session fixation: ID sesi lama (yang bisa saja sudah dibocorkan
+  // lewat link/hijacking) dibuang, lalu sesi baru dibuat untuk user terverifikasi.
+  const pendingUserId = session.pendingUserId;
+  const pendingEmail = session.pendingEmail;
+  const pendingNama = session.pendingNama;
+  const pendingRole = session.pendingRole;
+  const pendingTipe = session.pendingTipe;
+
+  await regenerateSession(req);
+
+  const verifiedSession = (req as any).session;
+  verifiedSession.userId = pendingUserId;
+  verifiedSession.userEmail = pendingEmail;
+  verifiedSession.userRole = pendingRole;
+  verifiedSession.userNama = pendingNama;
+  verifiedSession.userTipe = pendingTipe;
 
   const deviceId = crypto.randomBytes(8).toString("hex");
-  session.deviceId = deviceId;
-
-  delete session.pendingUserId;
-  delete session.pendingChallengeId;
-  delete session.pendingEmail;
-  delete session.pendingNama;
-  delete session.pendingRole;
-  delete session.pendingTipe;
-  delete session.pendingExpiresAt;
+  verifiedSession.deviceId = deviceId;
 
   await new Promise<void>((resolve, reject) => {
-    session.save((err: any) => (err ? reject(err) : resolve()));
+    verifiedSession.save((err: any) => (err ? reject(err) : resolve()));
   });
 
   return { success: true };
@@ -297,7 +298,6 @@ export async function requestOtpPresentation(userId: number): Promise<{
       `⚠️ Kode ini berlaku selama <b>${OTP_EXPIRY_MINUTES} menit</b>. Jangan bagikan kode ini ke siapa pun.\n\n` +
       `Jika Anda tidak meminta kode ini, abaikan pesan ini.`;
 
-    storeOtp(challengeId, otp, user.telegramChatId);
     await sendToTelegramHtml(settings.telegramBotToken, user.telegramChatId, message).catch(() => {});
   }
 

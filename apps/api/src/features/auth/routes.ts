@@ -2,15 +2,21 @@ import { Router, type IRouter } from "express";
 import crypto from "crypto";
 import { db, accountManagersTable, presentationSessionsTable } from "@workspace/db";
 import { eq, or, inArray } from "drizzle-orm";
-import { comparePassword, requireAuth, logAuthEvent, getClientIp } from "../../shared/auth";
+import { comparePassword, requireAuth, logAuthEvent, getClientIp, regenerateSession } from "../../shared/auth";
 import { requestOtp, verifyOtp, resendOtp, getPendingUserInfo, requestOtpPresentation, verifyOtpPresentation } from "./otp";
+import {
+  authIpLimiter,
+  loginAttemptLimiter,
+  otpRequestLimiter,
+  otpVerifyLimiter,
+} from "../../shared/security";
 import { logger } from "../../shared/logger";
 
 // ─── Dashboard Auth Router (uses connect.sid) ──────────────────────────────────
 // All routes here go through the dashboard session middleware.
 const dashboardAuthRouter: IRouter = Router();
 
-dashboardAuthRouter.post("/login", async (req: any, res: any): Promise<void> => {
+dashboardAuthRouter.post("/login", authIpLimiter, loginAttemptLimiter, async (req: any, res: any): Promise<void> => {
   const { email, password } = req.body;
   if (!email || !password) {
     res.status(200).json({ error: "Email/NIK dan password wajib diisi" });
@@ -67,7 +73,8 @@ dashboardAuthRouter.post("/login", async (req: any, res: any): Promise<void> => 
   });
 
   if (user.nik === "160203") {
-    const session = (req as any).session;
+    await regenerateSession(req);
+    const session = req.session;
     session.userId = user.id;
     session.userEmail = user.email;
     session.userRole = user.role;
@@ -146,7 +153,7 @@ dashboardAuthRouter.get("/me", requireAuth, async (req: any, res: any): Promise<
   });
 });
 
-dashboardAuthRouter.post("/otp/request", async (req: any, res: any): Promise<void> => {
+dashboardAuthRouter.post("/otp/request", authIpLimiter, otpRequestLimiter, async (req: any, res: any): Promise<void> => {
   const { userId } = req.body;
   if (!userId || typeof userId !== "number") {
     res.status(400).json({ error: "userId diperlukan" });
@@ -182,7 +189,7 @@ dashboardAuthRouter.post("/otp/request", async (req: any, res: any): Promise<voi
   }
 });
 
-dashboardAuthRouter.post("/otp/verify", async (req: any, res: any): Promise<void> => {
+dashboardAuthRouter.post("/otp/verify", authIpLimiter, otpVerifyLimiter, async (req: any, res: any): Promise<void> => {
   const { challengeId, otp } = req.body;
   if (!challengeId || !otp) {
     res.status(400).json({ error: "challengeId dan OTP wajib diisi" });
@@ -194,8 +201,7 @@ dashboardAuthRouter.post("/otp/verify", async (req: any, res: any): Promise<void
     return;
   }
 
-  const session = req.session;
-  const pendingUserId = session?.pendingUserId;
+  const pendingUserId = req.session?.pendingUserId;
 
   const result = await verifyOtp(String(challengeId), String(otp), req);
 
@@ -213,6 +219,9 @@ dashboardAuthRouter.post("/otp/verify", async (req: any, res: any): Promise<void
     res.status(401).json({ error: result.error });
     return;
   }
+
+  // verifyOtp me-regenerate sesi, jadi req.session sekarang berisi objek baru.
+  const session = req.session;
 
   await logAuthEvent({
     userId: session.userId,
@@ -234,7 +243,7 @@ dashboardAuthRouter.post("/otp/verify", async (req: any, res: any): Promise<void
   });
 });
 
-dashboardAuthRouter.post("/otp/resend", async (req: any, res: any): Promise<void> => {
+dashboardAuthRouter.post("/otp/resend", authIpLimiter, otpRequestLimiter, async (req: any, res: any): Promise<void> => {
   const session = req.session;
   if (!session.pendingUserId) {
     res.status(400).json({ error: "Tidak ada tantangan aktif. Silakan mulai proses login dari awal." });
@@ -301,7 +310,7 @@ export { dashboardAuthRouter };
 const presentationAuthRouter: IRouter = Router();
 
 // POST /api/auth/presentation/request-otp
-presentationAuthRouter.post("/request-otp", async (req: any, res: any): Promise<void> => {
+presentationAuthRouter.post("/request-otp", authIpLimiter, otpRequestLimiter, async (req: any, res: any): Promise<void> => {
   const { nik } = req.body;
   if (!nik) {
     res.status(400).json({ error: "NIK wajib diisi" });
@@ -362,7 +371,7 @@ presentationAuthRouter.post("/request-otp", async (req: any, res: any): Promise<
 // POST /api/auth/presentation/verify-otp
 // Sessionless: reads challenge from DB, creates presentation token in DB.
 // Does NOT touch express-session or any cookie — completely isolated.
-presentationAuthRouter.post("/verify-otp", async (req: any, res: any): Promise<void> => {
+presentationAuthRouter.post("/verify-otp", authIpLimiter, otpVerifyLimiter, async (req: any, res: any): Promise<void> => {
   try {
     const { challengeId, otp, userId } = req.body;
 
@@ -464,7 +473,7 @@ presentationAuthRouter.post("/session", async (req: any, res: any): Promise<void
 });
 
 // POST /api/auth/presentation/resend-otp
-presentationAuthRouter.post("/resend-otp", async (req: any, res: any): Promise<void> => {
+presentationAuthRouter.post("/resend-otp", authIpLimiter, otpRequestLimiter, async (req: any, res: any): Promise<void> => {
   const { userId } = req.body;
   if (!userId) {
     res.status(400).json({ error: "userId wajib diisi" });

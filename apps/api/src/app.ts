@@ -1,6 +1,7 @@
 import express from "express";
 import type { Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import pinoHttp from "pino-http";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -21,12 +22,38 @@ import presentationRouter from "./features/presentation/routes";
 import { requireAuth, requireManagerOrOfficer } from "./shared/auth";
 import { logger } from "./shared/logger";
 import { setPublicBaseUrl } from "./shared/publicUrl";
+import { resolveAllowedOrigins, resolveSessionSecret } from "./shared/security";
 import { pool } from "@workspace/db";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+// Di belakang nginx (TLS dihentikan di proxy, API menerima HTTP lokal),
+// req.ip / req.protocol harus dibaca dari header X-Forwarded-*.
+app.set("trust proxy", 1);
+
+// Header keamanan standar. CSP & COEP dimatikan karena API ikut menyajikan
+// bundle dashboard yang memuat Google Fonts (butuh cross-origin) dan skrip
+// inline milik vite.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+  }),
+);
+
+// Tanpa ini express-session tidak mau mengirim cookie `secure` ke request
+// HTTP lokal hasil forward nginx (req.secure selalu false tanpa X-Forwarded-Proto).
+app.use((req, _res, next) => {
+  if (isProduction && !req.secure) {
+    Object.defineProperty(req, "secure", { value: true, configurable: true, enumerable: true });
+  }
+  next();
+});
 
 app.use(
   pinoHttp({
@@ -47,7 +74,8 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = resolveAllowedOrigins();
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use("/api", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -125,14 +153,16 @@ if (fs.existsSync(dashboardDistPath)) {
 // Applying dashboard mw globally before pres mw causes express-session to reuse
 // the dashboard session (same req.session object) instead of creating a pres session.
 const PgSession = connectPg(session);
+const cookieSecure = process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : isProduction;
 const dashboardSessionMw = session({
   store: new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: false }),
-  secret: process.env.SESSION_SECRET || "rlegs-suramadu-secret-2024",
+  secret: resolveSessionSecret(),
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     sameSite: "lax",
+    secure: cookieSecure,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   },
   name: "connect.sid",
